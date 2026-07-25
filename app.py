@@ -47,7 +47,7 @@ warnings.filterwarnings("ignore")
 IS_COLAB = True if ('google.colab' in sys.modules or args.share) else False
 IS_ZERO_GPU = os.getenv("SPACES_ZERO_GPU")
 
-title = "<center><strong><font size='7'>Audio🔹separator</font></strong></center>"
+title = "<center><strong><font size='6'>Audio🔹separator</font></strong></center>"
 base_demo = "This demo uses the "
 description = (f"{base_demo if IS_ZERO_GPU else ''}MDX-Net models for vocal and background sound separation.")
 RESOURCES = "- You can also try `Audio🔹separator` in Colab’s free tier, which provides free GPU [link](https://github.com/R3gm/Audio_separator_ui?tab=readme-ov-file#audio-separator)."
@@ -1340,8 +1340,8 @@ def format_conf():
     )
 
 
-def get_gui(theme):
-    with gr.Blocks(theme=theme, fill_width=True, fill_height=False, delete_cache=(3200, 10800)) as app:
+def get_gui():
+    with gr.Blocks(fill_width=True, fill_height=False, delete_cache=(3200, 10800)) as app:
         gr.Markdown(title)
         gr.Markdown(description)
 
@@ -1479,7 +1479,7 @@ if __name__ == "__main__":
             os.path.join(MDX_DOWNLOAD_LINK, id_model), mdxnet_models_dir
         )
 
-    app = get_gui(theme)
+    app = get_gui()
     app.queue(default_concurrency_limit=40)
     app.launch(
         max_threads=40,
@@ -1488,4 +1488,5 @@ if __name__ == "__main__":
         quiet=False,
         debug=IS_COLAB,
         ssr_mode=False,
+        theme=theme,
     )
