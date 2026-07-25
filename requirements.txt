@@ -8,7 +8,7 @@ yt-dlp
 tqdm
 spaces
 numpy<2
-gradio==5.43.1
+gradio==6.20.0
 ffmpeg-python
 scipy
 scikit-learn
