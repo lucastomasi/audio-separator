@@ -363,7 +363,7 @@ class MDX:
         return self.segment(processed_batches, True, chunk)
 
 
-@spaces.GPU(duration=40)
+@spaces.GPU(duration=(40/1.5))
 def run_mdx(
     model_params,
     output_dir,
