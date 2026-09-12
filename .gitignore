@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+clean_song_output/
+downloads/
+mdx_models/*.onnx
+.DS_Store

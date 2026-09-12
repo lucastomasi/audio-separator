@@ -1,5 +1,15 @@
 import os
-import spaces
+import re
+import shutil
+try:
+    import spaces
+except ImportError:
+    class spaces:
+        @staticmethod
+        def GPU(*args, **kwargs):
+            def decorator(fn):
+                return fn
+            return decorator
 import gc
 import hashlib
 import queue
@@ -8,7 +18,7 @@ import json
 import shlex
 import sys
 import subprocess
-import librosa
+import audio_io as librosa
 import numpy as np
 import soundfile as sf
 import torch
@@ -41,17 +51,33 @@ parser.add_argument(
     default="NoCrypt/miku",
     help='Set the theme (default: NoCrypt/miku)'
 )
+parser.add_argument(
+    '--open',
+    action='store_true',
+    help='Open the app in the browser when ready',
+)
 args = parser.parse_args()
 
 warnings.filterwarnings("ignore")
 IS_COLAB = True if ('google.colab' in sys.modules or args.share) else False
 IS_ZERO_GPU = os.getenv("SPACES_ZERO_GPU")
 
-title = "<center><strong><font size='6'>Audio🔹separator</font></strong></center>"
-base_demo = "This demo uses the "
-description = (f"{base_demo if IS_ZERO_GPU else ''}MDX-Net models for vocal and background sound separation.")
-RESOURCES = "- You can also try `Audio🔹separator` in Colab’s free tier, which provides free GPU [link](https://github.com/R3gm/Audio_separator_ui?tab=readme-ov-file#audio-separator)."
-theme = args.theme
+APP_THEME = gr.themes.Soft(
+    primary_hue="violet",
+    secondary_hue="fuchsia",
+    neutral_hue="zinc",
+    radius_size=gr.themes.sizes.radius_lg,
+).set(
+    button_primary_background_fill="*primary_500",
+    button_primary_background_fill_hover="*primary_400",
+    button_primary_text_color="white",
+    block_radius="*radius_lg",
+    checkbox_label_text_weight="600",
+)
+
+UI_CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.css")
+with open(UI_CSS_PATH, encoding="utf-8") as css_file:
+    UI_CSS = css_file.read()
 
 stem_naming = {
     "Vocals": "Instrumental",
@@ -454,7 +480,8 @@ def run_mdx(
 
     del mdx_sess, wave_processed, wave
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return main_filepath, invert_filepath
 
 
@@ -546,7 +573,8 @@ def run_mdx_beta(
 
     del mdx_sess, wave_processed, wave
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return main_filepath, invert_filepath
 
 
@@ -860,10 +888,10 @@ def sound_separate(
     target_format="WAV",
 ):
     if not media_file:
-        raise ValueError("The audio path is missing.")
+        raise ValueError("Falta el archivo de audio.")
 
     if not stem:
-        raise ValueError("Please select 'vocal' or 'background' stem.")
+        raise ValueError("Elige voz, instrumental, o ambos.")
 
     hash_audio = str(get_hash(media_file))
     media_dir = os.path.dirname(media_file)
@@ -940,55 +968,93 @@ def sound_separate(
     return convert_format(outputs, media_dir, target_format)
 
 
-def audio_downloader(
-    url_media,
-):
-
-    url_media = url_media.strip()
-
+def normalize_media_url(url_media):
+    url_media = (url_media or "").strip().strip('"').strip("'")
     if not url_media:
-        return None
+        return ""
+    found = re.search(r"https?://[^\s]+", url_media)
+    if found:
+        url_media = found.group(0).rstrip(".,);]")
+    elif url_media.startswith("www.") or re.match(
+        r"^(youtu\.be|youtube\.com|music\.youtube\.com)/", url_media, re.I
+    ):
+        url_media = "https://" + url_media
+    return url_media
+
+
+def audio_downloader(url_media):
+    url_media = normalize_media_url(url_media)
+    if not url_media:
+        raise gr.Error("Pega un enlace de YouTube.")
 
     if IS_ZERO_GPU and "youtube.com" in url_media:
-        gr.Info("This option isn’t available on Hugging Face.")
+        gr.Info("Esta opción no está disponible en Hugging Face.")
         return None
 
     import yt_dlp
-    # print(url_media[:10])
 
-    dir_output_downloads = "downloads"
-    os.makedirs(dir_output_downloads, exist_ok=True)
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    downloads_dir = os.path.join(app_dir, "downloads")
+    os.makedirs(downloads_dir, exist_ok=True)
 
-    media_info = yt_dlp.YoutubeDL(
-        {"quiet": True, "no_warnings": True, "noplaylist": True}
-    ).extract_info(url_media, download=False)
-    download_path = f"{os.path.join(dir_output_downloads, media_info['title'])}.m4a"
+    node_path = shutil.which("node") or "/usr/local/bin/node"
+    ffmpeg_path = shutil.which("ffmpeg") or os.path.expanduser("~/.local/bin/ffmpeg")
 
     ydl_opts = {
-        'format': 'm4a/bestaudio/best',
-        'postprocessors': [{  # Extract audio using ffmpeg
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'm4a',
-        }],
-        'force_overwrites': True,
-        'noplaylist': True,
-        'no_warnings': True,
-        'quiet': True,
-        'ignore_no_formats_error': True,
-        'restrictfilenames': True,
-        'outtmpl': download_path,
+        "format": "bestaudio/best",
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+        "overwrites": True,
+        "noplaylist": True,
+        "no_warnings": True,
+        "quiet": True,
+        "outtmpl": os.path.join(downloads_dir, "%(id)s.%(ext)s"),
+        "restrictfilenames": True,
+        "remote_components": ["ejs:github"],
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl_download:
-        ydl_download.download([url_media])
+    if node_path and os.path.isfile(node_path):
+        ydl_opts["js_runtimes"] = {"node": {"path": node_path}}
+    if ffmpeg_path and os.path.exists(ffmpeg_path):
+        ydl_opts["ffmpeg_location"] = ffmpeg_path
 
-    return download_path
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_media, download=True)
+    except Exception as exc:
+        raise gr.Error(
+            "No se pudo descargar el audio de YouTube. "
+            "Revisa el enlace e inténtalo de nuevo."
+        ) from exc
+
+    if not info:
+        raise gr.Error("YouTube no devolvió información del video.")
+    if info.get("_type") == "playlist":
+        entries = [entry for entry in (info.get("entries") or []) if entry]
+        if not entries:
+            raise gr.Error("Esa lista no tiene videos.")
+        info = entries[0]
+
+    video_id = info.get("id")
+    if not video_id:
+        raise gr.Error("No pude identificar el video de YouTube.")
+
+    for ext in ("mp3", "m4a", "wav", "webm", "opus", "ogg"):
+        candidate = os.path.join(downloads_dir, f"{video_id}.{ext}")
+        if os.path.isfile(candidate) and os.path.getsize(candidate) > 0:
+            return os.path.abspath(candidate)
+
+    raise gr.Error("La descarga terminó, pero no encontré el archivo de audio.")
 
 
 def downloader_conf():
     return gr.Checkbox(
         False,
-        label="URL-to-Audio",
-        # info="",
+        label="Pegar un enlace de YouTube",
         container=False,
     )
 
@@ -996,18 +1062,18 @@ def downloader_conf():
 def url_media_conf():
     return gr.Textbox(
         value="",
-        label="Enter URL",
-        placeholder="www.youtube.com/watch?v=g_9rPvbENUw",
-        visible=False,
+        label="O pega un enlace de YouTube",
+        placeholder="https://www.youtube.com/watch?v=…",
         lines=1,
+        scale=4,
     )
 
 
 def url_button_conf():
     return gr.Button(
-        "Go",
+        "Descargar audio",
         variant="secondary",
-        visible=False,
+        scale=1,
     )
 
 
@@ -1020,36 +1086,34 @@ def show_components_downloader(value_active):
 
 
 def audio_conf():
-    return gr.File(
-        label="Audio file",
-        # file_count="multiple",
+    return gr.Audio(
+        label="Canción o grabación",
         type="filepath",
-        container=True,
+        sources=["upload"],
     )
 
 
 def stem_conf():
     return gr.CheckboxGroup(
-        choices=["vocal", "background"],
-        value="vocal",
-        label="Stem",
-        # info="",
+        choices=[("Voz", "vocal"), ("Instrumental", "background")],
+        value=["vocal"],
+        label="Qué extraer",
+        info="Puedes marcar las dos.",
     )
 
 
 def main_conf():
     return gr.Checkbox(
         False,
-        label="Main",
-        # info="",
+        label="Solo voz principal",
+        info="Intenta dejar atrás coros y doblajes.",
     )
 
 
 def dereverb_conf():
     return gr.Checkbox(
         False,
-        label="Dereverb",
-        # info="",
+        label="Quitar reverb",
         visible=True,
     )
 
@@ -1057,8 +1121,7 @@ def dereverb_conf():
 def vocal_effects_conf():
     return gr.Checkbox(
         False,
-        label="Vocal Effects",
-        # info="",
+        label="Efectos de voz",
         visible=True,
     )
 
@@ -1066,253 +1129,106 @@ def vocal_effects_conf():
 def background_effects_conf():
     return gr.Checkbox(
         False,
-        label="Background Effects",
-        # info="",
+        label="Efectos de instrumental",
         visible=False,
     )
 
 
 def vocal_reverb_room_size_conf():
-    return gr.Number(
-        0.15,
-        label="Vocal Reverb Room Size",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.05,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.15, step=0.05, label="Sala")
 
 
 def vocal_reverb_damping_conf():
-    return gr.Number(
-        0.7,
-        label="Vocal Reverb Damping",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.01,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.7, step=0.01, label="Amortiguación")
 
 
 def vocal_reverb_wet_level_conf():
-    return gr.Number(
-        0.2,
-        label="Vocal Reverb Wet Level",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.05,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.2, step=0.05, label="Wet")
 
 
 def vocal_reverb_dryness_level_conf():
-    return gr.Number(
-        0.8,
-        label="Vocal Reverb Dryness Level",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.05,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.8, step=0.05, label="Dry")
 
 
 def vocal_delay_seconds_conf():
-    return gr.Number(
-        0.,
-        label="Vocal Delay Seconds",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.01,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.0, step=0.01, label="Delay (s)")
 
 
 def vocal_delay_mix_conf():
-    return gr.Number(
-        0.,
-        label="Vocal Delay Mix",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.01,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.0, step=0.01, label="Mezcla delay")
 
 
 def vocal_compressor_threshold_db_conf():
-    return gr.Number(
-        -15,
-        label="Vocal Compressor Threshold (dB)",
-        minimum=-60,
-        maximum=0,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(-60, 0, value=-15, step=1, label="Umbral (dB)")
 
 
 def vocal_compressor_ratio_conf():
-    return gr.Number(
-        4.,
-        label="Vocal Compressor Ratio",
-        minimum=0,
-        maximum=20,
-        step=0.1,
-        visible=True,
-    )
+    return gr.Slider(0, 20, value=4.0, step=0.1, label="Ratio")
 
 
 def vocal_compressor_attack_ms_conf():
-    return gr.Number(
-        1.0,
-        label="Vocal Compressor Attack (ms)",
-        minimum=0,
-        maximum=1000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 1000, value=1.0, step=1, label="Attack (ms)")
 
 
 def vocal_compressor_release_ms_conf():
-    return gr.Number(
-        100,
-        label="Vocal Compressor Release (ms)",
-        minimum=0,
-        maximum=3000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 3000, value=100, step=1, label="Release (ms)")
 
 
 def vocal_gain_db_conf():
-    return gr.Number(
-        0,
-        label="Vocal Gain (dB)",
-        minimum=-40,
-        maximum=40,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(-40, 40, value=0, step=1, label="Ganancia (dB)")
 
 
 def background_highpass_freq_conf():
-    return gr.Number(
-        120,
-        label="Background Highpass Frequency (Hz)",
-        minimum=0,
-        maximum=1000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 1000, value=120, step=1, label="High-pass (Hz)")
 
 
 def background_lowpass_freq_conf():
-    return gr.Number(
-        11000,
-        label="Background Lowpass Frequency (Hz)",
-        minimum=0,
-        maximum=20000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 20000, value=11000, step=1, label="Low-pass (Hz)")
 
 
 def background_reverb_room_size_conf():
-    return gr.Number(
-        0.1,
-        label="Background Reverb Room Size",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.1,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.1, step=0.1, label="Sala")
 
 
 def background_reverb_damping_conf():
-    return gr.Number(
-        0.5,
-        label="Background Reverb Damping",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.1,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.5, step=0.1, label="Amortiguación")
 
 
 def background_reverb_wet_level_conf():
-    return gr.Number(
-        0.25,
-        label="Background Reverb Wet Level",
-        minimum=0.0,
-        maximum=1.0,
-        step=0.05,
-        visible=True,
-    )
+    return gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="Wet")
 
 
 def background_compressor_threshold_db_conf():
-    return gr.Number(
-        -15,
-        label="Background Compressor Threshold (dB)",
-        minimum=-60,
-        maximum=0,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(-60, 0, value=-15, step=1, label="Umbral (dB)")
 
 
 def background_compressor_ratio_conf():
-    return gr.Number(
-        4.,
-        label="Background Compressor Ratio",
-        minimum=0,
-        maximum=20,
-        step=0.1,
-        visible=True,
-    )
+    return gr.Slider(0, 20, value=4.0, step=0.1, label="Ratio")
 
 
 def background_compressor_attack_ms_conf():
-    return gr.Number(
-        15,
-        label="Background Compressor Attack (ms)",
-        minimum=0,
-        maximum=1000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 1000, value=15, step=1, label="Attack (ms)")
 
 
 def background_compressor_release_ms_conf():
-    return gr.Number(
-        60,
-        label="Background Compressor Release (ms)",
-        minimum=0,
-        maximum=3000,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(0, 3000, value=60, step=1, label="Release (ms)")
 
 
 def background_gain_db_conf():
-    return gr.Number(
-        0,
-        label="Background Gain (dB)",
-        minimum=-40,
-        maximum=40,
-        step=1,
-        visible=True,
-    )
+    return gr.Slider(-40, 40, value=0, step=1, label="Ganancia (dB)")
 
 
 def button_conf():
     return gr.Button(
-        "Inference",
+        "Separar audio",
         variant="primary",
+        elem_id="run-btn",
     )
 
 
 def output_conf():
     return gr.File(
-        label="Result",
+        label="Archivos listos",
         file_count="multiple",
         interactive=False,
     )
@@ -1333,86 +1249,115 @@ FORMAT_OPTIONS = ["WAV", "MP3", "FLAC"]
 
 
 def format_conf():
-    return gr.Dropdown(
+    return gr.Radio(
         choices=FORMAT_OPTIONS,
         value=FORMAT_OPTIONS[0],
-        label="Format output:"
+        label="Formato de salida",
     )
 
 
 def get_gui():
-    with gr.Blocks(fill_width=True, fill_height=False, delete_cache=(3200, 10800)) as app:
-        gr.Markdown(title)
-        gr.Markdown(description)
-
-        downloader_gui = downloader_conf()
-        with gr.Row():
-            with gr.Column(scale=2):
-                url_media_gui = url_media_conf()
-            with gr.Column(scale=1):
-                url_button_gui = url_button_conf()
-
-        downloader_gui.change(
-            show_components_downloader,
-            [downloader_gui],
-            [url_media_gui, url_button_gui]
+    with gr.Blocks(
+        title="Audio Separator",
+        fill_width=False,
+        fill_height=False,
+        delete_cache=(3200, 10800),
+    ) as app:
+        gr.HTML(
+            """
+            <div class="hero">
+              <p class="eyebrow">Estudio local</p>
+              <h1>Audio Separator</h1>
+              <p class="lede">Separa la voz y el instrumental de una canción. Sube un archivo, elige qué extraer y descarga el resultado.</p>
+            </div>
+            """
         )
 
-        aud = audio_conf()
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=6):
+                gr.Markdown("### 1. Audio", elem_classes=["panel-title"])
+                aud = audio_conf()
+                with gr.Row():
+                    url_media_gui = url_media_conf()
+                    url_button_gui = url_button_conf()
+                gr.Examples(
+                    examples=[[os.path.join(os.path.dirname(os.path.abspath(__file__)), "test.mp3")]],
+                    inputs=[aud],
+                    label="Probar con el ejemplo",
+                    examples_per_page=1,
+                )
+
+            with gr.Column(scale=5):
+                gr.Markdown("### 2. Separación", elem_classes=["panel-title"])
+                stem_gui = stem_conf()
+                with gr.Row():
+                    main_gui = main_conf()
+                    dereverb_gui = dereverb_conf()
+                with gr.Row():
+                    vocal_effects_gui = vocal_effects_conf()
+                    background_effects_gui = background_effects_conf()
+                target_format_gui = format_conf()
+                button_base = button_conf()
+                gr.HTML(
+                    '<p class="hint">En este Mac la separación va por CPU. Un tema largo puede tardar varios minutos.</p>'
+                )
+                output_base = output_conf()
+
+        with gr.Accordion("Efectos de voz", open=True, visible=False) as vocal_acc:
+            gr.Markdown("Reverb y delay")
+            with gr.Row():
+                vocal_reverb_room_size_gui = vocal_reverb_room_size_conf()
+                vocal_reverb_damping_gui = vocal_reverb_damping_conf()
+                vocal_reverb_dryness_gui = vocal_reverb_dryness_level_conf()
+                vocal_reverb_wet_level_gui = vocal_reverb_wet_level_conf()
+            with gr.Row():
+                vocal_delay_seconds_gui = vocal_delay_seconds_conf()
+                vocal_delay_mix_gui = vocal_delay_mix_conf()
+                vocal_gain_db_gui = vocal_gain_db_conf()
+            gr.Markdown("Compresor")
+            with gr.Row():
+                vocal_compressor_threshold_db_gui = vocal_compressor_threshold_db_conf()
+                vocal_compressor_ratio_gui = vocal_compressor_ratio_conf()
+                vocal_compressor_attack_ms_gui = vocal_compressor_attack_ms_conf()
+                vocal_compressor_release_ms_gui = vocal_compressor_release_ms_conf()
+
+        with gr.Accordion("Efectos de instrumental", open=True, visible=False) as background_acc:
+            gr.Markdown("Filtros y ambiente")
+            with gr.Row():
+                background_highpass_freq_gui = background_highpass_freq_conf()
+                background_lowpass_freq_gui = background_lowpass_freq_conf()
+                background_reverb_room_size_gui = background_reverb_room_size_conf()
+                background_reverb_damping_gui = background_reverb_damping_conf()
+                background_reverb_wet_level_gui = background_reverb_wet_level_conf()
+            gr.Markdown("Compresor")
+            with gr.Row():
+                background_compressor_threshold_db_gui = background_compressor_threshold_db_conf()
+                background_compressor_ratio_gui = background_compressor_ratio_conf()
+                background_compressor_attack_ms_gui = background_compressor_attack_ms_conf()
+                background_compressor_release_ms_gui = background_compressor_release_ms_conf()
+                background_gain_db_gui = background_gain_db_conf()
 
         url_button_gui.click(
             audio_downloader,
             [url_media_gui],
-            [aud]
+            [aud],
+            show_progress="full",
         )
-
-        with gr.Column():
-            with gr.Row():
-                stem_gui = stem_conf()
-
-        with gr.Column():
-            with gr.Row():
-                main_gui = main_conf()
-                dereverb_gui = dereverb_conf()
-                vocal_effects_gui = vocal_effects_conf()
-                background_effects_gui = background_effects_conf()
-
-            with gr.Accordion("Vocal Effects Parameters", open=False):
-                with gr.Row():
-                    vocal_reverb_room_size_gui = vocal_reverb_room_size_conf()
-                    vocal_reverb_damping_gui = vocal_reverb_damping_conf()
-                    vocal_reverb_dryness_gui = vocal_reverb_dryness_level_conf()
-                    vocal_reverb_wet_level_gui = vocal_reverb_wet_level_conf()
-                    vocal_delay_seconds_gui = vocal_delay_seconds_conf()
-                    vocal_delay_mix_gui = vocal_delay_mix_conf()
-                    vocal_compressor_threshold_db_gui = vocal_compressor_threshold_db_conf()
-                    vocal_compressor_ratio_gui = vocal_compressor_ratio_conf()
-                    vocal_compressor_attack_ms_gui = vocal_compressor_attack_ms_conf()
-                    vocal_compressor_release_ms_gui = vocal_compressor_release_ms_conf()
-                    vocal_gain_db_gui = vocal_gain_db_conf()
-
-            with gr.Accordion("Background Effects Parameters", open=False):
-                with gr.Row():
-                    background_highpass_freq_gui = background_highpass_freq_conf()
-                    background_lowpass_freq_gui = background_lowpass_freq_conf()
-                    background_reverb_room_size_gui = background_reverb_room_size_conf()
-                    background_reverb_damping_gui = background_reverb_damping_conf()
-                    background_reverb_wet_level_gui = background_reverb_wet_level_conf()
-                    background_compressor_threshold_db_gui = background_compressor_threshold_db_conf()
-                    background_compressor_ratio_gui = background_compressor_ratio_conf()
-                    background_compressor_attack_ms_gui = background_compressor_attack_ms_conf()
-                    background_compressor_release_ms_gui = background_compressor_release_ms_conf()
-                    background_gain_db_gui = background_gain_db_conf()
-
-            stem_gui.change(
-                show_vocal_components,
-                [stem_gui],
-                [main_gui, dereverb_gui, vocal_effects_gui, background_effects_gui],
-            )
-
-        target_format_gui = format_conf()
-        button_base = button_conf()
-        output_base = output_conf()
+        stem_gui.change(
+            show_vocal_components,
+            [stem_gui],
+            [main_gui, dereverb_gui, vocal_effects_gui, background_effects_gui],
+        )
+        vocal_effects_gui.change(
+            lambda active: gr.update(visible=active),
+            vocal_effects_gui,
+            vocal_acc,
+        )
+        background_effects_gui.change(
+            lambda active: gr.update(visible=active),
+            background_effects_gui,
+            background_acc,
+        )
 
         button_base.click(
             sound_separate,
@@ -1434,42 +1379,6 @@ def get_gui():
             outputs=[output_base],
         )
 
-        gr.Examples(
-            examples=[
-                [
-                    "./test.mp3",
-                    "vocal",
-                    False,
-                    False,
-                    False,
-                    False,
-                    0.15, 0.7, 0.8, 0.2,
-                    0., 0., -15, 4., 1, 100, 0,
-                    120, 11000, 0.5, 0.1, 0.25, -15, 4., 15, 60, 0,
-                ],
-            ],
-            fn=sound_separate,
-            inputs=[
-                aud,
-                stem_gui,
-                main_gui,
-                dereverb_gui,
-                vocal_effects_gui,
-                background_effects_gui,
-                vocal_reverb_room_size_gui, vocal_reverb_damping_gui, vocal_reverb_dryness_gui, vocal_reverb_wet_level_gui,
-                vocal_delay_seconds_gui, vocal_delay_mix_gui, vocal_compressor_threshold_db_gui, vocal_compressor_ratio_gui,
-                vocal_compressor_attack_ms_gui, vocal_compressor_release_ms_gui, vocal_gain_db_gui,
-                background_highpass_freq_gui, background_lowpass_freq_gui, background_reverb_room_size_gui,
-                background_reverb_damping_gui, background_reverb_wet_level_gui, background_compressor_threshold_db_gui,
-                background_compressor_ratio_gui, background_compressor_attack_ms_gui, background_compressor_release_ms_gui,
-                background_gain_db_gui,
-            ],
-            outputs=[output_base],
-            cache_examples=False,
-        )
-
-        gr.Markdown(RESOURCES)
-
     return app
 
 
@@ -1488,5 +1397,11 @@ if __name__ == "__main__":
         quiet=False,
         debug=IS_COLAB,
         ssr_mode=False,
-        theme=theme,
+        theme=APP_THEME,
+        css=UI_CSS,
+        footer_links=[],
+        inbrowser=args.open,
+        server_name="127.0.0.1",
+        server_port=7860,
+        allowed_paths=[os.path.dirname(os.path.abspath(__file__))],
     )

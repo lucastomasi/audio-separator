@@ -1,0 +1,15 @@
+# Intel macOS CPU stack. PyTorch dropped x86_64 Mac wheels after 2.2.2.
+# The Space pins torch 2.9.1 + onnxruntime-gpu (Linux/CUDA) and librosa/numba.
+numpy<2
+torch==2.2.2
+torchaudio==2.2.2
+onnxruntime
+soundfile
+pedalboard
+yt-dlp
+tqdm
+gradio==6.20.0
+ffmpeg-python
+scipy
+requests
+urllib3
