@@ -24,14 +24,9 @@ from audio_text import (
     STEM_SOLO_VOZ,
     stem_choice_to_list,
 )
-from youtube_lib import download_audio
-from remix import remix_to_wav
 from exports import copy_to_downloads, open_exports_dir
-from rvc_engine import convert_voice
 import numpy as np
 import soundfile as sf
-import torch
-from tqdm import tqdm
 from utils import (
     remove_directory_contents,
     create_directories,
@@ -39,37 +34,50 @@ from utils import (
 )
 import random
 from utils import logger
-import onnxruntime as ort
 import warnings
 import gradio as gr
 import time
 import traceback
-from pedalboard import Pedalboard, Reverb, Delay, Chorus, Compressor, Gain, HighpassFilter, LowpassFilter
-from pedalboard.io import AudioFile
-import argparse
-
-parser = argparse.ArgumentParser(description="Run the app with optional sharing")
-parser.add_argument(
-    '--share',
-    action='store_true',
-    help='Enable sharing mode'
-)
-parser.add_argument(
-    '--theme',
-    type=str,
-    default="NoCrypt/miku",
-    help='Set the theme (default: NoCrypt/miku)'
-)
-parser.add_argument(
-    '--open',
-    action='store_true',
-    help='Open the app in the browser when ready',
-)
-args = parser.parse_args()
 
 warnings.filterwarnings("ignore")
-IS_COLAB = True if ('google.colab' in sys.modules or args.share) else False
+IS_COLAB = "google.colab" in sys.modules
 IS_ZERO_GPU = os.getenv("SPACES_ZERO_GPU")
+
+torch = None
+ort = None
+tqdm = None
+_ORT_SESSIONS = {}
+_MODEL_HASHES = {}
+
+
+def _ensure_ml():
+    global torch, ort, tqdm
+    if torch is not None:
+        return
+    import torch as _torch
+    import onnxruntime as _ort
+    from tqdm import tqdm as _tqdm
+    torch = _torch
+    ort = _ort
+    tqdm = _tqdm
+
+
+def _ort_session(model_path, providers):
+    _ensure_ml()
+    key = (os.path.abspath(model_path), tuple(providers))
+    session = _ORT_SESSIONS.get(key)
+    if session is not None:
+        return session
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 2
+    options.inter_op_num_threads = 1
+    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    session = ort.InferenceSession(
+        model_path, sess_options=options, providers=providers
+    )
+    _ORT_SESSIONS[key] = session
+    return session
 
 APP_THEME = gr.themes.Soft(
     primary_hue="violet",
@@ -178,7 +186,7 @@ class MDX:
     def __init__(
         self, model_path: str, params: MDXModel, processor=0
     ):
-        # Set the device and the provider (CPU or CUDA)
+        _ensure_ml()
         self.device = (
             torch.device(f"cuda:{processor}")
             if processor >= 0
@@ -191,14 +199,7 @@ class MDX:
         )
 
         self.model = params
-
-        # Load the ONNX model using ONNX Runtime
-        self.ort = ort.InferenceSession(model_path, providers=self.provider)
-        # Preload the model for faster performance
-        self.ort.run(
-            None,
-            {"input": torch.rand(1, 4, params.dim_f, params.dim_t).numpy()},
-        )
+        self.ort = _ort_session(model_path, self.provider)
         self.process = lambda spec: self.ort.run(
             None, {"input": spec.cpu().numpy()}
         )[0]
@@ -207,13 +208,17 @@ class MDX:
 
     @staticmethod
     def get_hash(model_path):
+        path = os.path.abspath(model_path)
+        cached = _MODEL_HASHES.get(path)
+        if cached:
+            return cached
         try:
-            with open(model_path, "rb") as f:
+            with open(path, "rb") as f:
                 f.seek(-10000 * 1024, 2)
                 model_hash = hashlib.md5(f.read()).hexdigest()
-        except: # noqa
-            model_hash = hashlib.md5(open(model_path, "rb").read()).hexdigest()
-
+        except Exception:
+            model_hash = hashlib.md5(open(path, "rb").read()).hexdigest()
+        _MODEL_HASHES[path] = model_hash
         return model_hash
 
     @staticmethod
@@ -592,6 +597,14 @@ output_dir = os.path.join(BASE_DIR, "clean_song_output")
 
 
 def convert_to_stereo_and_wav(audio_path):
+    if str(audio_path).lower().endswith(".wav"):
+        try:
+            info = sf.info(audio_path)
+            if info.channels == 2 and int(info.samplerate) == 44100:
+                return audio_path
+        except Exception:
+            pass
+
     wave, sr = librosa.load(audio_path, mono=False, sr=44100)
 
     # check if mono
@@ -628,6 +641,16 @@ def get_hash(filepath):
     return file_hash.hexdigest()[:18]
 
 
+def ensure_uvr_model(filename):
+    dest = os.path.join(mdxnet_models_dir, filename)
+    if os.path.isfile(dest) and os.path.getsize(dest) > 0:
+        return dest
+    download_manager(
+        os.path.join(MDX_DOWNLOAD_LINK, filename), mdxnet_models_dir
+    )
+    return dest
+
+
 def random_sleep():
     sleep_time = 0.1
     if IS_ZERO_GPU:
@@ -644,6 +667,7 @@ def process_uvr_task(
     remove_files_output_dir: bool = False,
 ):
 
+    _ensure_ml()
     device_base = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device_base}")
 
@@ -665,7 +689,7 @@ def process_uvr_task(
         process = run_mdx(
             mdx_model_params,
             song_output_dir,
-            os.path.join(mdxnet_models_dir, "UVR-MDX-NET-Inst_HQ_4.onnx"),
+            ensure_uvr_model("UVR-MDX-NET-Inst_HQ_4.onnx"),
             orig_song_path,
             suffix="Voiceless",
             denoise=False,
@@ -680,7 +704,7 @@ def process_uvr_task(
     vocals_path, instrumentals_path = run_mdx(
         mdx_model_params,
         song_output_dir,
-        os.path.join(mdxnet_models_dir, "UVR-MDX-NET-Voc_FT.onnx"),
+        ensure_uvr_model("UVR-MDX-NET-Voc_FT.onnx"),
         orig_song_path,
         denoise=False,
         keep_orig=True,
@@ -696,7 +720,7 @@ def process_uvr_task(
             backup_vocals_path, main_vocals_path = run_mdx(
                 mdx_model_params,
                 song_output_dir,
-                os.path.join(mdxnet_models_dir, "UVR_MDXNET_KARA_2.onnx"),
+                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx"),
                 vocals_path,
                 suffix="Backup",
                 invert_suffix="Main",
@@ -707,7 +731,7 @@ def process_uvr_task(
             backup_vocals_path, main_vocals_path = run_mdx_beta(
                 mdx_model_params,
                 song_output_dir,
-                os.path.join(mdxnet_models_dir, "UVR_MDXNET_KARA_2.onnx"),
+                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx"),
                 vocals_path,
                 suffix="Backup",
                 invert_suffix="Main",
@@ -726,7 +750,7 @@ def process_uvr_task(
             _, vocals_dereverb_path = run_mdx(
                 mdx_model_params,
                 song_output_dir,
-                os.path.join(mdxnet_models_dir, "Reverb_HQ_By_FoxJoy.onnx"),
+                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx"),
                 main_vocals_path,
                 invert_suffix="DeReverb",
                 exclude_main=True,
@@ -737,7 +761,7 @@ def process_uvr_task(
             _, vocals_dereverb_path = run_mdx_beta(
                 mdx_model_params,
                 song_output_dir,
-                os.path.join(mdxnet_models_dir, "Reverb_HQ_By_FoxJoy.onnx"),
+                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx"),
                 main_vocals_path,
                 invert_suffix="DeReverb",
                 exclude_main=True,
@@ -760,6 +784,8 @@ def add_vocal_effects(input_file, output_file, reverb_room_size=0.6, vocal_rever
                       delay_seconds=0.4, delay_mix=0.25,
                       compressor_threshold_db=-25, compressor_ratio=3.5, compressor_attack_ms=10, compressor_release_ms=60,
                       gain_db=3):
+    from pedalboard import Pedalboard, Reverb, Delay, Compressor, Gain, HighpassFilter
+    from pedalboard.io import AudioFile
 
     effects = [HighpassFilter()]
 
@@ -792,6 +818,8 @@ def add_instrumental_effects(input_file, output_file, highpass_freq=100, lowpass
                              reverb_room_size=0.5, reverb_damping=0.5, reverb_wet_level=0.25,
                              compressor_threshold_db=-20, compressor_ratio=2.5, compressor_attack_ms=15, compressor_release_ms=80,
                              gain_db=2):
+    from pedalboard import Pedalboard, Reverb, Compressor, Gain, HighpassFilter, LowpassFilter
+    from pedalboard.io import AudioFile
 
     effects = [
         HighpassFilter(cutoff_frequency_hz=highpass_freq),
@@ -876,10 +904,10 @@ def convert_format(file_paths, media_dir, target_format):
     return converted_files
 
 
-IDLE_STATUS = "Sube un archivo, usa el ejemplo, o pega un enlace."
-READY_STATUS = "Audio listo. Elige qué extraer y pulsa Separar."
-RUN_STATUS = "Separando… no cierres la Terminal. Un tema largo puede tardar varios minutos."
-DONE_STATUS = "Listo. Descarga las pistas o prueba otra canción."
+IDLE_STATUS = "Subí un archivo, usá el ejemplo o pegá YouTube."
+READY_STATUS = "Audio listo. Elegí qué extraer y pulsá Separar."
+RUN_STATUS = "Separando… un tema largo puede tardar varios minutos."
+DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
 
 
 def unlock_run_button():
@@ -1057,6 +1085,8 @@ def audio_downloader(url_media):
     if IS_ZERO_GPU and url_media and "youtube.com" in url_media:
         gr.Info("Esta opción no está disponible en Hugging Face.")
         return None, gr.update(), "YouTube no está disponible aquí.", unlock
+    from youtube_lib import download_audio
+
     try:
         path, reused, note = download_audio(url_media)
     except ValueError as error:
@@ -1069,6 +1099,22 @@ def audio_downloader(url_media):
     if note:
         status = f"{note} {status}"
     return path, unlock_run_button(), status, unlock
+
+
+def clip_for_clone(source_path, start, end):
+    from youtube_lib import clip_audio
+    from exports import copy_to_downloads
+    import library
+
+    try:
+        path = clip_audio(source_path, start, end)
+        library.register("voices", path)
+        _, copied = copy_to_downloads([path], ["ref_clon"])
+        saved = copied[0] if copied else path
+        return saved, f"Fragmento listo para clonar ({start}–{end})."
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, str(error)
 
 
 def url_media_conf():
@@ -1237,7 +1283,7 @@ def button_conf():
 
 def output_conf():
     return gr.File(
-        label="Archivos (también se copian a Descargas/Audio Separator)",
+        label="Archivos",
         file_count="multiple",
         interactive=True,
     )
@@ -1290,16 +1336,108 @@ def reset_job():
         None,
         None,
         None,
+        None,
+        "",
+        None,
     )
 
 
-def rvc_job(audio_path, model_file):
-    model_path = model_file
-    if model_file and not isinstance(model_file, str):
-        model_path = getattr(model_file, "name", None) or str(model_file)
+def refresh_library():
+    import library
+
+    library.ensure_dirs()
+    rvc = library.dropdown_choices(library.list_rvc_voices())
+    voices = library.dropdown_choices(library.list_voices())
+    return (
+        gr.update(choices=rvc, value=(rvc[0][1] if rvc else None)),
+        gr.update(choices=voices, value=(voices[0][1] if voices else None)),
+    )
+
+
+def import_voice_into_library(voice_file):
+    import library
+
+    path = _gradio_path(voice_file)
+    if not path:
+        return gr.update(), None, "Elegí un audio de referencia."
+    item = library.register("voices", path)
+    voices = library.dropdown_choices(library.list_voices())
+    return (
+        gr.update(choices=voices, value=item["path"]),
+        item["path"],
+        f"Voz guardada en biblioteca: {item['name']}.",
+    )
+
+
+def _gradio_path(file_obj):
+    if not file_obj:
+        return None
+    if isinstance(file_obj, str):
+        return file_obj
+    return getattr(file_obj, "name", None)
+
+
+def load_rvc_into_library(hubert_file, rmvpe_file, model_file, index_file):
+    import library
+    import rvc_engine
+
+    loaded = []
+    model_path = None
+    hubert = _gradio_path(hubert_file)
+    if hubert:
+        library.register("rvc", hubert, "hubert_base.pt")
+        loaded.append("hubert")
+    rmvpe = _gradio_path(rmvpe_file)
+    if rmvpe:
+        library.register("rvc", rmvpe, "rmvpe.pt")
+        loaded.append("rmvpe")
+    model = _gradio_path(model_file)
+    if model:
+        item = library.register("rvc_voices", model)
+        model_path = item["path"]
+        loaded.append(".pth")
+    index = _gradio_path(index_file)
+    if index and model_path:
+        index_name = os.path.splitext(os.path.basename(model_path))[0] + ".index"
+        library.register("rvc_voices", index, index_name)
+        loaded.append(".index")
+    elif index and not model_path:
+        library.register("rvc_voices", index)
+        loaded.append(".index")
+    rvc_engine._converter = None
+    rvc_upd, voice_upd = refresh_library()
+    if not loaded:
+        return rvc_upd, voice_upd, "Elegí hubert, rmvpe, .pth o .index y pulsá Cargar."
+    hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
+    rmvpe_ok = "sí" if rvc_engine.local_rmvpe_path() else "no"
+    return (
+        rvc_upd,
+        voice_upd,
+        f"Cargado: {', '.join(loaded)}. Soporte → hubert: {hubert_ok}, rmvpe: {rmvpe_ok}.",
+    )
+
+
+def rvc_job(audio_path, library_model, model_file, index_file):
+    import library
+    from rvc_engine import convert_voice
+
+    model_path = library_model
+    if model_file:
+        uploaded = _gradio_path(model_file)
+        if uploaded:
+            item = library.register("rvc_voices", uploaded)
+            model_path = item["path"]
+    index_path = library.find_index_for_model(model_path) if model_path else None
+    if index_file:
+        uploaded_index = _gradio_path(index_file)
+        if uploaded_index and model_path:
+            index_name = os.path.splitext(os.path.basename(model_path))[0] + ".index"
+            item = library.register("rvc_voices", uploaded_index, index_name)
+            index_path = item["path"]
     try:
-        out_path = convert_voice(audio_path, model_path)
-        return out_path, out_path, "Voz convertida. Está lista para unir."
+        out_path = convert_voice(audio_path, model_path, index_path=index_path)
+        note = " (+index)" if index_path else ""
+        return out_path, out_path, f"Voz convertida{note}. Está lista para unir."
     except ValueError as error:
         gr.Warning(str(error))
         return None, None, str(error)
@@ -1307,6 +1445,47 @@ def rvc_job(audio_path, model_file):
         logger.error(str(error))
         gr.Warning("No se pudo convertir la voz.")
         return None, None, "No se pudo convertir la voz."
+
+
+def clone_job(text, speaker_wav):
+    try:
+        from clone_engine import clone_voice
+
+        out_path = clone_voice(text, speaker_wav)
+        return out_path, f"Voz clonada. Archivo en Descargas/Audio Separator."
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudo clonar la voz.")
+        return None, "No se pudo clonar la voz."
+
+
+def detect_voices_job(audio_path):
+    try:
+        from diarize import detect_speakers
+
+        import library
+
+        paths = detect_speakers(audio_path)
+        for path in paths:
+            library.register("voices", path)
+        labels = [f"Voz {i}" for i in range(1, len(paths) + 1)]
+        voice_choices = library.dropdown_choices(library.list_voices())
+        return (
+            gr.update(choices=list(zip(labels, paths)), value=paths[0], visible=True),
+            paths[0],
+            gr.update(choices=voice_choices, value=paths[0]),
+            f"Encontré {len(paths)} voz/voces. Guardadas en la biblioteca local.",
+        )
+    except ValueError as error:
+        gr.Warning(str(error))
+        return gr.update(visible=False), None, gr.update(), str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudieron detectar las voces.")
+        return gr.update(visible=False), None, gr.update(), "No se pudieron detectar las voces."
 
 
 def remix_job(
@@ -1322,6 +1501,8 @@ def remix_job(
         out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         wav_path = os.path.join(out_dir, "remix.wav")
+        from remix import remix_to_wav
+
         remix_to_wav(
             voice_path,
             instrumental_path,
@@ -1352,85 +1533,123 @@ def get_gui():
         fill_height=False,
         delete_cache=(3200, 10800),
     ) as app:
-        gr.Markdown("# Audio Separator")
-        gr.Markdown(
-            "Separa la voz y el instrumental de una canción. Todo corre en este Mac.",
-            elem_classes=["lede"],
-        )
-        gr.Markdown(
-            "Cierra esta ventana para salir.",
-            elem_classes=["quit-note"],
-        )
+        gr.Markdown("# Audio Separator", elem_classes=["app-header"])
+        gr.Markdown("Voz e instrumental, en este Mac.", elem_classes=["lede"])
+        gr.Markdown("Cerrá la ventana para salir.", elem_classes=["quit-note"])
         status = gr.Markdown(IDLE_STATUS, elem_id="job-status")
 
         with gr.Row(equal_height=False):
             with gr.Column(scale=6):
-                gr.Markdown("## 1. Canción", elem_classes=["panel-title"])
-                with gr.Tabs():
-                    with gr.Tab("Subir archivo"):
-                        gr.Markdown("Arrastra un archivo al reproductor o usa el ejemplo.")
-                    with gr.Tab("YouTube"):
-                        with gr.Row():
-                            url_media_gui = url_media_conf()
-                            url_button_gui = url_button_conf()
-                aud = audio_conf()
-                gr.Examples(
-                    examples=[[os.path.join(os.path.dirname(os.path.abspath(__file__)), "test.mp3")]],
-                    inputs=[aud],
-                    label="Probar con el ejemplo",
-                    examples_per_page=1,
-                )
+                with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("## 1. Canción", elem_classes=["panel-title"])
+                    with gr.Tabs():
+                        with gr.Tab("Archivo"):
+                            gr.Markdown("Arrastrá el audio al reproductor.")
+                        with gr.Tab("YouTube"):
+                            with gr.Row():
+                                url_media_gui = url_media_conf()
+                                url_button_gui = url_button_conf()
+                            with gr.Row():
+                                clip_start = gr.Textbox(
+                                    label="Inicio",
+                                    placeholder="0:15 o 15",
+                                    scale=1,
+                                )
+                                clip_end = gr.Textbox(
+                                    label="Fin",
+                                    placeholder="0:25 o 25",
+                                    scale=1,
+                                )
+                                clip_btn = gr.Button("Recortar para clonar", scale=1)
+                    aud = audio_conf()
+                    detect_btn = gr.Button("Detectar voces")
+                    gr.Examples(
+                        examples=[[os.path.join(os.path.dirname(os.path.abspath(__file__)), "test.mp3")]],
+                        inputs=[aud],
+                        label="Ejemplo",
+                        examples_per_page=1,
+                    )
 
             with gr.Column(scale=5):
-                gr.Markdown("## 2. Qué extraer", elem_classes=["panel-title"])
-                stem_gui = stem_conf()
-                target_format_gui = format_conf()
-                button_base = button_conf()
+                with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("## 2. Extraer", elem_classes=["panel-title"])
+                    stem_gui = stem_conf()
+                    target_format_gui = format_conf()
+                    button_base = button_conf()
 
-        gr.Markdown("## 3. Resultado", elem_classes=["panel-title"])
-        with gr.Row():
-            vocal_out = gr.Audio(label="Voz", type="filepath", interactive=False)
-            background_out = gr.Audio(label="Instrumental", type="filepath", interactive=False)
-        output_base = output_conf()
-        open_folder_btn = gr.Button("Abrir carpeta Descargas", variant="secondary")
-        nueva_btn = gr.Button("Nueva canción", variant="secondary")
+        with gr.Group(elem_classes=["step"]):
+            gr.Markdown("## 3. Resultado", elem_classes=["panel-title"])
+            with gr.Row():
+                vocal_out = gr.Audio(label="Voz", type="filepath", interactive=False)
+                background_out = gr.Audio(label="Instrumental", type="filepath", interactive=False)
+            output_base = output_conf()
+            with gr.Row(elem_classes=["action-row"]):
+                open_folder_btn = gr.Button("Abrir Descargas", variant="secondary")
+                nueva_btn = gr.Button("Nueva canción", variant="secondary")
 
-        gr.Markdown("## 4. Cambiar voz", elem_classes=["panel-title"])
-        gr.Markdown(
-            "Convertí la voz separada con un modelo RVC que ya tengas en este Mac (.pth). Local, sin internet."
-        )
-        rvc_model = gr.File(label="Modelo RVC (.pth)", file_types=[".pth", ".pt"])
-        rvc_btn = gr.Button("Convertir voz", variant="primary")
-        rvc_audio = gr.Audio(label="Voz convertida", type="filepath", interactive=False)
+        with gr.Group(elem_classes=["step"]):
+            gr.Markdown("## 4. Cambiar voz", elem_classes=["panel-title"])
+            gr.Markdown("Cargá los archivos acá; quedan en la biblioteca local.")
+            with gr.Row():
+                rvc_hubert = gr.File(label="hubert_base.pt", file_types=[".pt", ".pth"])
+                rvc_rmvpe = gr.File(label="rmvpe.pt", file_types=[".pt", ".pth"])
+            with gr.Row():
+                rvc_model = gr.File(label="Modelo .pth", file_types=[".pth", ".pt"])
+                rvc_index = gr.File(label="Índice .index", file_types=[".index"])
+            load_rvc_btn = gr.Button("Cargar en biblioteca", variant="secondary")
+            rvc_pick = gr.Dropdown(label="Modelo RVC en biblioteca", choices=[])
+            rvc_btn = gr.Button("Convertir voz", variant="primary", elem_id="rvc-btn")
+            rvc_audio = gr.Audio(label="Voz convertida", type="filepath", interactive=False)
 
-        gr.Markdown("## 5. Volver a unir", elem_classes=["panel-title"])
-        gr.Markdown(
-            "Las pistas que acabás de separar duran exactamente lo mismo y ya están alineadas. "
-            "Unilas de nuevo, o reemplazá la voz por otra grabación."
-        )
-        with gr.Row():
-            remix_voice = gr.Audio(label="Voz", type="filepath", sources=["upload"])
-            remix_inst = gr.Audio(label="Instrumental", type="filepath", sources=["upload"])
-        with gr.Row():
-            remix_delay = gr.Slider(
-                -2000,
-                2000,
-                value=0,
-                step=10,
-                label="Retraso de la voz (ms)",
-                info="Solo si la voz es otra grabación. En las pistas separadas dejalo en 0.",
+        with gr.Group(elem_classes=["step"]):
+            gr.Markdown("## 5. Unir", elem_classes=["panel-title"])
+            with gr.Row():
+                remix_voice = gr.Audio(label="Voz", type="filepath", sources=["upload"])
+                remix_inst = gr.Audio(label="Instrumental", type="filepath", sources=["upload"])
+            with gr.Row():
+                remix_voice_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen voz (dB)")
+                remix_inst_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen instrumental (dB)")
+            remix_btn = gr.Button("Unir voz + instrumental", variant="primary", elem_id="join-btn")
+            remix_audio = gr.Audio(label="Unión", type="filepath", interactive=False)
+            remix_file = gr.File(label="Archivo unido", interactive=False)
+            with gr.Accordion("Si la voz es otra grabación", open=False):
+                remix_delay = gr.Slider(
+                    -2000,
+                    2000,
+                    value=0,
+                    step=10,
+                    label="Retraso de la voz (ms)",
+                )
+                remix_match = gr.Checkbox(
+                    False,
+                    label="Igualar duración al instrumental",
+                )
+
+        with gr.Group(elem_classes=["step"]):
+            gr.Markdown("## 6. Clonar voz", elem_classes=["panel-title"])
+            clone_text = gr.Textbox(
+                label="Texto",
+                lines=3,
+                placeholder="Escribí lo que tiene que decir la voz…",
             )
-            remix_match = gr.Checkbox(
-                False,
-                label="Igualar duración al instrumental",
-                info="Solo si la voz nueva dura distinto. Las pistas separadas ya coinciden.",
+            clone_ref = gr.Audio(
+                label="Referencia (fragmento o voz detectada)",
+                type="filepath",
+                sources=["upload"],
             )
-        with gr.Row():
-            remix_voice_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen voz (dB)")
-            remix_inst_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen instrumental (dB)")
-        remix_btn = gr.Button("Unir voz + instrumental", variant="primary")
-        remix_audio = gr.Audio(label="Remix", type="filepath", interactive=False)
-        remix_file = gr.File(label="Descargar remix", interactive=False)
+            voice_pick = gr.Dropdown(label="Voces en biblioteca", choices=[])
+            voice_import = gr.File(
+                label="Importar voz a la biblioteca",
+                file_types=[".wav", ".mp3", ".flac", ".m4a"],
+            )
+            speaker_pick = gr.Dropdown(
+                label="Voces detectadas",
+                choices=[],
+                visible=False,
+            )
+            refresh_lib_btn = gr.Button("Actualizar biblioteca", variant="secondary")
+            clone_btn = gr.Button("Clonar voz", variant="primary")
+            clone_audio = gr.Audio(label="Voz clonada", type="filepath", interactive=False)
 
         with gr.Accordion("Opciones avanzadas", open=False):
             with gr.Row():
@@ -1520,17 +1739,54 @@ def get_gui():
                 remix_file,
                 rvc_audio,
                 rvc_model,
+                clone_audio,
+                clone_text,
+                clone_ref,
             ],
+        )
+        clip_btn.click(
+            clip_for_clone,
+            inputs=[aud, clip_start, clip_end],
+            outputs=[clone_ref, status],
+            show_progress="full",
+        )
+        vocal_out.change(lambda path: path, vocal_out, clone_ref)
+        detect_btn.click(
+            detect_voices_job,
+            inputs=[aud],
+            outputs=[speaker_pick, clone_ref, voice_pick, status],
+            show_progress="full",
+        )
+        speaker_pick.change(lambda path: path, speaker_pick, clone_ref)
+        voice_pick.change(lambda path: path, voice_pick, clone_ref)
+        voice_import.change(
+            import_voice_into_library,
+            inputs=[voice_import],
+            outputs=[voice_pick, clone_ref, status],
+        )
+        refresh_lib_btn.click(refresh_library, outputs=[rvc_pick, voice_pick])
+        clone_btn.click(
+            clone_job,
+            inputs=[clone_text, clone_ref],
+            outputs=[clone_audio, status],
+            show_progress="full",
+            concurrency_limit=1,
         )
         vocal_out.change(lambda path: path, vocal_out, remix_voice)
         background_out.change(lambda path: path, background_out, remix_inst)
+        load_rvc_btn.click(
+            load_rvc_into_library,
+            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index],
+            outputs=[rvc_pick, voice_pick, status],
+        )
         rvc_btn.click(
             rvc_job,
-            inputs=[vocal_out, rvc_model],
+            inputs=[vocal_out, rvc_pick, rvc_model, rvc_index],
             outputs=[rvc_audio, remix_voice, status],
             show_progress="full",
             concurrency_limit=1,
         )
+        app.load(refresh_library, outputs=[rvc_pick, voice_pick])
         remix_btn.click(
             remix_job,
             inputs=[
@@ -1575,10 +1831,6 @@ def get_gui():
 
 
 def build_server():
-    for id_model in UVR_MODELS:
-        download_manager(
-            os.path.join(MDX_DOWNLOAD_LINK, id_model), mdxnet_models_dir
-        )
     demo = get_gui()
     demo.queue(default_concurrency_limit=1)
     return demo
@@ -1608,4 +1860,13 @@ def launch_kwargs(**overrides):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the app with optional sharing")
+    parser.add_argument("--share", action="store_true")
+    parser.add_argument("--theme", type=str, default="NoCrypt/miku")
+    parser.add_argument("--open", action="store_true")
+    args = parser.parse_args()
+    if args.share:
+        IS_COLAB = True
     build_server().launch(**launch_kwargs(inbrowser=args.open))

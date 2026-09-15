@@ -1,0 +1,64 @@
+import os
+import tempfile
+import unittest
+from unittest import mock
+
+import library
+
+
+class LibraryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = os.path.join(self.tmp.name, "library")
+        self.patch = mock.patch.multiple(
+            library,
+            ROOT=self.root,
+            INDEX=os.path.join(self.root, "library.json"),
+            PATHS={
+                "uvr": os.path.join(self.root, "models", "uvr"),
+                "rvc": os.path.join(self.root, "models", "rvc"),
+                "xtts": os.path.join(self.root, "models", "xtts"),
+                "rvc_voices": os.path.join(self.root, "models", "rvc_voices"),
+                "voices": os.path.join(self.root, "voices"),
+            },
+        )
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+
+    def test_empty_lists(self):
+        self.assertEqual(library.list_rvc_voices(), [])
+        self.assertEqual(library.list_voices(), [])
+
+    def test_register_and_list_voice(self):
+        src = os.path.join(self.tmp.name, "clip.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"wav")
+        item = library.register("voices", src, "clip.wav")
+        self.assertTrue(os.path.isfile(item["path"]))
+        names = [row["name"] for row in library.list_voices()]
+        self.assertIn("clip", names)
+
+    def test_register_rvc(self):
+        src = os.path.join(self.tmp.name, "voice.pth")
+        with open(src, "wb") as handle:
+            handle.write(b"pth")
+        library.register("rvc_voices", src)
+        self.assertEqual(len(library.list_rvc_voices()), 1)
+
+    def test_find_index_for_model(self):
+        folder = library.PATHS["rvc_voices"]
+        os.makedirs(folder, exist_ok=True)
+        model = os.path.join(folder, "singer.pth")
+        index = os.path.join(folder, "singer.index")
+        open(model, "wb").close()
+        open(index, "wb").close()
+        self.assertEqual(library.find_index_for_model(model), index)
+        voices = library.list_rvc_voices()
+        self.assertEqual(voices[0]["index"], index)
+        choices = library.dropdown_choices(voices)
+        self.assertIn("+index", choices[0][0])
+
+
+if __name__ == "__main__":
+    unittest.main()

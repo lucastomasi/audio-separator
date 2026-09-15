@@ -16,7 +16,13 @@ urllib3
 pywebview
 infer-rvc-python==1.3.1
 picklescan
-transformers==4.46.3
+transformers==4.53.3
+coqpit-config
+einops
+inflect
+anyascii
+pysbd
+coqui-tts-trainer
 faiss-cpu
 praat-parselmouth
 torchcrepe
@@ -25,3 +31,4 @@ librosa>=0.10,<0.11
 numba>=0.60
 llvmlite>=0.43
 safetensors
+coqui-tts==0.27.5

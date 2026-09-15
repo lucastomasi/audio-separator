@@ -7,12 +7,31 @@ from picklescan.scanner import scan_file_path
 
 from exports import copy_to_downloads
 
+from library import rvc_support_dir
+
 RVC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models")
-HUBERT_CANDIDATES = (
-    os.path.join(RVC_DIR, "hubert_base"),
-    os.path.join(RVC_DIR, "hubert_base.pt"),
-)
-RMVPE_CANDIDATES = (os.path.join(RVC_DIR, "rmvpe.pt"),)
+
+
+def _support_roots():
+    roots = [rvc_support_dir(), RVC_DIR]
+    return [root for root in roots if root]
+
+
+def local_hubert_path():
+    for root in _support_roots():
+        for name in ("hubert_base", "hubert_base.pt"):
+            path = os.path.join(root, name)
+            if os.path.exists(path):
+                return path
+    return None
+
+
+def local_rmvpe_path():
+    for root in _support_roots():
+        path = os.path.join(root, "rmvpe.pt")
+        if os.path.isfile(path):
+            return path
+    return None
 
 _converter = None
 
@@ -30,28 +49,14 @@ def _stub_pyworld():
     sys.modules["pyworld"] = stub
 
 
-def local_hubert_path():
-    for path in HUBERT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def local_rmvpe_path():
-    for path in RMVPE_CANDIDATES:
-        if os.path.isfile(path):
-            return path
-    return None
-
-
 def require_support_models():
     hubert = local_hubert_path()
     rmvpe = local_rmvpe_path()
     missing = []
     if not hubert:
-        missing.append("rvc_models/hubert_base")
+        missing.append("library/models/rvc/hubert_base")
     if not rmvpe:
-        missing.append("rvc_models/rmvpe.pt")
+        missing.append("library/models/rvc/rmvpe.pt")
     if missing:
         raise ValueError(
             "Faltan los modelos locales de RVC: " + ", ".join(missing)

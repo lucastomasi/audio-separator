@@ -2,6 +2,7 @@
 import os
 import re
 import shutil
+import subprocess
 
 from audio_text import normalize_media_url
 
@@ -96,6 +97,60 @@ def _playlist_first(info):
         info = entries[0]
         note = "Tomé el primer tema de la lista (solo audio)."
     return info, note
+
+
+def parse_seconds(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+    if ":" in text:
+        parts = [float(p) for p in text.split(":")]
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    return float(text)
+
+
+def clip_audio(source_path, start=None, end=None, directory=None):
+    if not source_path or not os.path.isfile(source_path):
+        raise ValueError("Falta el audio para recortar.")
+    start_s = parse_seconds(start)
+    end_s = parse_seconds(end)
+    if start_s is None and end_s is None:
+        raise ValueError("Indicá inicio y/o fin para recortar.")
+    if start_s is not None and start_s < 0:
+        raise ValueError("El inicio no puede ser negativo.")
+    if end_s is not None and start_s is not None and end_s <= start_s:
+        raise ValueError("El fin tiene que ser después del inicio.")
+
+    directory = directory or downloads_dir()
+    os.makedirs(directory, exist_ok=True)
+    base = os.path.splitext(os.path.basename(source_path))[0]
+    start_tag = int(start_s) if start_s is not None else 0
+    end_tag = int(end_s) if end_s is not None else "fin"
+    dest = os.path.join(directory, f"{base}_{start_tag}-{end_tag}.wav")
+    ffmpeg = ffmpeg_binary()
+    if not ffmpeg:
+        raise ValueError("No encuentro ffmpeg para recortar.")
+    cmd = [ffmpeg, "-y", "-loglevel", "error"]
+    if start_s is not None:
+        cmd.extend(["-ss", str(start_s)])
+    cmd.extend(["-i", source_path])
+    if end_s is not None:
+        if start_s is not None:
+            cmd.extend(["-t", str(end_s - start_s)])
+        else:
+            cmd.extend(["-to", str(end_s)])
+    cmd.extend(["-ac", "1", "-ar", "24000", dest])
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not os.path.isfile(dest) or os.path.getsize(dest) == 0:
+        raise ValueError("No se pudo recortar el audio.")
+    return os.path.abspath(dest)
 
 
 def download_audio(url, directory=None):

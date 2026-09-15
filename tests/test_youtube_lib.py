@@ -4,9 +4,10 @@ import unittest
 from unittest import mock
 
 from youtube_lib import (
+    clip_audio,
     download_audio,
     extract_youtube_id,
-    existing_audio,
+    parse_seconds,
     ydl_options,
 )
 
@@ -26,6 +27,41 @@ class YoutubeIdTests(unittest.TestCase):
     def test_empty(self):
         self.assertIsNone(extract_youtube_id(""))
         self.assertIsNone(extract_youtube_id(None))
+
+
+class ParseSecondsTests(unittest.TestCase):
+    def test_mm_ss_and_number(self):
+        self.assertEqual(parse_seconds("0:15"), 15)
+        self.assertEqual(parse_seconds("1:02"), 62)
+        self.assertEqual(parse_seconds(25), 25)
+        self.assertIsNone(parse_seconds(""))
+
+    def test_clip_requires_times(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tmp.write(b"x")
+        tmp.close()
+        self.addCleanup(lambda: os.remove(tmp.name))
+        with self.assertRaises(ValueError):
+            clip_audio(tmp.name, None, None)
+
+    def test_clip_calls_ffmpeg(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "song.mp3")
+        with open(src, "wb") as handle:
+            handle.write(b"abc")
+
+        def fake_run(cmd, capture_output=True, text=True):
+            dest = cmd[-1]
+            with open(dest, "wb") as handle:
+                handle.write(b"clip")
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch("youtube_lib.ffmpeg_binary", return_value="ffmpeg"):
+            with mock.patch("youtube_lib.subprocess.run", side_effect=fake_run):
+                path = clip_audio(src, "0:10", "0:20", directory=tmp.name)
+        self.assertTrue(path.endswith("song_10-20.wav"))
+        self.assertTrue(os.path.isfile(path))
 
 
 class DownloadAudioTests(unittest.TestCase):

@@ -34,7 +34,7 @@ SPLASH = """<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>Audio Separator</h1>
-    <p>Arrancando… el primer inicio puede tardar uno o dos minutos.</p>
+    <p>Abriendo la interfaz…</p>
   </div>
 </body>
 </html>

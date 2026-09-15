@@ -45,13 +45,16 @@ class RvcEngineTests(unittest.TestCase):
                 with mock.patch.object(
                     rvc_engine, "copy_to_downloads", return_value=(tmp.name, [out])
                 ):
-                    result = rvc_engine.convert_voice(audio, model)
+                    result = rvc_engine.convert_voice(
+                        audio, model, index_path="/tmp/model.index"
+                    )
 
         self.assertEqual(result, out)
         fake.apply_conf.assert_called_once()
         kwargs = fake.apply_conf.call_args.kwargs
         self.assertEqual(kwargs["pitch_algo"], "rmvpe")
         self.assertEqual(kwargs["pitch_lvl"], 0)
+        self.assertEqual(kwargs["file_index"], "/tmp/model.index")
         fake.assert_called_once()
 
 
