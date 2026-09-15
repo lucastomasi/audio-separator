@@ -22,9 +22,12 @@ from audio_text import (
     STEM_AMBAS,
     STEM_SOLO_INST,
     STEM_SOLO_VOZ,
-    normalize_media_url,
     stem_choice_to_list,
 )
+from youtube_lib import download_audio
+from remix import remix_to_wav
+from exports import copy_to_downloads, open_exports_dir
+from rvc_engine import convert_voice
 import numpy as np
 import soundfile as sf
 import torch
@@ -507,15 +510,7 @@ def run_mdx_beta(
 ):
 
     m_threads = 1
-    duration = librosa.get_duration(filename=filename)
-    if IS_COLAB or duration < 60:
-        m_threads = 1
-    elif duration >= 60 and duration <= 120:
-        m_threads = 8
-    elif duration > 120:
-        m_threads = 16
-
-    logger.info(f"threads: {m_threads}")
+    logger.info("threads: 1 (CPU)")
 
     model_hash = MDX.get_hash(model_path)
     device = torch.device("cpu")
@@ -591,7 +586,7 @@ UVR_MODELS = [
     "Reverb_HQ_By_FoxJoy.onnx",
     "UVR-MDX-NET-Inst_HQ_4.onnx",
 ]
-BASE_DIR = "."  # os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 mdxnet_models_dir = os.path.join(BASE_DIR, "mdx_models")
 output_dir = os.path.join(BASE_DIR, "clean_song_output")
 
@@ -601,8 +596,8 @@ def convert_to_stereo_and_wav(audio_path):
 
     # check if mono
     if type(wave[0]) != np.ndarray or audio_path[-4:].lower() != ".wav": # noqa
-        stereo_path = f"{os.path.splitext(audio_path)[0]}_stereo.wav"
-        stereo_path = os.path.join(output_dir, stereo_path)
+        stereo_name = f"{os.path.splitext(os.path.basename(audio_path))[0]}_stereo.wav"
+        stereo_path = os.path.join(output_dir, stereo_name)
 
         command = shlex.split(
             f'ffmpeg -y -loglevel error -i "{audio_path}" -ac 2 -f wav "{stereo_path}"'
@@ -687,7 +682,7 @@ def process_uvr_task(
         song_output_dir,
         os.path.join(mdxnet_models_dir, "UVR-MDX-NET-Voc_FT.onnx"),
         orig_song_path,
-        denoise=True,
+        denoise=False,
         keep_orig=True,
         device_base=device_base,
     )
@@ -950,6 +945,7 @@ def _sound_separate(
     media_dir = os.path.dirname(media_file)
 
     outputs = []
+    instrumentals_from_vocal = None
 
     try:
         duration_base_ = librosa.get_duration(filename=media_file)
@@ -961,7 +957,7 @@ def _sound_separate(
 
     if "vocal" in stem:
         try:
-            _, _, _, _, vocal_audio = process_uvr_task(
+            _, instrumentals_from_vocal, _, _, vocal_audio = process_uvr_task(
                 orig_song_path=media_file,
                 song_id=hash_audio + "mdx",
                 main_vocals=main,
@@ -988,12 +984,15 @@ def _sound_separate(
             raise gr.Error("No se pudo separar la voz. Prueba el ejemplo u otro archivo.") from error
 
     if "background" in stem:
-        background_audio, _ = process_uvr_task(
-            orig_song_path=media_file,
-            song_id=hash_audio + "voiceless",
-            only_voiceless=True,
-            remove_files_output_dir=False,
-        )
+        if instrumentals_from_vocal and os.path.isfile(instrumentals_from_vocal):
+            background_audio = instrumentals_from_vocal
+        else:
+            background_audio, _ = process_uvr_task(
+                orig_song_path=media_file,
+                song_id=hash_audio + "voiceless",
+                only_voiceless=True,
+                remove_files_output_dir=False,
+            )
 
         if background_effects:
             suffix = '_effects'
@@ -1028,80 +1027,48 @@ def _sound_separate(
             background_out = files[1] if len(files) > 1 else None
         else:
             background_out = files[0] if files else None
-    return vocal_out, background_out, files, DONE_STATUS, unlock_run_button()
+    labels = []
+    export_paths = []
+    if vocal_out:
+        labels.append("voz")
+        export_paths.append(vocal_out)
+    if background_out:
+        labels.append("instrumental")
+        export_paths.append(background_out)
+    export_dir, copied = copy_to_downloads(export_paths, labels)
+    status = (
+        f"Listo. Las pistas están en {export_dir}"
+        if copied
+        else DONE_STATUS
+    )
+    return vocal_out, background_out, copied or files, status, unlock_run_button()
+
+
+def lock_download_button():
+    return gr.update(interactive=False, value="Descargando…"), "Descargando audio…"
+
+
+def unlock_download_button():
+    return gr.update(interactive=True, value="Descargar audio")
 
 
 def audio_downloader(url_media):
-    url_media = normalize_media_url(url_media)
-    if not url_media:
-        raise gr.Error("Pega un enlace de YouTube.")
-
-    if IS_ZERO_GPU and "youtube.com" in url_media:
+    unlock = unlock_download_button()
+    if IS_ZERO_GPU and url_media and "youtube.com" in url_media:
         gr.Info("Esta opción no está disponible en Hugging Face.")
-        return None, gr.update(), "YouTube no está disponible aquí."
-
-    import yt_dlp
-
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    downloads_dir = os.path.join(app_dir, "downloads")
-    os.makedirs(downloads_dir, exist_ok=True)
-
-    node_path = shutil.which("node") or "/usr/local/bin/node"
-    ffmpeg_path = shutil.which("ffmpeg") or os.path.expanduser("~/.local/bin/ffmpeg")
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-        "overwrites": True,
-        "noplaylist": True,
-        "no_warnings": True,
-        "quiet": True,
-        "outtmpl": os.path.join(downloads_dir, "%(id)s.%(ext)s"),
-        "restrictfilenames": True,
-        "remote_components": ["ejs:github"],
-    }
-    if node_path and os.path.isfile(node_path):
-        ydl_opts["js_runtimes"] = {"node": {"path": node_path}}
-    if ffmpeg_path and os.path.exists(ffmpeg_path):
-        ydl_opts["ffmpeg_location"] = ffmpeg_path
-
+        return None, gr.update(), "YouTube no está disponible aquí.", unlock
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_media, download=True)
-    except Exception as exc:
-        raise gr.Error(
-            "No se pudo descargar el audio de YouTube. "
-            "Revisa el enlace e inténtalo de nuevo."
-        ) from exc
-
-    if not info:
-        raise gr.Error("YouTube no devolvió información del video.")
-    if info.get("_type") == "playlist":
-        entries = [entry for entry in (info.get("entries") or []) if entry]
-        if not entries:
-            raise gr.Error("Esa lista no tiene videos.")
-        info = entries[0]
-
-    video_id = info.get("id")
-    if not video_id:
-        raise gr.Error("No pude identificar el video de YouTube.")
-
-    for ext in ("mp3", "m4a", "wav", "webm", "opus", "ogg"):
-        candidate = os.path.join(downloads_dir, f"{video_id}.{ext}")
-        if os.path.isfile(candidate) and os.path.getsize(candidate) > 0:
-            return (
-                os.path.abspath(candidate),
-                gr.update(interactive=True, value="Separar audio"),
-                READY_STATUS,
-            )
-
-    raise gr.Error("La descarga terminó, pero no encontré el archivo de audio.")
+        path, reused, note = download_audio(url_media)
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, gr.update(), str(error), unlock
+    if reused:
+        status = "Audio ya estaba bajado. Listo para separar."
+    else:
+        status = "Audio listo. Elige qué extraer y pulsa Separar."
+    if note:
+        status = f"{note} {status}"
+    return path, unlock_run_button(), status, unlock
 
 
 def url_media_conf():
@@ -1270,9 +1237,9 @@ def button_conf():
 
 def output_conf():
     return gr.File(
-        label="Descargas",
+        label="Archivos (también se copian a Descargas/Audio Separator)",
         file_count="multiple",
-        interactive=False,
+        interactive=True,
     )
 
 
@@ -1317,7 +1284,65 @@ def reset_job():
         IDLE_STATUS,
         gr.update(interactive=False, value="Separar audio"),
         "",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
+
+
+def rvc_job(audio_path, model_file):
+    model_path = model_file
+    if model_file and not isinstance(model_file, str):
+        model_path = getattr(model_file, "name", None) or str(model_file)
+    try:
+        out_path = convert_voice(audio_path, model_path)
+        return out_path, out_path, "Voz convertida. Está lista para unir."
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudo convertir la voz.")
+        return None, None, "No se pudo convertir la voz."
+
+
+def remix_job(
+    voice_path,
+    instrumental_path,
+    delay_milliseconds,
+    match_duration,
+    voice_db,
+    instrumental_db,
+    target_format,
+):
+    try:
+        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
+        os.makedirs(out_dir, exist_ok=True)
+        wav_path = os.path.join(out_dir, "remix.wav")
+        remix_to_wav(
+            voice_path,
+            instrumental_path,
+            wav_path,
+            delay_milliseconds=delay_milliseconds or 0,
+            match_duration=bool(match_duration),
+            voice_db=voice_db or 0,
+            instrumental_db=instrumental_db or 0,
+        )
+        files = convert_format([wav_path], out_dir, target_format or "WAV")
+        final = files[0]
+        export_dir, copied = copy_to_downloads([final], ["remix"])
+        saved = copied[0] if copied else final
+        return saved, saved, f"Pistas unidas. Archivo en {export_dir}"
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudo armar el remix.")
+        return None, None, "No se pudo armar el remix."
 
 
 def get_gui():
@@ -1367,7 +1392,45 @@ def get_gui():
             vocal_out = gr.Audio(label="Voz", type="filepath", interactive=False)
             background_out = gr.Audio(label="Instrumental", type="filepath", interactive=False)
         output_base = output_conf()
+        open_folder_btn = gr.Button("Abrir carpeta Descargas", variant="secondary")
         nueva_btn = gr.Button("Nueva canción", variant="secondary")
+
+        gr.Markdown("## 4. Cambiar voz", elem_classes=["panel-title"])
+        gr.Markdown(
+            "Convertí la voz separada con un modelo RVC que ya tengas en este Mac (.pth). Local, sin internet."
+        )
+        rvc_model = gr.File(label="Modelo RVC (.pth)", file_types=[".pth", ".pt"])
+        rvc_btn = gr.Button("Convertir voz", variant="primary")
+        rvc_audio = gr.Audio(label="Voz convertida", type="filepath", interactive=False)
+
+        gr.Markdown("## 5. Volver a unir", elem_classes=["panel-title"])
+        gr.Markdown(
+            "Las pistas que acabás de separar duran exactamente lo mismo y ya están alineadas. "
+            "Unilas de nuevo, o reemplazá la voz por otra grabación."
+        )
+        with gr.Row():
+            remix_voice = gr.Audio(label="Voz", type="filepath", sources=["upload"])
+            remix_inst = gr.Audio(label="Instrumental", type="filepath", sources=["upload"])
+        with gr.Row():
+            remix_delay = gr.Slider(
+                -2000,
+                2000,
+                value=0,
+                step=10,
+                label="Retraso de la voz (ms)",
+                info="Solo si la voz es otra grabación. En las pistas separadas dejalo en 0.",
+            )
+            remix_match = gr.Checkbox(
+                False,
+                label="Igualar duración al instrumental",
+                info="Solo si la voz nueva dura distinto. Las pistas separadas ya coinciden.",
+            )
+        with gr.Row():
+            remix_voice_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen voz (dB)")
+            remix_inst_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen instrumental (dB)")
+        remix_btn = gr.Button("Unir voz + instrumental", variant="primary")
+        remix_audio = gr.Audio(label="Remix", type="filepath", interactive=False)
+        remix_file = gr.File(label="Descargar remix", interactive=False)
 
         with gr.Accordion("Opciones avanzadas", open=False):
             with gr.Row():
@@ -1412,10 +1475,14 @@ def get_gui():
                     background_compressor_release_ms_gui = background_compressor_release_ms_conf()
 
         url_button_gui.click(
+            lock_download_button,
+            outputs=[url_button_gui, status],
+        ).then(
             audio_downloader,
             [url_media_gui],
-            [aud, button_base, status],
+            [aud, button_base, status, url_button_gui],
             show_progress="full",
+            concurrency_limit=1,
         )
         aud.change(on_audio_ready, aud, [button_base, status])
         stem_gui.change(
@@ -1433,9 +1500,51 @@ def get_gui():
             background_effects_gui,
             background_acc,
         )
+        open_folder_btn.click(
+            lambda: f"Carpeta abierta: {open_exports_dir()}",
+            outputs=[status],
+        )
         nueva_btn.click(
             reset_job,
-            outputs=[aud, vocal_out, background_out, output_base, status, button_base, url_media_gui],
+            outputs=[
+                aud,
+                vocal_out,
+                background_out,
+                output_base,
+                status,
+                button_base,
+                url_media_gui,
+                remix_inst,
+                remix_voice,
+                remix_audio,
+                remix_file,
+                rvc_audio,
+                rvc_model,
+            ],
+        )
+        vocal_out.change(lambda path: path, vocal_out, remix_voice)
+        background_out.change(lambda path: path, background_out, remix_inst)
+        rvc_btn.click(
+            rvc_job,
+            inputs=[vocal_out, rvc_model],
+            outputs=[rvc_audio, remix_voice, status],
+            show_progress="full",
+            concurrency_limit=1,
+        )
+        remix_btn.click(
+            remix_job,
+            inputs=[
+                remix_voice,
+                remix_inst,
+                remix_delay,
+                remix_match,
+                remix_voice_db,
+                remix_inst_db,
+                target_format_gui,
+            ],
+            outputs=[remix_audio, remix_file, status],
+            show_progress="full",
+            concurrency_limit=1,
         )
         button_base.click(
             lock_run_button,
@@ -1489,7 +1598,10 @@ def launch_kwargs(**overrides):
         inbrowser=False,
         server_name="127.0.0.1",
         server_port=7860,
-        allowed_paths=[os.path.dirname(os.path.abspath(__file__))],
+        allowed_paths=[
+            os.path.dirname(os.path.abspath(__file__)),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+        ],
     )
     settings.update(overrides)
     return settings
