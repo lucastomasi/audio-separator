@@ -1,0 +1,8 @@
+.gradio-container {
+  max-width: 1120px !important;
+  padding: 20px 16px 48px !important;
+}
+
+footer {
+  display: none !important;
+}
