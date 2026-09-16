@@ -28,11 +28,26 @@ def _support_roots():
     return [root for root in roots if root]
 
 
+def _is_transformers_hubert_dir(path):
+    if not os.path.isdir(path):
+        return False
+    if not os.path.isfile(os.path.join(path, "config.json")):
+        return False
+    return any(
+        os.path.isfile(os.path.join(path, name))
+        for name in ("model.safetensors", "pytorch_model.bin")
+    )
+
+
 def local_hubert_path():
-    """Path for infer_rvc_python convert: classic hubert_base.pt (not Transformers dir)."""
+    """HuBERT for infer_rvc_python: Transformers folder (from_pretrained).
+
+    Do NOT pass hubert_base.pt — HuggingFace treats the .pt path as a repo id
+    and raises HFValidationError.
+    """
     for root in _support_roots():
-        path = os.path.join(root, "hubert_base.pt")
-        if os.path.isfile(path) and os.path.getsize(path) > 0:
+        path = os.path.join(root, "hubert_base")
+        if _is_transformers_hubert_dir(path):
             return path
     return None
 
@@ -65,7 +80,7 @@ def require_support_models():
     rmvpe = local_rmvpe_path()
     missing = []
     if not hubert:
-        missing.append("library/models/rvc/hubert_base.pt")
+        missing.append("library/models/rvc/hubert_base/ (config.json + model.safetensors)")
     if not rmvpe:
         missing.append("library/models/rvc/rmvpe.pt")
     if missing:
@@ -146,10 +161,18 @@ def convert_voice(
     copy_downloads=True,
 ):
     """Convert with a library .pth (+ optional .index). Mac Intel: CPU, no half."""
-    if not audio_path or not os.path.isfile(audio_path):
-        raise ValueError("Falta la voz a convertir.")
-    if not model_path or not os.path.isfile(model_path):
+    if isinstance(audio_path, dict):
+        audio_path = audio_path.get("path") or audio_path.get("name")
+    if isinstance(model_path, dict):
+        model_path = model_path.get("path") or model_path.get("name")
+    if not audio_path or not os.path.isfile(str(audio_path)):
+        raise ValueError(
+            "Falta la pista de voz a convertir (archivo inexistente)."
+        )
+    if not model_path or not os.path.isfile(str(model_path)):
         raise ValueError("Falta el modelo RVC (.pth) en disco.")
+    audio_path = str(audio_path)
+    model_path = str(model_path)
     _scan_model(model_path)
     converter = get_converter()
     tag = "local_voice"

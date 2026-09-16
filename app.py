@@ -1387,10 +1387,15 @@ def refresh_library():
     library.ensure_dirs()
     rvc = library.dropdown_choices(library.list_rvc_voices())
     voices = library.dropdown_choices(library.list_voices())
-    return (
-        gr.update(choices=rvc, value=(rvc[0][1] if rvc else None)),
-        gr.update(choices=voices, value=(voices[0][1] if voices else None)),
-    )
+    rvc_upd = gr.update(choices=rvc, value=(rvc[0][1] if rvc else None))
+    voice_upd = gr.update(choices=voices, value=(voices[0][1] if voices else None))
+    return rvc_upd, voice_upd
+
+
+def refresh_library_ui():
+    """Same as refresh_library plus the Text→RVC model dropdown."""
+    rvc_upd, voice_upd = refresh_library()
+    return rvc_upd, voice_upd, rvc_upd
 
 
 def import_voice_into_library(voice_file):
@@ -1409,11 +1414,20 @@ def import_voice_into_library(voice_file):
 
 
 def _gradio_path(file_obj):
+    """Normalize Gradio File/Audio values to a local filesystem path."""
     if not file_obj:
         return None
     if isinstance(file_obj, str):
-        return file_obj
-    return getattr(file_obj, "name", None)
+        return file_obj if os.path.exists(file_obj) else file_obj
+    if isinstance(file_obj, dict):
+        for key in ("path", "name", "orig_name"):
+            value = file_obj.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return None
+    if isinstance(file_obj, (list, tuple)) and file_obj:
+        return _gradio_path(file_obj[0])
+    return getattr(file_obj, "name", None) or getattr(file_obj, "path", None)
 
 
 def load_rvc_into_library(
@@ -1454,14 +1468,15 @@ def load_rvc_into_library(
         library.register("rvc_voices", index)
         loaded.append(".index")
     rvc_engine._converter = None
-    rvc_upd, voice_upd = refresh_library()
+    rvc_upd, voice_upd, tts_upd = refresh_library_ui()
     if not loaded:
-        return rvc_upd, voice_upd, "Elegí archivos y pulsá Cargar."
+        return rvc_upd, voice_upd, tts_upd, "Elegí archivos y pulsá Cargar."
     hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
     rmvpe_ok = "sí" if rvc_engine.local_rmvpe_path() else "no"
     return (
         rvc_upd,
         voice_upd,
+        tts_upd,
         f"Cargado: {', '.join(loaded)}. Soporte → hubert: {hubert_ok}, rmvpe: {rmvpe_ok}.",
     )
 
@@ -1474,29 +1489,39 @@ def train_rvc_job(exp_name, dataset_files):
         if isinstance(files, (str, os.PathLike)):
             files = [files]
         pth, index = train_voice(exp_name, files)
-        _, voice_upd = refresh_library()
         import library
 
         rvc = library.dropdown_choices(library.list_rvc_voices())
+        _, voice_upd = refresh_library()
         note = f"Modelo listo: {os.path.basename(pth)}"
         if index:
             note += " (+index)"
-        note += ". Ya podés Convertir voz."
-        return gr.update(choices=rvc, value=pth), voice_upd, note
+        note += ". Ya podés Convertir / Texto→RVC."
+        rvc_upd = gr.update(choices=rvc, value=pth)
+        return rvc_upd, voice_upd, note, rvc_upd
     except ValueError as error:
         gr.Warning(str(error))
-        rvc_upd, voice_upd = refresh_library()
-        return rvc_upd, voice_upd, str(error)
+        rvc_upd, voice_upd, tts_upd = refresh_library_ui()
+        return rvc_upd, voice_upd, str(error), tts_upd
     except Exception as error:
         logger.error(str(error))
         gr.Warning("Falló el entrenamiento.")
-        rvc_upd, voice_upd = refresh_library()
-        return rvc_upd, voice_upd, f"Falló el entrenamiento: {error}"
+        rvc_upd, voice_upd, tts_upd = refresh_library_ui()
+        return rvc_upd, voice_upd, f"Falló el entrenamiento: {error}", tts_upd
 
 
 def rvc_job(audio_path, library_model, model_file, index_file):
     import library
     from rvc_engine import convert_voice
+
+    audio_path = _gradio_path(audio_path)
+    if not audio_path or not os.path.isfile(audio_path):
+        msg = (
+            "Falta la pista de voz. Primero Separá (paso 2–3) "
+            "o usá el paso 6 Texto → habla."
+        )
+        gr.Warning(msg)
+        return None, None, msg
 
     voices_root = os.path.abspath(library.PATHS["rvc_voices"])
     model_path = library_model
@@ -1511,6 +1536,10 @@ def rvc_job(audio_path, library_model, model_file, index_file):
     elif model_path and os.path.isfile(model_path):
         item = library.register("rvc_voices", model_path)
         model_path = item["path"]
+    if not model_path:
+        msg = "Elegí un modelo RVC en la biblioteca (paso 4)."
+        gr.Warning(msg)
+        return None, None, msg
     index_path = library.find_index_for_model(model_path) if model_path else None
     if index_file:
         uploaded_index = _gradio_path(index_file)
@@ -1532,20 +1561,20 @@ def rvc_job(audio_path, library_model, model_file, index_file):
 
 
 def clone_job(text, speaker_wav):
+    """Legacy XTTS path (pesos opcionales). Preferí tts_rvc_job."""
     try:
         from clone_engine import clone_voice, missing_xtts_files
 
         missing = missing_xtts_files()
         if missing:
             msg = (
-                "Texto→habla (XTTS) no está listo: faltan pesos en "
-                "library/models/xtts/. Para clonar una voz usá el paso 4 (RVC): "
-                "Entrenar → Convertir."
+                "XTTS no está instalado. Usá «Texto → habla (Edge + RVC)» "
+                "con un modelo entrenado del paso 4."
             )
             gr.Warning(msg)
             return None, msg
         out_path = clone_voice(text, speaker_wav)
-        return out_path, "Voz clonada (XTTS). Archivo en Descargas/Audio Separator."
+        return out_path, "Voz clonada (XTTS). Archivo en Descargas."
     except ValueError as error:
         gr.Warning(str(error))
         return None, str(error)
@@ -1553,6 +1582,27 @@ def clone_job(text, speaker_wav):
         logger.error(str(error))
         gr.Warning("No se pudo clonar la voz.")
         return None, "No se pudo clonar la voz."
+
+
+def tts_rvc_job(text, rvc_model, edge_voice, pitch):
+    try:
+        from tts_rvc_engine import speak_with_rvc
+
+        out = speak_with_rvc(
+            text,
+            rvc_model,
+            edge_voice=edge_voice or "es-AR-ElenaNeural",
+            pitch=int(pitch or 0),
+        )
+        return out, out, f"Listo (Edge→RVC). {out}"
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        msg = f"Falló texto→RVC: {error}"
+        gr.Warning(msg)
+        return None, None, msg
 
 
 def detect_voices_job(audio_path):
@@ -1812,36 +1862,62 @@ def get_gui():
                     label="Igualar duración al instrumental",
                 )
 
-        with gr.Accordion("Opcional: texto → habla (XTTS)", open=False):
+        with gr.Group(elem_classes=["step"], elem_id="step-tts"):
+            gr.Markdown("## 6. Texto → habla (Edge + RVC)", elem_classes=["panel-title"])
             gr.Markdown(
-                "**No disponible todavía:** faltan pesos en `library/models/xtts/`. "
-                "Para clonar una voz usá el paso **4. Voz (RVC)** (Entrenar → Convertir).",
-                elem_classes=["hint", "warn-hint"],
+                "Edge TTS genera el audio base (internet) y tu modelo RVC de la "
+                "biblioteca lo convierte. Hace falta `hubert_base.pt` + `rmvpe.pt` "
+                "(Completar instalación) y un `.pth` entrenado.",
+                elem_classes=["hint"],
             )
-            clone_text = gr.Textbox(
+            tts_text = gr.Textbox(
                 label="Texto",
-                lines=2,
+                lines=3,
                 placeholder="Escribí lo que tiene que decir la voz…",
             )
+            with gr.Row():
+                import tts_rvc_engine as _tts_rvc_ui
+
+                tts_edge = gr.Dropdown(
+                    label="Voz Edge (idioma base)",
+                    choices=_tts_rvc_ui.EDGE_VOICES,
+                    value="es-AR-ElenaNeural",
+                )
+                tts_pitch = gr.Slider(-12, 12, value=0, step=1, label="Pitch RVC")
+            tts_rvc_pick = gr.Dropdown(
+                label="Modelo RVC (biblioteca)",
+                choices=[],
+                info="El mismo que en el paso 4.",
+            )
+            tts_btn = gr.Button(
+                "Generar voz", variant="primary", elem_id="tts-rvc-btn"
+            )
+            tts_audio = gr.Audio(
+                label="Salida", type="filepath", interactive=False
+            )
+            # Kept for Detectar voces / import (wired below)
             clone_ref = gr.Audio(
-                label="Referencia",
+                label="Referencia (detectar / importar)",
                 type="filepath",
                 sources=["upload"],
+                visible=False,
             )
-            voice_pick = gr.Dropdown(label="Voces en biblioteca", choices=[])
+            voice_pick = gr.Dropdown(
+                label="Clips de voz en biblioteca", choices=[], visible=False
+            )
             voice_import = gr.File(
-                label="Importar voz",
+                label="Importar clip",
                 file_types=[".wav", ".mp3", ".flac", ".m4a"],
+                visible=False,
             )
             speaker_pick = gr.Dropdown(
                 label="Voces detectadas",
                 choices=[],
                 visible=False,
             )
-            clone_btn = gr.Button("Generar con XTTS", variant="secondary")
-            clone_audio = gr.Audio(
-                label="Salida XTTS", type="filepath", interactive=False
-            )
+            clone_text = tts_text
+            clone_btn = tts_btn
+            clone_audio = tts_audio
 
         with gr.Accordion("Opciones avanzadas", open=False):
             with gr.Row():
@@ -1962,11 +2038,13 @@ def get_gui():
             inputs=[voice_import],
             outputs=[voice_pick, clone_ref, status],
         )
-        refresh_lib_btn.click(refresh_library, outputs=[rvc_pick, voice_pick])
-        clone_btn.click(
-            clone_job,
-            inputs=[clone_text, clone_ref],
-            outputs=[clone_audio, status],
+        refresh_lib_btn.click(
+            refresh_library_ui, outputs=[rvc_pick, voice_pick, tts_rvc_pick]
+        )
+        tts_btn.click(
+            tts_rvc_job,
+            inputs=[tts_text, tts_rvc_pick, tts_edge, tts_pitch],
+            outputs=[tts_audio, remix_voice, status],
             show_progress="full",
             concurrency_limit=1,
         )
@@ -1975,7 +2053,7 @@ def get_gui():
         load_rvc_btn.click(
             load_rvc_into_library,
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
-            outputs=[rvc_pick, voice_pick, status],
+            outputs=[rvc_pick, voice_pick, tts_rvc_pick, status],
         )
         rvc_btn.click(
             rvc_job,
@@ -1987,11 +2065,11 @@ def get_gui():
         train_btn.click(
             train_rvc_job,
             inputs=[train_name, train_dataset],
-            outputs=[rvc_pick, voice_pick, train_status],
+            outputs=[rvc_pick, voice_pick, train_status, tts_rvc_pick],
             show_progress="full",
             concurrency_limit=1,
         )
-        app.load(refresh_library, outputs=[rvc_pick, voice_pick])
+        app.load(refresh_library_ui, outputs=[rvc_pick, voice_pick, tts_rvc_pick])
         remix_btn.click(
             remix_job,
             inputs=[

@@ -27,6 +27,7 @@ dist/
 third_party/
 library/train_data/
 library/train_runs/
+library/tts_rvc_work/
 *.zip
 *.dmg
 /tmp/

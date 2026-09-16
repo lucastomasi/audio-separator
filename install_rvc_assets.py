@@ -48,6 +48,10 @@ def missing_rvc_assets() -> list[str]:
     missing = []
     for local in HF_FILE_CANDIDATES:
         path = root / local
+        if local == "hubert_base.pt":
+            if not _hubert_pt_is_fairseq(path):
+                missing.append(local)
+            continue
         if not path.is_file() or path.stat().st_size == 0:
             missing.append(local)
     hubert_dir = root / "hubert_base"
@@ -71,12 +75,33 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     from huggingface_hub import hf_hub_download
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # Never pass a filesystem path as repo_id (HFValidationError).
+    if "/" in REPO and REPO.startswith("/"):
+        raise RuntimeError(f"repo_id inválido: {REPO}")
     cached = hf_hub_download(
         repo_id=REPO,
         filename=repo_file,
         local_dir=str(cache_dir),
     )
     shutil.copy2(cached, dest)
+
+
+def _hubert_pt_is_fairseq(path: Path) -> bool:
+    """True if hubert_base.pt is ContentVec/fairseq, not a misnamed RVC .pth."""
+    if not path.is_file() or path.stat().st_size < 80_000_000:
+        return False
+    try:
+        import torch
+
+        state = torch.load(str(path), map_location="cpu")
+    except Exception:
+        return False
+    if not isinstance(state, dict):
+        return False
+    # RVC infer weights look like this — reject them.
+    if "weight" in state and "sr" in state and "f0" in state:
+        return False
+    return "model" in state or "args" in state or "best_loss" in state
 
 
 def _ensure_safetensors(hubert_dir: Path) -> None:
@@ -117,9 +142,20 @@ def install_rvc_assets(log=None) -> list[str]:
 
     for local_name, candidates in HF_FILE_CANDIDATES.items():
         dest = root / local_name
-        if dest.is_file() and dest.stat().st_size > 0:
+        if local_name == "hubert_base.pt" and _hubert_pt_is_fairseq(dest):
+            _log(f"OK {local_name} (fairseq)")
+            continue
+        if (
+            local_name != "hubert_base.pt"
+            and dest.is_file()
+            and dest.stat().st_size > 0
+        ):
             _log(f"OK {local_name}")
             continue
+        if local_name == "hubert_base.pt" and dest.is_file():
+            bad = dest.with_suffix(dest.suffix + ".invalid")
+            _log(f"hubert_base.pt no es fairseq; renombro a {bad.name}")
+            dest.replace(bad)
         last_err = None
         for repo_file in candidates:
             try:
