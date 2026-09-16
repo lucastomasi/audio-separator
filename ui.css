@@ -1,6 +1,6 @@
 .gradio-container {
-  max-width: 1040px !important;
-  padding: 16px 16px 40px !important;
+  max-width: 980px !important;
+  padding: 14px 14px 36px !important;
 }
 
 footer {
@@ -8,14 +8,14 @@ footer {
 }
 
 .app-header h1 {
-  margin: 0 0 4px !important;
-  font-size: 1.55rem !important;
+  margin: 0 0 6px !important;
+  font-size: 1.5rem !important;
   letter-spacing: -0.03em !important;
 }
 
 .lede {
-  margin: 0 0 4px !important;
-  font-size: 0.98rem !important;
+  margin: 0 0 12px !important;
+  font-size: 0.95rem !important;
   line-height: 1.45 !important;
   color: #3f3f46 !important;
 }
@@ -24,22 +24,35 @@ footer {
   color: #d4d4d8 !important;
 }
 
-.quit-note {
-  margin: 0 0 12px !important;
-  font-size: 0.82rem !important;
+.hint {
+  margin: 0 0 10px !important;
+  font-size: 0.86rem !important;
+  line-height: 1.4 !important;
   color: #71717a !important;
+}
+
+.dark .hint {
+  color: #a1a1aa !important;
+}
+
+.warn-hint {
+  color: #b45309 !important;
+}
+
+.dark .warn-hint {
+  color: #fbbf24 !important;
 }
 
 #job-status {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: 0 0 16px !important;
+  margin: 0 0 14px !important;
   padding: 10px 14px !important;
   border-radius: 12px !important;
   background: #f4f4f5 !important;
   color: #18181b !important;
-  font-size: 0.95rem !important;
+  font-size: 0.92rem !important;
   line-height: 1.4 !important;
   border: 1px solid #e4e4e7 !important;
 }
@@ -51,9 +64,9 @@ footer {
 }
 
 .step {
-  margin-bottom: 14px !important;
+  margin-bottom: 12px !important;
   padding: 14px 16px 16px !important;
-  border-radius: 16px !important;
+  border-radius: 14px !important;
   border: 1px solid #e4e4e7 !important;
   background: #fafafa !important;
 }
@@ -63,14 +76,23 @@ footer {
   background: #18181b !important;
 }
 
+#step-voice {
+  border-color: #c4b5fd !important;
+}
+
+.dark #step-voice {
+  border-color: #6d28d9 !important;
+}
+
 .panel-title {
-  margin: 0 0 10px !important;
+  margin: 0 0 8px !important;
   font-size: 1.02rem !important;
   font-weight: 700 !important;
 }
 
 #run-btn,
 #rvc-btn,
+#train-btn,
 #join-btn {
   min-height: 48px !important;
   font-size: 1.02rem !important;
@@ -79,6 +101,11 @@ footer {
 
 .action-row {
   gap: 8px !important;
+  margin-top: 4px !important;
+}
+
+.top-row {
+  align-items: stretch !important;
 }
 
 :focus-visible {
@@ -91,7 +118,10 @@ footer {
     padding: 10px 8px 28px !important;
   }
 
-  #run-btn {
+  #run-btn,
+  #train-btn,
+  #rvc-btn,
+  #join-btn {
     position: sticky;
     bottom: 8px;
     z-index: 5;

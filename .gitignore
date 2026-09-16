@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 **/.DS_Store
+.hf_rvc_cache/
 clean_song_output/
 downloads/
 remix_output/
@@ -23,3 +24,10 @@ library/voices/**
 !library/**/.gitkeep
 !library/library.json
 dist/
+third_party/
+library/train_data/
+library/train_runs/
+*.zip
+*.dmg
+/tmp/
+library/library.json

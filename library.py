@@ -50,14 +50,27 @@ def register(kind, src_path, name=None):
     if os.path.abspath(src_path) != os.path.abspath(dest):
         shutil.copy2(src_path, dest)
     data = _load()
+    items = data.setdefault("items", [])
+    stem = os.path.splitext(filename)[0]
+    dest_abs = os.path.abspath(dest)
+    # Replace only the same destination file (pth and index share stem).
+    items = [
+        old
+        for old in items
+        if not (
+            old.get("kind") == kind
+            and os.path.abspath(old.get("path") or "") == dest_abs
+        )
+    ]
     item = {
         "id": uuid.uuid4().hex[:12],
         "kind": kind,
-        "name": os.path.splitext(filename)[0],
+        "name": stem,
         "path": dest,
         "created": int(time.time()),
     }
-    data.setdefault("items", []).append(item)
+    items.append(item)
+    data["items"] = items
     _save(data)
     return item
 

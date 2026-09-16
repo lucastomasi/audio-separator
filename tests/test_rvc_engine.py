@@ -57,6 +57,32 @@ class RvcEngineTests(unittest.TestCase):
         self.assertEqual(kwargs["file_index"], "/tmp/model.index")
         fake.assert_called_once()
 
+    def test_convert_passes_pitch_and_index_rate(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        audio = os.path.join(tmp.name, "v.wav")
+        model = os.path.join(tmp.name, "m.pth")
+        out = os.path.join(tmp.name, "out.wav")
+        for path in (audio, model, out):
+            with open(path, "wb") as handle:
+                handle.write(b"data")
+        fake = mock.Mock()
+        fake.apply_conf.return_value = "ok"
+        fake.return_value = [out]
+        with mock.patch.object(rvc_engine, "_scan_model"):
+            with mock.patch.object(rvc_engine, "get_converter", return_value=fake):
+                rvc_engine.convert_voice(
+                    audio,
+                    model,
+                    pitch=2,
+                    index_rate=0.8,
+                    f0_method="rmvpe",
+                    copy_downloads=False,
+                )
+        kwargs = fake.apply_conf.call_args.kwargs
+        self.assertEqual(kwargs["pitch_lvl"], 2)
+        self.assertEqual(kwargs["index_influence"], 0.8)
+
 
 if __name__ == "__main__":
     unittest.main()

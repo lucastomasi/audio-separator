@@ -904,7 +904,7 @@ def convert_format(file_paths, media_dir, target_format):
     return converted_files
 
 
-IDLE_STATUS = "Subí un archivo, usá el ejemplo o pegá YouTube."
+IDLE_STATUS = "1 Canción → 2 Extraer → 3 Resultado → 4 Voz (RVC) → 5 Unir."
 READY_STATUS = "Audio listo. Elegí qué extraer y pulsá Separar."
 RUN_STATUS = "Separando… un tema largo puede tardar varios minutos."
 DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
@@ -1377,7 +1377,9 @@ def _gradio_path(file_obj):
     return getattr(file_obj, "name", None)
 
 
-def load_rvc_into_library(hubert_file, rmvpe_file, model_file, index_file):
+def load_rvc_into_library(
+    hubert_file, rmvpe_file, model_file, index_file, g_file=None, d_file=None
+):
     import library
     import rvc_engine
 
@@ -1391,6 +1393,14 @@ def load_rvc_into_library(hubert_file, rmvpe_file, model_file, index_file):
     if rmvpe:
         library.register("rvc", rmvpe, "rmvpe.pt")
         loaded.append("rmvpe")
+    g_path = _gradio_path(g_file)
+    if g_path:
+        library.register("rvc", g_path, "f0G40k.pth")
+        loaded.append("f0G40k")
+    d_path = _gradio_path(d_file)
+    if d_path:
+        library.register("rvc", d_path, "f0D40k.pth")
+        loaded.append("f0D40k")
     model = _gradio_path(model_file)
     if model:
         item = library.register("rvc_voices", model)
@@ -1407,7 +1417,7 @@ def load_rvc_into_library(hubert_file, rmvpe_file, model_file, index_file):
     rvc_engine._converter = None
     rvc_upd, voice_upd = refresh_library()
     if not loaded:
-        return rvc_upd, voice_upd, "Elegí hubert, rmvpe, .pth o .index y pulsá Cargar."
+        return rvc_upd, voice_upd, "Elegí archivos y pulsá Cargar."
     hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
     rmvpe_ok = "sí" if rvc_engine.local_rmvpe_path() else "no"
     return (
@@ -1417,16 +1427,51 @@ def load_rvc_into_library(hubert_file, rmvpe_file, model_file, index_file):
     )
 
 
+def train_rvc_job(exp_name, dataset_files):
+    try:
+        from rvc_train import train_voice
+
+        files = dataset_files or []
+        if isinstance(files, (str, os.PathLike)):
+            files = [files]
+        pth, index = train_voice(exp_name, files)
+        _, voice_upd = refresh_library()
+        import library
+
+        rvc = library.dropdown_choices(library.list_rvc_voices())
+        note = f"Modelo listo: {os.path.basename(pth)}"
+        if index:
+            note += " (+index)"
+        note += ". Ya podés Convertir voz."
+        return gr.update(choices=rvc, value=pth), voice_upd, note
+    except ValueError as error:
+        gr.Warning(str(error))
+        rvc_upd, voice_upd = refresh_library()
+        return rvc_upd, voice_upd, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("Falló el entrenamiento.")
+        rvc_upd, voice_upd = refresh_library()
+        return rvc_upd, voice_upd, f"Falló el entrenamiento: {error}"
+
+
 def rvc_job(audio_path, library_model, model_file, index_file):
     import library
     from rvc_engine import convert_voice
 
+    voices_root = os.path.abspath(library.PATHS["rvc_voices"])
     model_path = library_model
     if model_file:
         uploaded = _gradio_path(model_file)
         if uploaded:
             item = library.register("rvc_voices", uploaded)
             model_path = item["path"]
+    # Convert only uses library/models/rvc_voices/ (never assets/weights directly).
+    if model_path and os.path.abspath(model_path).startswith(voices_root + os.sep):
+        pass
+    elif model_path and os.path.isfile(model_path):
+        item = library.register("rvc_voices", model_path)
+        model_path = item["path"]
     index_path = library.find_index_for_model(model_path) if model_path else None
     if index_file:
         uploaded_index = _gradio_path(index_file)
@@ -1449,10 +1494,19 @@ def rvc_job(audio_path, library_model, model_file, index_file):
 
 def clone_job(text, speaker_wav):
     try:
-        from clone_engine import clone_voice
+        from clone_engine import clone_voice, missing_xtts_files
 
+        missing = missing_xtts_files()
+        if missing:
+            msg = (
+                "Texto→habla (XTTS) no está listo: faltan pesos en "
+                "library/models/xtts/. Para clonar una voz usá el paso 4 (RVC): "
+                "Entrenar → Convertir."
+            )
+            gr.Warning(msg)
+            return None, msg
         out_path = clone_voice(text, speaker_wav)
-        return out_path, f"Voz clonada. Archivo en Descargas/Audio Separator."
+        return out_path, "Voz clonada (XTTS). Archivo en Descargas/Audio Separator."
     except ValueError as error:
         gr.Warning(str(error))
         return None, str(error)
@@ -1534,17 +1588,23 @@ def get_gui():
         delete_cache=(3200, 10800),
     ) as app:
         gr.Markdown("# Audio Separator", elem_classes=["app-header"])
-        gr.Markdown("Voz e instrumental, en este Mac.", elem_classes=["lede"])
-        gr.Markdown("Cerrá la ventana para salir.", elem_classes=["quit-note"])
+        gr.Markdown(
+            "Separá, entrená una voz (RVC) y reconvertí — todo local en este Mac. "
+            "Cerrá la ventana para salir.",
+            elem_classes=["lede"],
+        )
         status = gr.Markdown(IDLE_STATUS, elem_id="job-status")
 
-        with gr.Row(equal_height=False):
+        with gr.Row(equal_height=False, elem_classes=["top-row"]):
             with gr.Column(scale=6):
                 with gr.Group(elem_classes=["step"]):
                     gr.Markdown("## 1. Canción", elem_classes=["panel-title"])
                     with gr.Tabs():
                         with gr.Tab("Archivo"):
-                            gr.Markdown("Arrastrá el audio al reproductor.")
+                            gr.Markdown(
+                                "Arrastrá el audio al reproductor o usá el ejemplo.",
+                                elem_classes=["hint"],
+                            )
                         with gr.Tab("YouTube"):
                             with gr.Row():
                                 url_media_gui = url_media_conf()
@@ -1560,9 +1620,10 @@ def get_gui():
                                     placeholder="0:25 o 25",
                                     scale=1,
                                 )
-                                clip_btn = gr.Button("Recortar para clonar", scale=1)
+                                clip_btn = gr.Button("Recortar", scale=1)
                     aud = audio_conf()
-                    detect_btn = gr.Button("Detectar voces")
+                    with gr.Row(elem_classes=["action-row"]):
+                        detect_btn = gr.Button("Detectar voces", variant="secondary")
                     gr.Examples(
                         examples=[[os.path.join(os.path.dirname(os.path.abspath(__file__)), "test.mp3")]],
                         inputs=[aud],
@@ -1581,36 +1642,110 @@ def get_gui():
             gr.Markdown("## 3. Resultado", elem_classes=["panel-title"])
             with gr.Row():
                 vocal_out = gr.Audio(label="Voz", type="filepath", interactive=False)
-                background_out = gr.Audio(label="Instrumental", type="filepath", interactive=False)
+                background_out = gr.Audio(
+                    label="Instrumental", type="filepath", interactive=False
+                )
             output_base = output_conf()
             with gr.Row(elem_classes=["action-row"]):
                 open_folder_btn = gr.Button("Abrir Descargas", variant="secondary")
                 nueva_btn = gr.Button("Nueva canción", variant="secondary")
 
-        with gr.Group(elem_classes=["step"]):
-            gr.Markdown("## 4. Cambiar voz", elem_classes=["panel-title"])
-            gr.Markdown("Cargá los archivos acá; quedan en la biblioteca local.")
-            with gr.Row():
-                rvc_hubert = gr.File(label="hubert_base.pt", file_types=[".pt", ".pth"])
-                rvc_rmvpe = gr.File(label="rmvpe.pt", file_types=[".pt", ".pth"])
-            with gr.Row():
-                rvc_model = gr.File(label="Modelo .pth", file_types=[".pth", ".pt"])
-                rvc_index = gr.File(label="Índice .index", file_types=[".index"])
-            load_rvc_btn = gr.Button("Cargar en biblioteca", variant="secondary")
-            rvc_pick = gr.Dropdown(label="Modelo RVC en biblioteca", choices=[])
-            rvc_btn = gr.Button("Convertir voz", variant="primary", elem_id="rvc-btn")
-            rvc_audio = gr.Audio(label="Voz convertida", type="filepath", interactive=False)
+        with gr.Group(elem_classes=["step"], elem_id="step-voice"):
+            gr.Markdown(
+                "## 4. Voz (RVC)",
+                elem_classes=["panel-title"],
+            )
+            gr.Markdown(
+                "Entrená con audios de la persona, o convertí con un modelo ya en la biblioteca.",
+                elem_classes=["hint"],
+            )
+            with gr.Tabs():
+                with gr.Tab("Entrenar"):
+                    train_name = gr.Textbox(label="Nombre", placeholder="mi_voz")
+                    train_dataset = gr.File(
+                        label="Audios de la persona (wav limpios)",
+                        file_count="multiple",
+                        file_types=[".wav", ".mp3", ".flac", ".m4a"],
+                    )
+                    train_btn = gr.Button(
+                        "Entrenar", variant="primary", elem_id="train-btn"
+                    )
+                    train_status = gr.Textbox(
+                        label="Estado",
+                        interactive=False,
+                        placeholder="Al terminar, el modelo aparece en Convertir.",
+                    )
+                with gr.Tab("Convertir"):
+                    rvc_pick = gr.Dropdown(
+                        label="Modelo en biblioteca",
+                        choices=[],
+                        info="Vacío: entrená una voz o cargá un .pth abajo.",
+                    )
+                    rvc_btn = gr.Button(
+                        "Convertir voz", variant="primary", elem_id="rvc-btn"
+                    )
+                    rvc_audio = gr.Audio(
+                        label="Voz convertida", type="filepath", interactive=False
+                    )
+            with gr.Accordion("Pesos / biblioteca", open=False):
+                gr.Markdown(
+                    "Hubert Transformers (`hubert_base/`), rmvpe y f0G/D40k viven en "
+                    "`library/models/rvc/`. Los `.pth`/`.index` de voz van a "
+                    "`library/models/rvc_voices/`.",
+                    elem_classes=["hint"],
+                )
+                with gr.Row():
+                    rvc_hubert = gr.File(
+                        label="hubert (.pt o carpeta zip)",
+                        file_types=[".pt", ".pth"],
+                    )
+                    rvc_rmvpe = gr.File(
+                        label="rmvpe.pt", file_types=[".pt", ".pth"]
+                    )
+                with gr.Row():
+                    rvc_g = gr.File(
+                        label="f0G40k.pth", file_types=[".pth", ".pt"]
+                    )
+                    rvc_d = gr.File(
+                        label="f0D40k.pth", file_types=[".pth", ".pt"]
+                    )
+                with gr.Row():
+                    rvc_model = gr.File(
+                        label="Modelo .pth", file_types=[".pth", ".pt"]
+                    )
+                    rvc_index = gr.File(
+                        label="Índice .index", file_types=[".index"]
+                    )
+                with gr.Row(elem_classes=["action-row"]):
+                    load_rvc_btn = gr.Button(
+                        "Cargar en biblioteca", variant="secondary"
+                    )
+                    refresh_lib_btn = gr.Button(
+                        "Actualizar listas", variant="secondary"
+                    )
 
         with gr.Group(elem_classes=["step"]):
             gr.Markdown("## 5. Unir", elem_classes=["panel-title"])
             with gr.Row():
-                remix_voice = gr.Audio(label="Voz", type="filepath", sources=["upload"])
-                remix_inst = gr.Audio(label="Instrumental", type="filepath", sources=["upload"])
+                remix_voice = gr.Audio(
+                    label="Voz", type="filepath", sources=["upload"]
+                )
+                remix_inst = gr.Audio(
+                    label="Instrumental", type="filepath", sources=["upload"]
+                )
             with gr.Row():
-                remix_voice_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen voz (dB)")
-                remix_inst_db = gr.Slider(-20, 12, value=0, step=1, label="Volumen instrumental (dB)")
-            remix_btn = gr.Button("Unir voz + instrumental", variant="primary", elem_id="join-btn")
-            remix_audio = gr.Audio(label="Unión", type="filepath", interactive=False)
+                remix_voice_db = gr.Slider(
+                    -20, 12, value=0, step=1, label="Volumen voz (dB)"
+                )
+                remix_inst_db = gr.Slider(
+                    -20, 12, value=0, step=1, label="Volumen instrumental (dB)"
+                )
+            remix_btn = gr.Button(
+                "Unir voz + instrumental", variant="primary", elem_id="join-btn"
+            )
+            remix_audio = gr.Audio(
+                label="Unión", type="filepath", interactive=False
+            )
             remix_file = gr.File(label="Archivo unido", interactive=False)
             with gr.Accordion("Si la voz es otra grabación", open=False):
                 remix_delay = gr.Slider(
@@ -1625,21 +1760,25 @@ def get_gui():
                     label="Igualar duración al instrumental",
                 )
 
-        with gr.Group(elem_classes=["step"]):
-            gr.Markdown("## 6. Clonar voz", elem_classes=["panel-title"])
+        with gr.Accordion("Opcional: texto → habla (XTTS)", open=False):
+            gr.Markdown(
+                "**No disponible todavía:** faltan pesos en `library/models/xtts/`. "
+                "Para clonar una voz usá el paso **4. Voz (RVC)** (Entrenar → Convertir).",
+                elem_classes=["hint", "warn-hint"],
+            )
             clone_text = gr.Textbox(
                 label="Texto",
-                lines=3,
+                lines=2,
                 placeholder="Escribí lo que tiene que decir la voz…",
             )
             clone_ref = gr.Audio(
-                label="Referencia (fragmento o voz detectada)",
+                label="Referencia",
                 type="filepath",
                 sources=["upload"],
             )
             voice_pick = gr.Dropdown(label="Voces en biblioteca", choices=[])
             voice_import = gr.File(
-                label="Importar voz a la biblioteca",
+                label="Importar voz",
                 file_types=[".wav", ".mp3", ".flac", ".m4a"],
             )
             speaker_pick = gr.Dropdown(
@@ -1647,9 +1786,10 @@ def get_gui():
                 choices=[],
                 visible=False,
             )
-            refresh_lib_btn = gr.Button("Actualizar biblioteca", variant="secondary")
-            clone_btn = gr.Button("Clonar voz", variant="primary")
-            clone_audio = gr.Audio(label="Voz clonada", type="filepath", interactive=False)
+            clone_btn = gr.Button("Generar con XTTS", variant="secondary")
+            clone_audio = gr.Audio(
+                label="Salida XTTS", type="filepath", interactive=False
+            )
 
         with gr.Accordion("Opciones avanzadas", open=False):
             with gr.Row():
@@ -1776,13 +1916,20 @@ def get_gui():
         background_out.change(lambda path: path, background_out, remix_inst)
         load_rvc_btn.click(
             load_rvc_into_library,
-            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index],
+            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
             outputs=[rvc_pick, voice_pick, status],
         )
         rvc_btn.click(
             rvc_job,
             inputs=[vocal_out, rvc_pick, rvc_model, rvc_index],
             outputs=[rvc_audio, remix_voice, status],
+            show_progress="full",
+            concurrency_limit=1,
+        )
+        train_btn.click(
+            train_rvc_job,
+            inputs=[train_name, train_dataset],
+            outputs=[rvc_pick, voice_pick, train_status],
             show_progress="full",
             concurrency_limit=1,
         )

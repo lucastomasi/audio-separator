@@ -39,17 +39,25 @@ class CloneEngineTests(unittest.TestCase):
             with open(path, "wb") as handle:
                 handle.write(b"out")
 
-        fake.synthesize.return_value = {"wav": [0.0, 0.1, 0.0]}
-        with mock.patch.object(clone_engine, "get_tts", return_value=(fake, object(), "cpu")):
+        def write_file(**kwargs):
+            path = kwargs["file_path"]
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "wb") as handle:
+                handle.write(b"out")
+
+        fake.tts_to_file.side_effect = write_file
+        with mock.patch.object(clone_engine, "get_tts", return_value=fake):
             with mock.patch.object(
                 clone_engine,
                 "copy_to_downloads",
                 side_effect=lambda paths, labels: (tmp.name, paths),
             ):
                 result = clone_engine.clone_voice("Hola mundo", speaker)
-        fake.synthesize.assert_called_once()
-        kwargs = fake.synthesize.call_args.kwargs
+        fake.tts_to_file.assert_called_once()
+        kwargs = fake.tts_to_file.call_args.kwargs
         self.assertEqual(kwargs["language"], "es")
+        self.assertEqual(kwargs["speaker_wav"], speaker)
+        self.assertIn("text", kwargs)
         self.assertTrue(str(result).endswith("voz_clon.wav"))
 
 
