@@ -76,8 +76,8 @@ class DownloadAudioTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             download_audio("  ", directory=self.dir)
 
-    def test_skips_redownload_if_mp3_exists(self):
-        path = os.path.join(self.dir, "jNQXAC9IVRw.mp3")
+    def test_skips_redownload_if_wav_exists(self):
+        path = os.path.join(self.dir, "jNQXAC9IVRw.wav")
         with open(path, "wb") as handle:
             handle.write(b"fake-audio")
         with mock.patch("yt_dlp.YoutubeDL") as ydl_cls:
@@ -89,7 +89,7 @@ class DownloadAudioTests(unittest.TestCase):
         self.assertEqual(result, os.path.abspath(path))
         ydl_cls.assert_not_called()
 
-    def test_download_writes_mp3(self):
+    def test_download_writes_wav(self):
         video_id = "abcdefghijk"
 
         class FakeYDL:
@@ -103,10 +103,10 @@ class DownloadAudioTests(unittest.TestCase):
                 return False
 
             def extract_info(self, url, download=True):
-                dest = os.path.join(self.dir, f"{video_id}.mp3")
+                dest = os.path.join(self.dir, f"{video_id}.wav")
                 with open(dest, "wb") as handle:
-                    handle.write(b"mp3-bytes")
-                return {"id": video_id, "ext": "mp3"}
+                    handle.write(b"RIFF" + b"\x00" * 12 + b"WAVEfmt ")
+                return {"id": video_id, "ext": "wav"}
 
         FakeYDL.dir = self.dir
 
@@ -116,14 +116,14 @@ class DownloadAudioTests(unittest.TestCase):
             )
         self.assertFalse(reused)
         self.assertIsNone(note)
-        self.assertTrue(path.endswith(".mp3"))
+        self.assertTrue(path.endswith(".wav"))
         self.assertTrue(os.path.isfile(path))
 
     def test_options_are_audio_only(self):
         opts = ydl_options(self.dir)
         self.assertIn("bestaudio", opts["format"])
         self.assertTrue(opts["noplaylist"])
-        self.assertEqual(opts["postprocessors"][0]["preferredcodec"], "mp3")
+        self.assertEqual(opts["postprocessors"][0]["preferredcodec"], "wav")
 
 
 if __name__ == "__main__":

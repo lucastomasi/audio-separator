@@ -1116,28 +1116,35 @@ def lock_download_button():
 
 
 def unlock_download_button():
-    return gr.update(interactive=True, value="Descargar audio")
+    return gr.update(interactive=True, value="Descargar")
 
 
-def audio_downloader(url_media):
+def audio_downloader(url_media, with_video=True):
     unlock = unlock_download_button()
+    empty_video = None
     if IS_ZERO_GPU and url_media and "youtube.com" in url_media:
         gr.Info("Esta opción no está disponible en Hugging Face.")
-        return None, gr.update(), "YouTube no está disponible aquí.", unlock
-    from youtube_lib import download_audio
+        return None, empty_video, gr.update(), "YouTube no está disponible aquí.", unlock
+    from youtube_lib import download_media
 
     try:
-        path, reused, note = download_audio(url_media)
+        path, video_path, reused, note = download_media(
+            url_media, with_video=bool(with_video)
+        )
     except ValueError as error:
         gr.Warning(str(error))
-        return None, gr.update(), str(error), unlock
+        return None, empty_video, gr.update(), str(error), unlock
     if reused:
-        status = "Audio ya estaba bajado. Listo para separar."
+        status = "Audio (WAV 48 kHz) ya estaba. Listo para separar."
     else:
-        status = "Audio listo. Elige qué extraer y pulsa Separar."
+        status = "Audio WAV 48 kHz listo. Extraé y Separá."
+    if video_path:
+        status += " Video MP4 también listo para remux."
+    elif with_video:
+        status += " (sin video)"
     if note:
         status = f"{note} {status}"
-    return path, unlock_run_button(), status, unlock
+    return path, video_path, unlock_run_button(), status, unlock
 
 
 def clip_for_clone(source_path, start, end):
@@ -1150,7 +1157,7 @@ def clip_for_clone(source_path, start, end):
         library.register("voices", path)
         _, copied = copy_to_downloads([path], ["ref_clon"])
         saved = copied[0] if copied else path
-        return saved, f"Fragmento listo para clonar ({start}–{end})."
+        return saved, f"Recorte listo ({start}–{end})."
     except ValueError as error:
         gr.Warning(str(error))
         return None, str(error)
@@ -1168,7 +1175,7 @@ def url_media_conf():
 
 def url_button_conf():
     return gr.Button(
-        "Descargar audio",
+        "Descargar",
         variant="secondary",
         scale=1,
     )
@@ -1179,6 +1186,27 @@ def audio_conf():
         label="Canción",
         type="filepath",
         sources=["upload"],
+        # No download/share: in pywebview ↓ opens a dead-end player window.
+        buttons=[],
+    )
+
+
+def out_audio(label: str):
+    """Playback-only audio (files already copied to ~/Downloads/Audio Separator)."""
+    return gr.Audio(
+        label=label,
+        type="filepath",
+        interactive=False,
+        buttons=[],
+    )
+
+
+def out_file(label: str, file_count: str = "single"):
+    return gr.File(
+        label=label,
+        file_count=file_count,
+        interactive=False,
+        buttons=[],
     )
 
 
@@ -1321,11 +1349,7 @@ def button_conf():
 
 
 def output_conf():
-    return gr.File(
-        label="Archivos",
-        file_count="multiple",
-        interactive=True,
-    )
+    return out_file("Archivos (también en Abrir Descargas)", file_count="multiple")
 
 
 def show_vocal_components(value_name):
@@ -1349,8 +1373,9 @@ FORMAT_OPTIONS = ["MP3", "WAV", "FLAC"]
 def format_conf():
     return gr.Radio(
         choices=FORMAT_OPTIONS,
-        value="MP3",
+        value="WAV",
         label="Formato de salida",
+        info="WAV = máxima fidelidad. MP3 320 solo para compartir liviano.",
     )
 
 
@@ -1586,15 +1611,16 @@ def clone_job(text, speaker_wav):
 
 def tts_rvc_job(text, rvc_model, edge_voice, pitch):
     try:
-        from tts_rvc_engine import speak_with_rvc
+        from tts_rvc_engine import resolve_edge_voice, speak_with_rvc
 
+        voice_id = resolve_edge_voice(edge_voice)
         out = speak_with_rvc(
             text,
             rvc_model,
-            edge_voice=edge_voice or "es-AR-ElenaNeural",
+            edge_voice=voice_id,
             pitch=int(pitch or 0),
         )
-        return out, out, f"Listo (Edge→RVC). {out}"
+        return out, out, f"Listo (Edge {voice_id} → RVC). {out}"
     except ValueError as error:
         gr.Warning(str(error))
         return None, None, str(error)
@@ -1659,7 +1685,7 @@ def remix_job(
         final = files[0]
         export_dir, copied = copy_to_downloads([final], ["remix"])
         saved = copied[0] if copied else final
-        return saved, saved, f"Pistas unidas. Archivo en {export_dir}"
+        return saved, saved, f"Pistas unidas (WAV). Archivo en {export_dir}"
     except ValueError as error:
         gr.Warning(str(error))
         return None, None, str(error)
@@ -1667,6 +1693,45 @@ def remix_job(
         logger.error(str(error))
         gr.Warning("No se pudo armar el remix.")
         return None, None, "No se pudo armar el remix."
+
+
+def remux_job(video_path, audio_path):
+    try:
+        video_path = _gradio_path(video_path)
+        audio_path = _gradio_path(audio_path)
+        from video_remux import remux_audio_onto_video
+
+        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
+        os.makedirs(out_dir, exist_ok=True)
+        raw = os.path.join(out_dir, "remux.mp4")
+        remux_audio_onto_video(video_path, audio_path, raw, shortest=True)
+        _, copied = copy_to_downloads([raw], ["video_nuevo_audio"])
+        saved = copied[0] if copied else raw
+        return saved, f"Video + audio nuevo (AAC 320k, video copy). {saved}"
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudo pegar el audio al video.")
+        return None, "No se pudo pegar el audio al video."
+
+
+def cover_job(title, artist, audio_path, artistic):
+    try:
+        from album_cover import generate_cover, save_cover_with_audio
+
+        audio_path = _gradio_path(audio_path)
+        cover = generate_cover(title or "Audio Separator", artist or "", artistic=bool(artistic))
+        saved = save_cover_with_audio(cover, audio_path)
+        return saved, f"Portada lista (no toca el audio): {saved}"
+    except ValueError as error:
+        gr.Warning(str(error))
+        return None, str(error)
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning("No se pudo generar la portada.")
+        return None, str(error)
 
 
 def get_gui():
@@ -1711,6 +1776,11 @@ def get_gui():
                             with gr.Row():
                                 url_media_gui = url_media_conf()
                                 url_button_gui = url_button_conf()
+                            want_video = gr.Checkbox(
+                                True,
+                                label="También descargar video (para pegar el audio nuevo después)",
+                            )
+                            last_video = gr.State(value=None)
                             with gr.Row():
                                 clip_start = gr.Textbox(
                                     label="Inicio",
@@ -1743,11 +1813,14 @@ def get_gui():
         with gr.Group(elem_classes=["step"]):
             gr.Markdown("## 3. Resultado", elem_classes=["panel-title"])
             with gr.Row():
-                vocal_out = gr.Audio(label="Voz", type="filepath", interactive=False)
-                background_out = gr.Audio(
-                    label="Instrumental", type="filepath", interactive=False
-                )
+                vocal_out = out_audio("Voz")
+                background_out = out_audio("Instrumental")
             output_base = output_conf()
+            gr.Markdown(
+                "Los archivos se guardan en Descargas. No uses el ícono ↓ de Gradio "
+                "(en esta ventana te deja sin retorno): usá **Abrir Descargas**.",
+                elem_classes=["hint"],
+            )
             with gr.Row(elem_classes=["action-row"]):
                 open_folder_btn = gr.Button("Abrir Descargas", variant="secondary")
                 nueva_btn = gr.Button("Nueva canción", variant="secondary")
@@ -1786,9 +1859,7 @@ def get_gui():
                     rvc_btn = gr.Button(
                         "Convertir voz", variant="primary", elem_id="rvc-btn"
                     )
-                    rvc_audio = gr.Audio(
-                        label="Voz convertida", type="filepath", interactive=False
-                    )
+                    rvc_audio = out_audio("Voz convertida")
             with gr.Accordion("Pesos / biblioteca", open=False):
                 gr.Markdown(
                     "Hubert Transformers (`hubert_base/`), rmvpe y f0G/D40k viven en "
@@ -1845,10 +1916,32 @@ def get_gui():
             remix_btn = gr.Button(
                 "Unir voz + instrumental", variant="primary", elem_id="join-btn"
             )
-            remix_audio = gr.Audio(
-                label="Unión", type="filepath", interactive=False
+            remix_audio = out_audio("Unión")
+            remix_file = out_file("Archivo unido")
+            gr.Markdown(
+                "### Video y portada",
+                elem_classes=["panel-title"],
             )
-            remix_file = gr.File(label="Archivo unido", interactive=False)
+            with gr.Row():
+                remux_video_in = gr.Video(
+                    label="Video original (YouTube o subí un MP4)",
+                    sources=["upload"],
+                )
+                remux_audio_in = gr.Audio(
+                    label="Audio nuevo (remix / RVC / TTS)",
+                    type="filepath",
+                    sources=["upload"],
+                    buttons=[],
+                )
+            remux_btn = gr.Button("Pegar audio al video", variant="primary")
+            remux_file = out_file("MP4 unido")
+            with gr.Row():
+                cover_title = gr.Textbox(label="Título portada", placeholder="Nombre del tema")
+                cover_artist = gr.Textbox(label="Artista", placeholder="Opcional")
+            with gr.Row():
+                cover_btn = gr.Button("Generar portada", variant="secondary")
+                cover_ai_btn = gr.Button("Portada artística", variant="secondary")
+            cover_preview = gr.Image(label="Portada", type="filepath")
             with gr.Accordion("Si la voz es otra grabación", open=False):
                 remix_delay = gr.Slider(
                     -2000,
@@ -1877,24 +1970,27 @@ def get_gui():
             )
             with gr.Row():
                 import tts_rvc_engine as _tts_rvc_ui
+                import library as _lib_ui
 
+                _lib_ui.ensure_dirs()
+                _rvc_choices = _lib_ui.dropdown_choices(_lib_ui.list_rvc_voices())
                 tts_edge = gr.Dropdown(
                     label="Voz Edge (idioma base)",
                     choices=_tts_rvc_ui.EDGE_VOICES,
                     value="es-AR-ElenaNeural",
+                    allow_custom_value=False,
                 )
                 tts_pitch = gr.Slider(-12, 12, value=0, step=1, label="Pitch RVC")
             tts_rvc_pick = gr.Dropdown(
                 label="Modelo RVC (biblioteca)",
-                choices=[],
-                info="El mismo que en el paso 4.",
+                choices=_rvc_choices,
+                value=(_rvc_choices[0][1] if _rvc_choices else None),
+                info="El mismo que en el paso 4. Si está vacío, entrená o cargá un .pth.",
             )
             tts_btn = gr.Button(
                 "Generar voz", variant="primary", elem_id="tts-rvc-btn"
             )
-            tts_audio = gr.Audio(
-                label="Salida", type="filepath", interactive=False
-            )
+            tts_audio = out_audio("Salida")
             # Kept for Detectar voces / import (wired below)
             clone_ref = gr.Audio(
                 label="Referencia (detectar / importar)",
@@ -1972,11 +2068,12 @@ def get_gui():
             outputs=[url_button_gui, status],
         ).then(
             audio_downloader,
-            [url_media_gui],
-            [aud, button_base, status, url_button_gui],
+            [url_media_gui, want_video],
+            [aud, last_video, button_base, status, url_button_gui],
             show_progress="full",
             concurrency_limit=1,
         )
+        last_video.change(lambda p: p, last_video, remux_video_in)
         aud.change(on_audio_ready, aud, [button_base, status])
         stem_gui.change(
             show_vocal_components,
@@ -2050,6 +2147,24 @@ def get_gui():
         )
         vocal_out.change(lambda path: path, vocal_out, remix_voice)
         background_out.change(lambda path: path, background_out, remix_inst)
+        remix_audio.change(lambda path: path, remix_audio, remux_audio_in)
+        remux_btn.click(
+            remux_job,
+            inputs=[remux_video_in, remux_audio_in],
+            outputs=[remux_file, status],
+            show_progress="full",
+            concurrency_limit=1,
+        )
+        cover_btn.click(
+            lambda t, a, p: cover_job(t, a, p, False),
+            inputs=[cover_title, cover_artist, remux_audio_in],
+            outputs=[cover_preview, status],
+        )
+        cover_ai_btn.click(
+            lambda t, a, p: cover_job(t, a, p, True),
+            inputs=[cover_title, cover_artist, remux_audio_in],
+            outputs=[cover_preview, status],
+        )
         load_rvc_btn.click(
             load_rvc_into_library,
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],

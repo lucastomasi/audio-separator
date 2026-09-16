@@ -113,6 +113,22 @@ footer {
   outline-offset: 2px !important;
 }
 
+/* Hide Gradio download/share toolbars — pywebview opens a dead-end player. */
+button[aria-label="Download"],
+button[aria-label="download"],
+button[aria-label="Share"],
+button[aria-label="share"],
+a[download],
+.svelte-1ed1p2j a[download],
+[data-testid="download-file"],
+.icon-button[aria-label*="Download" i],
+.icon-button[aria-label*="Descargar" i],
+.icon-button[title*="Download" i],
+.icon-button[title*="Descargar" i] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 @media (max-width: 720px) {
   .gradio-container {
     padding: 10px 8px 28px !important;

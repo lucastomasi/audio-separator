@@ -69,6 +69,30 @@ def wait_until_ready(timeout=300):
     return False
 
 
+BLOCK_DOWNLOAD_JS = """
+(function () {
+  function block(e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var a = t.closest('a[download], a[href^="blob:"], a[href^="data:"], button[aria-label*="Download" i], button[aria-label*="Descargar" i], button[title*="Download" i]');
+    if (a) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+  }
+  document.addEventListener('click', block, true);
+})();
+"""
+
+
+def inject_download_guard(window):
+    try:
+        window.evaluate_js(BLOCK_DOWNLOAD_JS)
+    except Exception:
+        pass
+
+
 def attach_when_ready(window):
     if not wait_until_ready():
         window.load_html(
@@ -95,6 +119,15 @@ def main():
         min_size=(720, 560),
         text_select=True,
     )
+
+    def on_loaded():
+        inject_download_guard(window)
+
+    try:
+        window.events.loaded += on_loaded
+    except Exception:
+        pass
+
     webview.start(None if already else attach_when_ready, None if already else window)
 
 

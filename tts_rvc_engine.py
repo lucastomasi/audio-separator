@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+import unicodedata
 from pathlib import Path
 
 from library import find_index_for_model, list_rvc_voices
@@ -15,16 +17,63 @@ from rvc_engine import convert_voice
 APP_ROOT = Path(__file__).resolve().parent
 WORK = APP_ROOT / "library" / "tts_rvc_work"
 
+# Gradio 6 Dropdown tuples: (label, value). Value MUST be the Edge ShortName.
 EDGE_VOICES = [
-    ("es-AR-ElenaNeural", "Argentina — Elena"),
-    ("es-AR-TomasNeural", "Argentina — Tomás"),
-    ("es-MX-DaliaNeural", "México — Dalia"),
-    ("es-MX-JorgeNeural", "México — Jorge"),
-    ("es-ES-ElviraNeural", "España — Elvira"),
-    ("es-ES-AlvaroNeural", "España — Álvaro"),
-    ("es-US-PalomaNeural", "EE.UU. — Paloma"),
-    ("es-US-AlonsoNeural", "EE.UU. — Alonso"),
+    ("Elena — Argentina", "es-AR-ElenaNeural"),
+    ("Tomás — Argentina", "es-AR-TomasNeural"),
+    ("Dalia — México", "es-MX-DaliaNeural"),
+    ("Jorge — México", "es-MX-JorgeNeural"),
+    ("Elvira — España", "es-ES-ElviraNeural"),
+    ("Álvaro — España", "es-ES-AlvaroNeural"),
+    ("Paloma — EE.UU.", "es-US-PalomaNeural"),
+    ("Alonso — EE.UU.", "es-US-AlonsoNeural"),
 ]
+
+EDGE_VOICE_IDS = {value for _label, value in EDGE_VOICES}
+_EDGE_ID_RE = re.compile(r"es-[A-Z]{2}-[A-Za-z]+Neural")
+
+
+def _norm(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text or "")
+    for dash in ("\u2014", "\u2013", "\u2212"):
+        text = text.replace(dash, "-")
+    # fold accents: Tomás -> Tomas
+    text = "".join(
+        c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
+    )
+    return text.strip().lower()
+
+
+def resolve_edge_voice(raw) -> str:
+    """Map Gradio dropdown value/label → Edge ShortName."""
+    if isinstance(raw, (list, tuple)) and raw:
+        raw = raw[-1]  # prefer value if (label, value) leaked as tuple
+    if isinstance(raw, dict):
+        raw = raw.get("value") or raw.get("path") or raw.get("name") or ""
+    voice = str(raw or "").strip()
+    if not voice:
+        return "es-AR-ElenaNeural"
+    if voice in EDGE_VOICE_IDS:
+        return voice
+    # Exact / fuzzy label match
+    n = _norm(voice)
+    for label, vid in EDGE_VOICES:
+        if voice == label or voice == vid:
+            return vid
+        if _norm(label) == n or _norm(vid) == n:
+            return vid
+        # "argentina tomas" / "tomas argentina"
+        if "tomas" in n and "argent" in n and vid == "es-AR-TomasNeural":
+            return vid
+        if "elena" in n and "argent" in n and vid == "es-AR-ElenaNeural":
+            return vid
+    m = _EDGE_ID_RE.search(voice)
+    if m and m.group(0) in EDGE_VOICE_IDS:
+        return m.group(0)
+    raise ValueError(
+        f"Voz Edge inválida: {voice!r}. Elegí una de la lista "
+        f"(ej. Tomás — Argentina → es-AR-TomasNeural)."
+    )
 
 
 def resolve_voice_model(voice_name_or_path: str | None) -> tuple[str, str | None]:
@@ -34,6 +83,8 @@ def resolve_voice_model(voice_name_or_path: str | None) -> tuple[str, str | None
             "No hay modelos RVC en la biblioteca. Entrená uno o cargá un .pth."
         )
     path = voice_name_or_path
+    if isinstance(path, (list, tuple)) and path:
+        path = path[-1]
     if not path:
         path = voices[0]["path"]
     elif not os.path.isfile(str(path)):
@@ -49,6 +100,8 @@ def resolve_voice_model(voice_name_or_path: str | None) -> tuple[str, str | None
 async def _edge_tts_to_file(text: str, voice: str, dest_mp3: Path) -> Path:
     import edge_tts
 
+    if voice not in EDGE_VOICE_IDS:
+        raise ValueError(f"Refuse Edge voice that is not a ShortName: {voice!r}")
     dest_mp3.parent.mkdir(parents=True, exist_ok=True)
     communicate = edge_tts.Communicate(text, voice=voice)
     await communicate.save(str(dest_mp3))
@@ -96,16 +149,15 @@ def speak_with_rvc(
     text = (text or "").strip()
     if not text:
         raise ValueError("Escribí un texto.")
-    # Gradio dropdown may pass label or path
     if isinstance(model_path, (list, tuple)) and model_path:
-        model_path = model_path[0]
+        model_path = model_path[-1]
     pth, index = resolve_voice_model(model_path)
+    voice = resolve_edge_voice(edge_voice)
+
     WORK.mkdir(parents=True, exist_ok=True)
     edge_mp3 = WORK / "edge_tmp.mp3"
     edge_wav = WORK / "edge_tmp.wav"
-    asyncio.run(
-        _edge_tts_to_file(text, edge_voice or "es-AR-ElenaNeural", edge_mp3)
-    )
+    asyncio.run(_edge_tts_to_file(text, voice, edge_mp3))
     _to_wav(edge_mp3, edge_wav)
     if not edge_wav.is_file():
         raise ValueError("Falta el audio de Edge TTS tras convertir a WAV.")
@@ -119,7 +171,6 @@ def speak_with_rvc(
         f0_method="rmvpe",
         copy_downloads=True,
     )
-    # Rename downloads copy to a clearer name when possible
     if out and os.path.isfile(out):
         nicer = Path(out).with_name("voz_tts_rvc.wav")
         if Path(out).resolve() != nicer.resolve():
