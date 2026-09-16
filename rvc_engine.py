@@ -29,11 +29,11 @@ def _support_roots():
 
 
 def local_hubert_path():
+    """Path for infer_rvc_python convert: classic hubert_base.pt (not Transformers dir)."""
     for root in _support_roots():
-        for name in ("hubert_base", "hubert_base.pt"):
-            path = os.path.join(root, name)
-            if os.path.exists(path):
-                return path
+        path = os.path.join(root, "hubert_base.pt")
+        if os.path.isfile(path) and os.path.getsize(path) > 0:
+            return path
     return None
 
 
