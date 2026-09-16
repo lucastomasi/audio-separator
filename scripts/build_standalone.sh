@@ -107,13 +107,36 @@ rsync -a --exclude '*.bak' --exclude 'pytorch_model.bin' \
   "$APPDIR/library/models/rvc/hubert_base/" \
   "$APPDIR/third_party/RVC-WebUI/assets/hubert_base/"
 
-echo "==> Refresh bundle venv from project .venv (site-packages + py)"
-# Keep bundle interpreter; sync packages
+echo "==> Sync site-packages from working project .venv (avoid resolver fights)"
 if [[ ! -x "$VENV/bin/python" ]]; then
   echo "ERROR: bundle venv missing at $VENV"
   exit 1
 fi
-uv pip install --python "$VENV/bin/python" -r "$ROOT/requirements-macos.txt"
+# Copy installed packages from the known-good .venv into the bundle venv.
+SRC_SP="$SRC_VENV/lib/python3.12/site-packages"
+DST_SP="$VENV/lib/python3.12/site-packages"
+if [[ ! -d "$SRC_SP" ]]; then
+  echo "ERROR: no site-packages in $SRC_VENV"
+  exit 1
+fi
+mkdir -p "$DST_SP"
+rsync -a --delete \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  --exclude 'pip' \
+  --exclude 'pip-*' \
+  --exclude 'setuptools' \
+  --exclude 'setuptools-*' \
+  --exclude '_distutils_hack' \
+  --exclude 'pkg_resources' \
+  --exclude 'distutils-precedence.pth' \
+  "$SRC_SP/" "$DST_SP/"
+# Ensure critical binaries exist in bundle venv
+for bin in python python3 pip; do
+  if [[ -e "$SRC_VENV/bin/$bin" && ! -e "$VENV/bin/$bin" ]]; then
+    cp -f "$SRC_VENV/bin/$bin" "$VENV/bin/$bin" 2>/dev/null || true
+  fi
+done
 "$VENV/bin/python" -c "import av, gradio, torch; print('venv ok', av.__version__, torch.__version__)"
 
 # Ensure launcher is executable
