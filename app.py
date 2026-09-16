@@ -905,6 +905,45 @@ def convert_format(file_paths, media_dir, target_format):
 
 
 IDLE_STATUS = "1 Canción → 2 Extraer → 3 Resultado → 4 Voz (RVC) → 5 Unir."
+
+
+def _install_status_line():
+    try:
+        from install_rvc_assets import missing_rvc_assets, rvc_assets_ready
+
+        if rvc_assets_ready():
+            return IDLE_STATUS
+        missing = missing_rvc_assets()
+        return (
+            f"Faltan pesos RVC ({len(missing)}). "
+            "Pulsá «Completar instalación» (una vez, ~700 MB públicos)."
+        )
+    except Exception:
+        return IDLE_STATUS
+
+
+def install_rvc_job():
+    try:
+        from install_rvc_assets import install_rvc_assets, missing_rvc_assets
+
+        lines = []
+
+        def _log(msg):
+            lines.append(msg)
+
+        written = install_rvc_assets(log=_log)
+        left = missing_rvc_assets()
+        if left:
+            return (
+                "Instalación incompleta: " + ", ".join(left),
+                "\n".join(lines[-12:]),
+            )
+        note = f"Listo ({len(written)} archivos). Ya podés Entrenar / Convertir."
+        return note, "\n".join(lines[-12:]) or note
+    except Exception as error:
+        logger.error(str(error))
+        gr.Warning(str(error))
+        return f"Falló la descarga: {error}", str(error)
 READY_STATUS = "Audio listo. Elegí qué extraer y pulsá Separar."
 RUN_STATUS = "Separando… un tema largo puede tardar varios minutos."
 DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
@@ -1593,7 +1632,20 @@ def get_gui():
             "Cerrá la ventana para salir.",
             elem_classes=["lede"],
         )
-        status = gr.Markdown(IDLE_STATUS, elem_id="job-status")
+        status = gr.Markdown(_install_status_line(), elem_id="job-status")
+        with gr.Row(elem_classes=["action-row"]):
+            install_btn = gr.Button(
+                "Completar instalación (pesos RVC)",
+                variant="secondary",
+                elem_id="install-btn",
+            )
+            install_log = gr.Textbox(
+                label="Instalación",
+                interactive=False,
+                lines=3,
+                visible=True,
+                placeholder="Solo hace falta la primera vez (versión lite).",
+            )
 
         with gr.Row(equal_height=False, elem_classes=["top-row"]):
             with gr.Column(scale=6):
@@ -1833,6 +1885,12 @@ def get_gui():
                     background_compressor_attack_ms_gui = background_compressor_attack_ms_conf()
                     background_compressor_release_ms_gui = background_compressor_release_ms_conf()
 
+        install_btn.click(
+            install_rvc_job,
+            outputs=[status, install_log],
+            show_progress="full",
+            concurrency_limit=1,
+        )
         url_button_gui.click(
             lock_download_button,
             outputs=[url_button_gui, status],

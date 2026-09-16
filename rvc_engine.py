@@ -65,7 +65,7 @@ def require_support_models():
     rmvpe = local_rmvpe_path()
     missing = []
     if not hubert:
-        missing.append("library/models/rvc/hubert_base")
+        missing.append("library/models/rvc/hubert_base.pt")
     if not rmvpe:
         missing.append("library/models/rvc/rmvpe.pt")
     if missing:
