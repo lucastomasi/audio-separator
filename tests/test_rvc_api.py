@@ -33,7 +33,7 @@ class RvcApiTests(unittest.TestCase):
                     rvc_api.resolve_voice("nope")
 
     def test_require_exclusive_cli_aborts(self):
-        fake = "12345 /Users/lucastomasi/grok/Audio_separator/.venv/bin/python -u desktop.py"
+        fake = "12345 python -u desktop.py Audio_separator"
         with mock.patch.object(rvc_api, "_conflicting_rvc_processes", return_value=[fake]):
             with self.assertRaises(SystemExit) as ctx:
                 rvc_api.require_exclusive_cli()

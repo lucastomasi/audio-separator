@@ -101,38 +101,35 @@ def _run(cmd, log_path: Path):
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
 
 
+def _replace_with_link(src: Path, dest: Path):
+    """Point dest at src (symlink). Copy only if the OS refuses links."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    src = src.resolve()
+    if dest.exists() or dest.is_symlink():
+        if dest.is_dir() and not dest.is_symlink():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
+    try:
+        os.symlink(src, dest)
+        return
+    except OSError:
+        pass
+    if src.is_dir():
+        shutil.copytree(src, dest)
+    else:
+        shutil.copy2(src, dest)
+
+
 def _sync_assets(assets):
     hubert_dst = RVC_ROOT / "assets" / "hubert_base"
     rmvpe_dst = RVC_ROOT / "assets" / "rmvpe"
     pre_dst = RVC_ROOT / "assets" / "pretrained_v2"
-    for folder in (hubert_dst, rmvpe_dst, pre_dst):
-        folder.mkdir(parents=True, exist_ok=True)
+    rmvpe_dst.mkdir(parents=True, exist_ok=True)
+    pre_dst.mkdir(parents=True, exist_ok=True)
 
     hubert = Path(assets["hubert"])
-    # Replace any stale classic .pt so Transformers load sees a clean dir.
-    # Prefer safetensors on torch<2.6 (Intel Mac): drop .bin if .safetensors present.
-    if hubert_dst.exists():
-        for stale in hubert_dst.iterdir():
-            if stale.name in ("hubert_base.pt", "pytorch_model.bin.bak"):
-                stale.unlink()
-    has_sft = (hubert / "model.safetensors").is_file()
-    for item in hubert.iterdir():
-        if item.name.endswith(".bak"):
-            continue
-        if has_sft and item.name == "pytorch_model.bin":
-            continue
-        target = hubert_dst / item.name
-        if item.is_file():
-            shutil.copy2(item, target)
-        elif item.is_dir():
-            if target.exists():
-                shutil.rmtree(target)
-            shutil.copytree(item, target)
-    # Intel Mac / torch 2.2: transformers refuses torch.load on .bin.
-    for junk in ("pytorch_model.bin", "pytorch_model.bin.bak", "hubert_base.pt"):
-        left = hubert_dst / junk
-        if left.is_file():
-            left.unlink()
+    _replace_with_link(hubert, hubert_dst)
     if not (hubert_dst / "model.safetensors").is_file() and not (
         hubert_dst / "pytorch_model.bin"
     ).is_file():
@@ -141,9 +138,9 @@ def _sync_assets(assets):
             "(model.safetensors)."
         )
 
-    shutil.copy2(assets["rmvpe"], rmvpe_dst / "rmvpe.pt")
-    shutil.copy2(assets["g"], pre_dst / "f0G40k.pth")
-    shutil.copy2(assets["d"], pre_dst / "f0D40k.pth")
+    _replace_with_link(Path(assets["rmvpe"]), rmvpe_dst / "rmvpe.pt")
+    _replace_with_link(Path(assets["g"]), pre_dst / "f0G40k.pth")
+    _replace_with_link(Path(assets["d"]), pre_dst / "f0D40k.pth")
 
 
 def _prepare_dataset(dataset_files, exp_name):

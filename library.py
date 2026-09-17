@@ -5,15 +5,33 @@ import shutil
 import time
 import uuid
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "library")
-PATHS = {
-    "uvr": os.path.join(ROOT, "models", "uvr"),
-    "rvc": os.path.join(ROOT, "models", "rvc"),
-    "xtts": os.path.join(ROOT, "models", "xtts"),
-    "rvc_voices": os.path.join(ROOT, "models", "rvc_voices"),
-    "voices": os.path.join(ROOT, "voices"),
-}
-INDEX = os.path.join(ROOT, "library.json")
+def running_in_app_bundle():
+    from app_env import in_app_bundle
+
+    return in_app_bundle()
+
+
+def data_home():
+    """AUDIO_SEPARATOR_DATA, or App Support inside .app, else package dir."""
+    from app_env import data_dir
+
+    return data_dir()
+
+
+def _apply_paths():
+    global ROOT, PATHS, INDEX
+    ROOT = os.path.join(data_home(), "library")
+    PATHS = {
+        "uvr": os.path.join(ROOT, "models", "uvr"),
+        "rvc": os.path.join(ROOT, "models", "rvc"),
+        "xtts": os.path.join(ROOT, "models", "xtts"),
+        "rvc_voices": os.path.join(ROOT, "models", "rvc_voices"),
+        "voices": os.path.join(ROOT, "voices"),
+    }
+    INDEX = os.path.join(ROOT, "library.json")
+
+
+_apply_paths()
 
 
 def ensure_dirs():
@@ -33,9 +51,31 @@ def _load():
     ensure_dirs()
     try:
         with open(INDEX, encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
+        if not isinstance(data, dict):
+            return {"items": []}
+        data.setdefault("items", [])
+        data.setdefault("session", {})
+        return data
     except Exception:
-        return {"items": []}
+        return {"items": [], "session": {}}
+
+
+def set_session_meta(**fields):
+    """Persist small session keys (e.g. last YouTube video path)."""
+    data = _load()
+    session = data.setdefault("session", {})
+    for key, value in fields.items():
+        if value is None:
+            session.pop(key, None)
+        else:
+            session[key] = value
+    _save(data)
+    return session
+
+
+def get_session_meta():
+    return dict((_load().get("session") or {}))
 
 
 def register(kind, src_path, name=None):

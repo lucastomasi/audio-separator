@@ -1,0 +1,14 @@
+{
+  "theme": { "file": "", "class": "" },
+  "plugins": [],
+  "discord_presence": false,
+  "lang": { "override": false, "selected_lang": "es_ES" },
+  "version": "local",
+  "precision": "fp32",
+  "rmvpe_high_register": {
+    "enabled": false,
+    "mode": "true_pitch",
+    "f0_ceil": 1250
+  },
+  "realtime": {}
+}

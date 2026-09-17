@@ -26,7 +26,7 @@ class RvcEngineTests(unittest.TestCase):
                     rvc_engine.require_support_models()
         self.assertIn("Faltan los modelos locales", str(ctx.exception))
 
-    def test_convert_calls_local_loader(self):
+    def test_convert_calls_vc_runner(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         audio = os.path.join(tmp.name, "v.wav")
@@ -35,27 +35,19 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-
-        fake = mock.Mock()
-        fake.apply_conf.return_value = "ok"
-        fake.return_value = [out]
-
         with mock.patch.object(rvc_engine, "_scan_model"):
-            with mock.patch.object(rvc_engine, "get_converter", return_value=fake):
+            with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
                 with mock.patch.object(
-                    rvc_engine, "copy_to_downloads", return_value=(tmp.name, [out])
+                    rvc_engine,
+                    "copy_to_downloads",
+                    return_value=(tmp.name, [out]),
                 ):
                     result = rvc_engine.convert_voice(
                         audio, model, index_path="/tmp/model.index"
                     )
-
         self.assertEqual(result, out)
-        fake.apply_conf.assert_called_once()
-        kwargs = fake.apply_conf.call_args.kwargs
-        self.assertEqual(kwargs["pitch_algo"], "rmvpe")
-        self.assertEqual(kwargs["pitch_lvl"], 0)
-        self.assertEqual(kwargs["file_index"], "/tmp/model.index")
-        fake.assert_called_once()
+        infer.assert_called_once()
+        self.assertEqual(infer.call_args[0][0], audio)
 
     def test_convert_passes_pitch_and_index_rate(self):
         tmp = tempfile.TemporaryDirectory()
@@ -66,11 +58,8 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        fake = mock.Mock()
-        fake.apply_conf.return_value = "ok"
-        fake.return_value = [out]
         with mock.patch.object(rvc_engine, "_scan_model"):
-            with mock.patch.object(rvc_engine, "get_converter", return_value=fake):
+            with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
                 rvc_engine.convert_voice(
                     audio,
                     model,
@@ -79,9 +68,9 @@ class RvcEngineTests(unittest.TestCase):
                     f0_method="rmvpe",
                     copy_downloads=False,
                 )
-        kwargs = fake.apply_conf.call_args.kwargs
-        self.assertEqual(kwargs["pitch_lvl"], 2)
-        self.assertEqual(kwargs["index_influence"], 0.8)
+        kwargs = infer.call_args.kwargs
+        self.assertEqual(kwargs["pitch"], 2)
+        self.assertEqual(kwargs["index_rate"], 0.8)
 
 
 if __name__ == "__main__":

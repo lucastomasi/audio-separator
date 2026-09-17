@@ -1,4 +1,5 @@
 .venv/
+.venv-vc/
 __pycache__/
 *.pyc
 .DS_Store
@@ -24,7 +25,10 @@ library/voices/**
 !library/**/.gitkeep
 !library/library.json
 dist/
-third_party/
+third_party/RVC-WebUI/
+third_party/*
+!third_party/vc/
+!third_party/vc/**
 library/train_data/
 library/train_runs/
 library/tts_rvc_work/

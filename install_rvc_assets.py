@@ -71,19 +71,32 @@ def rvc_assets_ready() -> bool:
     return not missing_rvc_assets()
 
 
+def _link_or_copy(src: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    try:
+        os.link(src, dest)
+    except OSError:
+        try:
+            os.symlink(src, dest)
+        except OSError:
+            shutil.copy2(src, dest)
+
+
 def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     from huggingface_hub import hf_hub_download
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Never pass a filesystem path as repo_id (HFValidationError).
-    if "/" in REPO and REPO.startswith("/"):
+    if REPO.startswith("/"):
         raise RuntimeError(f"repo_id inválido: {REPO}")
     cached = hf_hub_download(
         repo_id=REPO,
         filename=repo_file,
-        local_dir=str(cache_dir),
+        cache_dir=str(cache_dir) if cache_dir else None,
+        resume_download=True,
     )
-    shutil.copy2(cached, dest)
+    _link_or_copy(Path(cached), dest)
 
 
 def _hubert_pt_is_fairseq(path: Path) -> bool:
@@ -136,22 +149,22 @@ def install_rvc_assets(log=None) -> list[str]:
             log(msg)
 
     root = _root()
-    cache = Path(__file__).resolve().parent / ".hf_rvc_cache"
+    cache = Path.home() / ".cache" / "huggingface" / "hub"
     cache.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
 
-    for local_name, candidates in HF_FILE_CANDIDATES.items():
+    def _fetch_named(local_name: str, candidates: tuple) -> str | None:
         dest = root / local_name
         if local_name == "hubert_base.pt" and _hubert_pt_is_fairseq(dest):
             _log(f"OK {local_name} (fairseq)")
-            continue
+            return None
         if (
             local_name != "hubert_base.pt"
             and dest.is_file()
             and dest.stat().st_size > 0
         ):
             _log(f"OK {local_name}")
-            continue
+            return None
         if local_name == "hubert_base.pt" and dest.is_file():
             bad = dest.with_suffix(dest.suffix + ".invalid")
             _log(f"hubert_base.pt no es fairseq; renombro a {bad.name}")
@@ -168,8 +181,18 @@ def install_rvc_assets(log=None) -> list[str]:
                 _log(f"  no en {repo_file}: {exc}")
         if last_err is not None or not dest.is_file():
             raise RuntimeError(f"No se pudo bajar {local_name}: {last_err}")
-        written.append(local_name)
         _log(f"Listo {local_name} ({dest.stat().st_size} bytes)")
+        return local_name
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    jobs = list(HF_FILE_CANDIDATES.items())
+    with ThreadPoolExecutor(max_workers=min(4, len(jobs) or 1)) as pool:
+        futs = [pool.submit(_fetch_named, name, cands) for name, cands in jobs]
+        for fut in as_completed(futs):
+            got = fut.result()
+            if got:
+                written.append(got)
 
     hubert_dir = root / "hubert_base"
     hubert_dir.mkdir(parents=True, exist_ok=True)

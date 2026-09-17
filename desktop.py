@@ -7,9 +7,11 @@ import time
 
 import webview
 
-URL = "http://127.0.0.1:7860"
-HOST = "127.0.0.1"
-PORT = 7860
+from app_env import host as env_host, pick_port
+
+HOST = env_host()
+PORT = pick_port()
+URL = f"http://{HOST}:{PORT}"
 SPLASH = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -22,13 +24,14 @@ SPLASH = """<!DOCTYPE html>
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #fafafa;
-      color: #18181b;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      background: #F2F2F7;
+      color: #1D1D1F;
+      -webkit-font-smoothing: antialiased;
     }
     .card { text-align: center; padding: 2rem; }
-    h1 { font-size: 1.6rem; margin: 0 0 .5rem; }
-    p { margin: 0; color: #52525b; }
+    h1 { font-size: 1.45rem; margin: 0 0 .4rem; font-weight: 700; letter-spacing: -0.03em; }
+    p { margin: 0; color: #86868B; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -123,8 +126,20 @@ def main():
     def on_loaded():
         inject_download_guard(window)
 
+    def on_closed():
+        try:
+            from vc_runner import stop_vc_worker
+
+            stop_vc_worker()
+        except Exception:
+            pass
+
     try:
         window.events.loaded += on_loaded
+    except Exception:
+        pass
+    try:
+        window.events.closed += on_closed
     except Exception:
         pass
 

@@ -1,24 +1,11 @@
-"""Local RVC conversion. No Hugging Face download, no extra UI options."""
-import gc
+"""Voice conversion: validate paths, scan .pth, run isolated engine."""
 import os
-import sys
-import types
-
-# Before torch/OpenMP load: avoid thread+OpenMP deadlocks / segfaults on Intel Mac.
-# KMP_DUPLICATE_LIB_OK: desktop.py + CLI both load libiomp → intermittent SIGSEGV.
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from picklescan.scanner import scan_file_path
 
 from exports import copy_to_downloads
-
 from library import rvc_support_dir
+from vc_runner import ensure_vc_engine, run_vc_infer, vc_python, vc_root
 
 RVC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models")
 
@@ -40,11 +27,6 @@ def _is_transformers_hubert_dir(path):
 
 
 def local_hubert_path():
-    """HuBERT for infer_rvc_python: Transformers folder (from_pretrained).
-
-    Do NOT pass hubert_base.pt — HuggingFace treats the .pt path as a repo id
-    and raises HFValidationError.
-    """
     for root in _support_roots():
         path = os.path.join(root, "hubert_base")
         if _is_transformers_hubert_dir(path):
@@ -59,28 +41,15 @@ def local_rmvpe_path():
             return path
     return None
 
-_converter = None
-
-
-def _stub_pyworld():
-    if "pyworld" in sys.modules:
-        return
-
-    def _missing(*_args, **_kwargs):
-        raise RuntimeError("Este pitch no está disponible. Se usa rmvpe.")
-
-    stub = types.ModuleType("pyworld")
-    stub.harvest = _missing
-    stub.stonemask = _missing
-    sys.modules["pyworld"] = stub
-
 
 def require_support_models():
     hubert = local_hubert_path()
     rmvpe = local_rmvpe_path()
     missing = []
     if not hubert:
-        missing.append("library/models/rvc/hubert_base/ (config.json + model.safetensors)")
+        missing.append(
+            "library/models/rvc/hubert_base/ (config.json + model.safetensors)"
+        )
     if not rmvpe:
         missing.append("library/models/rvc/rmvpe.pt")
     if missing:
@@ -102,51 +71,6 @@ def _scan_model(model_path):
         raise ValueError("El archivo del modelo no pasó la revisión de seguridad.")
 
 
-def _patch_inline_infer(loader):
-    """infer_rvc_python always spawns Thread(s); on Mac Intel that deadlocks
-    (main join + worker lock + libiomp). Run infer on the main thread instead.
-    """
-
-    def run_threads_inline(self, threads):
-        for thread in threads:
-            target = thread._target
-            args = thread._args or ()
-            kwargs = thread._kwargs or {}
-            if target is not None:
-                target(*args, **kwargs)
-        gc.collect()
-
-    loader.run_threads = types.MethodType(run_threads_inline, loader)
-    return loader
-
-
-def get_converter():
-    global _converter
-    if _converter is not None:
-        return _converter
-    hubert, rmvpe = require_support_models()
-    _stub_pyworld()
-    try:
-        import torch
-
-        torch.set_num_threads(1)
-        if hasattr(torch, "set_num_interop_threads"):
-            torch.set_num_interop_threads(1)
-    except Exception:
-        pass
-    from infer_rvc_python import BaseLoader
-
-    _converter = _patch_inline_infer(
-        BaseLoader(
-            only_cpu=True,
-            hubert_path=hubert,
-            rmvpe_path=rmvpe,
-            preload_models=False,
-        )
-    )
-    return _converter
-
-
 def convert_voice(
     audio_path,
     model_path,
@@ -160,7 +84,7 @@ def convert_voice(
     rms_mix_rate=0.25,
     copy_downloads=True,
 ):
-    """Convert with a library .pth (+ optional .index). Mac Intel: CPU, no half."""
+    """Convert with a library .pth (+ optional .index) via isolated engine."""
     if isinstance(audio_path, dict):
         audio_path = audio_path.get("path") or audio_path.get("name")
     if isinstance(model_path, dict):
@@ -171,37 +95,17 @@ def convert_voice(
         )
     if not model_path or not os.path.isfile(str(model_path)):
         raise ValueError("Falta el modelo RVC (.pth) en disco.")
-    audio_path = str(audio_path)
-    model_path = str(model_path)
-    _scan_model(model_path)
-    converter = get_converter()
-    tag = "local_voice"
-    converter.apply_conf(
-        tag=tag,
-        file_model=model_path,
-        pitch_algo=f0_method or "rmvpe",
-        pitch_lvl=int(pitch),
-        file_index=index_path or "",
-        index_influence=float(index_rate),
-        respiration_median_filtering=int(filter_radius),
-        envelope_ratio=float(rms_mix_rate),
-        consonant_breath_protection=float(protect),
-        resample_sr=0,
+    _scan_model(str(model_path))
+    produced = run_vc_infer(
+        str(audio_path),
+        str(model_path),
+        index_path,
+        pitch=pitch,
+        index_rate=index_rate,
+        f0_method=f0_method,
+        protect=protect,
     )
-    results = converter(
-        [audio_path],
-        tag,
-        overwrite=False,
-        parallel_workers=1,
-        type_output="wav",
-        show_progress=False,
-    )
-    if not results:
-        raise ValueError("La conversión no produjo audio.")
-    out_path = results[0] if isinstance(results, (list, tuple)) else results
-    if not out_path or not os.path.isfile(out_path):
-        raise ValueError("La conversión no produjo audio.")
     if not copy_downloads:
-        return os.path.abspath(out_path)
-    _, copied = copy_to_downloads([out_path], ["voz_rvc"])
-    return copied[0] if copied else os.path.abspath(out_path)
+        return produced
+    _, copied = copy_to_downloads([produced], ["voz_rvc"])
+    return copied[0] if copied else produced

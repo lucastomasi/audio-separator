@@ -59,6 +59,12 @@ class LibraryTests(unittest.TestCase):
         choices = library.dropdown_choices(voices)
         self.assertIn("+index", choices[0][0])
 
+    def test_session_meta(self):
+        library.set_session_meta(last_video_path="/tmp/a.mp4")
+        self.assertEqual(library.get_session_meta()["last_video_path"], "/tmp/a.mp4")
+        library.set_session_meta(last_video_path=None)
+        self.assertNotIn("last_video_path", library.get_session_meta())
+
 
 if __name__ == "__main__":
     unittest.main()

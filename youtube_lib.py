@@ -15,7 +15,9 @@ YOUTUBE_ID_RE = re.compile(
 
 
 def downloads_dir():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+    from library import data_home
+
+    path = os.path.join(data_home(), "downloads")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -92,6 +94,7 @@ def ydl_audio_options(directory):
         "outtmpl": os.path.join(directory, "%(id)s.%(ext)s"),
         "restrictfilenames": True,
         "remote_components": ["ejs:github"],
+        "concurrent_fragment_downloads": 4,
     }
     return _ydl_runtime(opts)
 
@@ -108,6 +111,7 @@ def ydl_video_options(directory):
         "outtmpl": os.path.join(directory, "%(id)s.%(ext)s"),
         "restrictfilenames": True,
         "remote_components": ["ejs:github"],
+        "concurrent_fragment_downloads": 4,
     }
     return _ydl_runtime(opts)
 

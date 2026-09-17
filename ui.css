@@ -1,6 +1,17 @@
+/* macOS-like shell: SF stack, system blue, grouped panels */
+
 .gradio-container {
-  max-width: 980px !important;
-  padding: 14px 14px 36px !important;
+  max-width: 900px !important;
+  padding: 10px 14px 32px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    Inter, sans-serif !important;
+  background: #F2F2F7 !important;
+  color: #1D1D1F !important;
+}
+
+.gradio-container,
+.gradio-container * {
+  -webkit-font-smoothing: antialiased;
 }
 
 footer {
@@ -8,95 +19,84 @@ footer {
 }
 
 .app-header h1 {
-  margin: 0 0 6px !important;
-  font-size: 1.5rem !important;
+  margin: 2px 0 0 !important;
+  font-size: 1.38rem !important;
+  font-weight: 700 !important;
   letter-spacing: -0.03em !important;
+  color: #1D1D1F !important;
 }
 
 .lede {
-  margin: 0 0 12px !important;
-  font-size: 0.95rem !important;
-  line-height: 1.45 !important;
-  color: #3f3f46 !important;
+  margin: 2px 0 6px !important;
+  font-size: 0.82rem !important;
+  color: #86868B !important;
 }
 
-.dark .lede {
-  color: #d4d4d8 !important;
+.stepper {
+  margin: 0 0 10px !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+  color: #86868B !important;
 }
 
 .hint {
-  margin: 0 0 10px !important;
-  font-size: 0.86rem !important;
-  line-height: 1.4 !important;
-  color: #71717a !important;
-}
-
-.dark .hint {
-  color: #a1a1aa !important;
+  margin: 0 0 8px !important;
+  font-size: 0.78rem !important;
+  line-height: 1.35 !important;
+  color: #86868B !important;
 }
 
 .warn-hint {
-  color: #b45309 !important;
-}
-
-.dark .warn-hint {
-  color: #fbbf24 !important;
+  color: #FF9F0A !important;
 }
 
 #job-status {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: 0 0 14px !important;
-  padding: 10px 14px !important;
-  border-radius: 12px !important;
-  background: #f4f4f5 !important;
-  color: #18181b !important;
-  font-size: 0.92rem !important;
-  line-height: 1.4 !important;
-  border: 1px solid #e4e4e7 !important;
-}
-
-.dark #job-status {
-  background: #18181b !important;
-  color: #fafafa !important;
-  border-color: #3f3f46 !important;
+  margin: 0 0 12px !important;
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  color: #1D1D1F !important;
+  font-size: 0.84rem !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04) !important;
 }
 
 .step {
-  margin-bottom: 12px !important;
-  padding: 14px 16px 16px !important;
-  border-radius: 14px !important;
-  border: 1px solid #e4e4e7 !important;
-  background: #fafafa !important;
-}
-
-.dark .step {
-  border-color: #3f3f46 !important;
-  background: #18181b !important;
+  margin-bottom: 10px !important;
+  padding: 12px 14px 14px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  background: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 #step-voice {
-  border-color: #c4b5fd !important;
-}
-
-.dark #step-voice {
-  border-color: #6d28d9 !important;
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 .panel-title {
-  margin: 0 0 8px !important;
-  font-size: 1.02rem !important;
-  font-weight: 700 !important;
+  margin: 0 0 6px !important;
+  font-size: 0.92rem !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.02em !important;
+  color: #1D1D1F !important;
 }
 
 #run-btn,
 #rvc-btn,
 #train-btn,
-#join-btn {
-  min-height: 48px !important;
-  font-size: 1.02rem !important;
-  font-weight: 700 !important;
+#join-btn,
+#tts-rvc-btn {
+  min-height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
 }
 
 .action-row {
@@ -109,35 +109,59 @@ footer {
 }
 
 :focus-visible {
-  outline: 2px solid #7c3aed !important;
-  outline-offset: 2px !important;
+  outline: 3px solid rgba(0, 122, 255, 0.45) !important;
+  outline-offset: 1px !important;
 }
 
-/* Hide Gradio download/share toolbars — pywebview opens a dead-end player. */
 button[aria-label="Download"],
 button[aria-label="download"],
 button[aria-label="Share"],
 button[aria-label="share"],
 a[download],
-.svelte-1ed1p2j a[download],
 [data-testid="download-file"],
 .icon-button[aria-label*="Download" i],
-.icon-button[aria-label*="Descargar" i],
-.icon-button[title*="Download" i],
-.icon-button[title*="Descargar" i] {
+.icon-button[aria-label*="Descargar" i] {
   display: none !important;
   pointer-events: none !important;
 }
 
+.dark .gradio-container {
+  background: #1C1C1E !important;
+  color: #F5F5F7 !important;
+}
+
+.dark .app-header h1,
+.dark .panel-title {
+  color: #F5F5F7 !important;
+}
+
+.dark .lede,
+.dark .hint,
+.dark .stepper {
+  color: #98989D !important;
+}
+
+.dark #job-status {
+  background: rgba(44, 44, 46, 0.88) !important;
+  color: #F5F5F7 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .step {
+  background: #2C2C2E !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
 @media (max-width: 720px) {
   .gradio-container {
-    padding: 10px 8px 28px !important;
+    padding: 8px 8px 24px !important;
   }
 
   #run-btn,
   #train-btn,
   #rvc-btn,
-  #join-btn {
+  #join-btn,
+  #tts-rvc-btn {
     position: sticky;
     bottom: 8px;
     z-index: 5;

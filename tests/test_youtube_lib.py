@@ -124,6 +124,7 @@ class DownloadAudioTests(unittest.TestCase):
         self.assertIn("bestaudio", opts["format"])
         self.assertTrue(opts["noplaylist"])
         self.assertEqual(opts["postprocessors"][0]["preferredcodec"], "wav")
+        self.assertEqual(opts.get("concurrent_fragment_downloads"), 4)
 
 
 if __name__ == "__main__":

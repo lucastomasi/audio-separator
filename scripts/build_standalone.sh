@@ -30,9 +30,13 @@ fi
 echo "==> Sync app sources → Resources/app"
 mkdir -p "$APPDIR"
 PY_FILES=(
-  app.py desktop.py rvc_engine.py rvc_train.py rvc_api.py
+  app.py app_env.py app_jobs.py desktop.py
+  rvc_engine.py rvc_train.py rvc_api.py vc_runner.py
   library.py clone_engine.py exports.py remix.py diarize.py
   youtube_lib.py audio_io.py audio_text.py utils.py
+  uvr_runtime.py mdx_model.py ui_widgets.py
+  tts_rvc_engine.py install_rvc_assets.py
+  album_cover.py video_remux.py
 )
 for f in "${PY_FILES[@]}"; do
   cp -f "$ROOT/$f" "$APPDIR/$f"
@@ -66,8 +70,15 @@ if [[ -f "$ROOT/library/models/rvc_voices/smoke_voice.pth" ]]; then
   [[ -f "$ROOT/library/models/rvc_voices/smoke_voice.index" ]] && \
     cp -f "$ROOT/library/models/rvc_voices/smoke_voice.index" "$APPDIR/library/models/rvc_voices/"
 fi
-if [[ -f "$ROOT/library/library.json" ]]; then
-  cp -f "$ROOT/library/library.json" "$APPDIR/library/library.json"
+# Do not copy a personal library.json into the bundle.
+mkdir -p "$APPDIR/scripts"
+cp -f "$ROOT/scripts/ensure_vc_venv.sh" "$APPDIR/scripts/ensure_vc_venv.sh"
+cp -f "$ROOT/requirements-vc.txt" "$APPDIR/requirements-vc.txt"
+chmod +x "$APPDIR/scripts/ensure_vc_venv.sh"
+if [[ -d "$ROOT/third_party/vc" ]]; then
+  mkdir -p "$APPDIR/third_party"
+  rsync -a --delete --exclude '__pycache__' --exclude '.venv-vc' \
+    "$ROOT/third_party/vc/" "$APPDIR/third_party/vc/"
 fi
 
 echo "==> third_party/RVC-WebUI (sin logs de train ni .git)"
@@ -139,8 +150,19 @@ for bin in python python3 pip; do
 done
 "$VENV/bin/python" -c "import av, gradio, torch; print('venv ok', av.__version__, torch.__version__)"
 
-# Ensure launcher is executable
+echo "==> Isolated conversion venv"
+if [[ -x "$ROOT/.venv-vc/bin/python" ]]; then
+  mkdir -p "$RES/venv-vc"
+  rsync -a --delete --exclude '__pycache__' "$ROOT/.venv-vc/" "$RES/venv-vc/"
+else
+  echo "WARN: no .venv-vc; Completar instalación lo crea en DATA"
+fi
+
+echo "==> Launcher env -i"
+cp -f "$ROOT/scripts/macos_launcher.sh" "$APP/Contents/MacOS/Audio Separator"
 chmod +x "$APP/Contents/MacOS/Audio Separator"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.lucastomasi.audioseparator" \
+  "$APP/Contents/Info.plist" 2>/dev/null || true
 
 echo "==> Zip"
 ZIP="$ROOT/dist/Audio-Separator-macOS-Intel.zip"

@@ -18,6 +18,16 @@ class InstallRvcAssetsTests(unittest.TestCase):
             self.assertTrue(any("rmvpe.pt" in m for m in missing))
             self.assertFalse(install_rvc_assets.rvc_assets_ready())
 
+    def test_link_or_copy_reuses_file(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = Path(tmp.name) / "src.bin"
+        dest = Path(tmp.name) / "dest.bin"
+        src.write_bytes(b"hello-cache")
+        install_rvc_assets._link_or_copy(src, dest)
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_bytes(), b"hello-cache")
+
     def test_ready_when_present(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -32,8 +42,11 @@ class InstallRvcAssetsTests(unittest.TestCase):
         (hubert / "preprocessor_config.json").write_text("{}")
         (hubert / "model.safetensors").write_bytes(b"x" * 10)
         with mock.patch.object(install_rvc_assets, "_root", return_value=root):
-            self.assertEqual(install_rvc_assets.missing_rvc_assets(), [])
-            self.assertTrue(install_rvc_assets.rvc_assets_ready())
+            with mock.patch.object(
+                install_rvc_assets, "_hubert_pt_is_fairseq", return_value=True
+            ):
+                self.assertEqual(install_rvc_assets.missing_rvc_assets(), [])
+                self.assertTrue(install_rvc_assets.rvc_assets_ready())
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ except OSError:
     pass
 
 from library import PATHS, find_index_for_model, list_rvc_voices
-from rvc_engine import convert_voice, get_converter
+from rvc_engine import convert_voice
 
 VOICE_DIR = Path(PATHS["rvc_voices"])
 OUT_DIR = Path.home() / "Downloads" / "Audio Separator"
@@ -92,8 +92,7 @@ def require_exclusive_cli() -> None:
         + "\n\nCerrá la app (desktop.py) o el otro rvc_api y volvé a intentar.\n"
         "Con la app abierta, usá solo Convertir en la UI — no el CLI.\n\n"
         "Comando correcto:\n"
-        "  cd /Users/lucastomasi/grok/Audio_separator\n"
-        "  ./convert_rvc.sh library/voices/voz_1.wav smoke_voice 0",
+        "  ./convert_rvc.sh <audio.wav> <voz> 0",
         file=sys.stderr,
         flush=True,
     )
@@ -146,15 +145,15 @@ def rvc_convert(
 
 
 def warm_converter() -> None:
-    """Preload BaseLoader (HuBERT + rmvpe paths). First convert still loads weights."""
-    get_converter()
+    from vc_runner import ensure_vc_engine
+
+    ensure_vc_engine()
 
 
 def _print_usage() -> None:
-    print("Uso (NO ejecutes la carpeta; hacé cd):")
-    print("  cd /Users/lucastomasi/grok/Audio_separator")
+    print("Uso (NO ejecutes la carpeta; hacé cd al repo o al .app):")
     print("  ./convert_rvc.sh <input.wav> [voice_name] [pitch]")
-    print("  # o: .venv/bin/python rvc_api.py <input.wav> [voice_name] [pitch]")
+    print("  # o: python rvc_api.py <input.wav> [voice_name] [pitch]")
     print("Voces:", ", ".join(list_voices()) or "(ninguna)")
     print("Pitch: rmvpe (no harvest). Cerrá desktop.py antes del CLI.")
 

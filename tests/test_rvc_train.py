@@ -80,6 +80,16 @@ class RvcTrainTests(unittest.TestCase):
             found = rvc_train._find_small_weight("demo")
         self.assertEqual(found, small)
 
+    def test_replace_with_link_does_not_copy_bytes(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = rvc_train.Path(tmp.name) / "src.bin"
+        dest = rvc_train.Path(tmp.name) / "dest.bin"
+        src.write_bytes(b"payload")
+        rvc_train._replace_with_link(src, dest)
+        self.assertTrue(dest.exists())
+        self.assertEqual(dest.read_bytes(), b"payload")
+
     def test_find_index_prefers_added(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
