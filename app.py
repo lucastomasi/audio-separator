@@ -184,6 +184,11 @@ def get_gui():
                     stem_gui = stem_conf()
                     target_format_gui = format_conf()
                     button_base = button_conf()
+                    gr.Markdown(
+                        "En Intel tarda minutos. El botón queda en «Separando…»; "
+                        "no cierres la ventana.",
+                        elem_classes=["hint"],
+                    )
 
         with gr.Group(elem_classes=["step"]):
             gr.Markdown("## 3. Resultado", elem_classes=["panel-title"])

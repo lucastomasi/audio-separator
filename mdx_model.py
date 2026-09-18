@@ -27,14 +27,14 @@ _MODEL_HASHES = {}
 
 def _ensure_ml():
     global torch, ort, tqdm
-    if torch is not None:
-        return
-    import torch as _torch
-    import onnxruntime as _ort
-    from tqdm import tqdm as _tqdm
-    torch = _torch
-    ort = _ort
-    tqdm = _tqdm
+    if torch is None:
+        import torch as _torch
+        import onnxruntime as _ort
+        from tqdm import tqdm as _tqdm
+        torch = _torch
+        ort = _ort
+        tqdm = _tqdm
+    return torch, ort, tqdm
 
 
 def _ort_session(model_path, providers):
@@ -82,6 +82,7 @@ class MDXModel:
         self.hop = hop
         self.stem_name = stem_name
         self.compensation = compensation
+        _ensure_ml()
 
         self.n_bins = self.n_fft // 2 + 1
         self.chunk_size = hop * (self.dim_t - 1)
@@ -378,6 +379,7 @@ def run_mdx(
     device_base="cuda",
 ):
 
+    torch, _ort, _tqdm = _ensure_ml()
     if device_base == "cuda":
         device = torch.device("cuda:0")
         processor_num = 0
@@ -473,6 +475,7 @@ def run_mdx_beta(
     device_base="",
 ):
 
+    torch, _ort, _tqdm = _ensure_ml()
     m_threads = 1
     logger.info("threads: 1 (CPU)")
 

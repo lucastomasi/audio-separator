@@ -75,6 +75,22 @@ class ConvertWavTests(unittest.TestCase):
             gc.collect()
         self.assertEqual(len(digest), 32)
 
+    def test_separate_hides_torch_nameerror(self):
+        import uvr_runtime
+
+        msg = uvr_runtime._separate_error_message(
+            NameError("name 'torch' is not defined")
+        )
+        self.assertNotIn("torch", msg.lower())
+        self.assertIn("Cerrá la app", msg)
+
+    def test_ensure_ml_returns_torch(self):
+        import mdx_model
+
+        torch_mod, ort_mod, _ = mdx_model._ensure_ml()
+        self.assertTrue(hasattr(torch_mod, "cuda"))
+        self.assertTrue(hasattr(ort_mod, "get_device"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -168,7 +168,7 @@ def process_uvr_task(
     progress=None,
 ):
 
-    _ensure_ml()
+    torch, ort, _tqdm = _ensure_ml()
     device_base = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device_base}")
 
@@ -413,8 +413,23 @@ def convert_format(file_paths, media_dir, target_format):
 
 
 READY_STATUS = "Audio listo. Elegí qué extraer y pulsá Separar."
-RUN_STATUS = "Separando… un tema largo puede tardar varios minutos."
+RUN_STATUS = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
 DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
+
+
+def _separate_error_message(error):
+    raw = str(error) or ""
+    prefix = "No se pudo separar la voz: "
+    if raw.startswith(prefix):
+        raw = raw[len(prefix) :]
+    lowered = raw.lower()
+    if isinstance(error, NameError) or "is not defined" in lowered:
+        return "Falló la separación. Cerrá la app y abrila de nuevo."
+    if "no pude pasar el audio" in lowered or "falta el archivo" in lowered:
+        return raw
+    if raw.startswith("No se pudo") or raw.startswith("Falló"):
+        return raw
+    return "No se pudo separar la voz. Probá de nuevo o con otro archivo."
 
 def unlock_run_button():
     return gr.update(interactive=True, value="Separar audio")
@@ -453,9 +468,9 @@ def sound_separate(
         )
     except Exception as error:
         logger.error(str(error))
-        message = str(error) if str(error) else "No se pudo separar el audio."
+        message = _separate_error_message(error)
         gr.Warning(message)
-        return None, None, None, message, unlock_run_button()
+        return None, None, None, f"**Error.** {message}", unlock_run_button()
 
 
 def _sound_separate(
@@ -520,10 +535,7 @@ def _sound_separate(
             outputs.append(vocal_audio)
         except Exception as error:
             logger.error(str(error))
-            raise gr.Error(
-                "No se pudo separar la voz: "
-                + (str(error) or "error desconocido")
-            ) from error
+            raise gr.Error(_separate_error_message(error)) from error
 
     if "background" in stem:
         if instrumentals_from_vocal and os.path.isfile(instrumentals_from_vocal):

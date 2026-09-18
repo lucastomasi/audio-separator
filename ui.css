@@ -72,6 +72,11 @@ div.progress-bar {
   box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04) !important;
 }
 
+#job-status:has(strong) {
+  border-color: rgba(255, 59, 48, 0.35) !important;
+  background: rgba(255, 59, 48, 0.08) !important;
+}
+
 .step {
   margin-bottom: 10px !important;
   padding: 12px 14px 14px !important;
