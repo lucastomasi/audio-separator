@@ -82,7 +82,7 @@ class ConvertWavTests(unittest.TestCase):
             NameError("name 'torch' is not defined")
         )
         self.assertNotIn("torch", msg.lower())
-        self.assertIn("Cerrá la app", msg)
+        self.assertEqual(msg, uvr_runtime.MSG_SEPARATE)
 
     def test_mdx_model_imports_soundfile(self):
         import mdx_model

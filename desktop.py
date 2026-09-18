@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Native window for Audio Separator. Closing the window stops the app."""
+import os
 import socket
 import sys
 import threading
@@ -37,7 +38,7 @@ SPLASH = """<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>Audio Separator</h1>
-    <p>Abriendo la interfaz…</p>
+    <p>Arrancando… el primer inicio puede tardar uno o dos minutos.</p>
   </div>
 </body>
 </html>
@@ -56,11 +57,27 @@ def port_open():
         sock.close()
 
 
-def start_server():
-    from app import build_server, launch_kwargs
+def _attach_logs():
+    if sys.stderr.isatty():
+        return
+    path = os.path.expanduser("~/Library/Logs/audio-separator.log")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle = open(path, "a", encoding="utf-8", buffering=1)
+    sys.stdout = handle
+    sys.stderr = handle
 
-    demo = build_server()
-    demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+
+def start_server():
+    try:
+        from app import build_server, launch_kwargs
+
+        demo = build_server()
+        demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        raise
 
 
 def wait_until_ready(timeout=300):
@@ -109,6 +126,7 @@ def attach_when_ready(window):
 
 
 def main():
+    _attach_logs()
     already = port_open()
     if not already:
         threading.Thread(target=start_server, daemon=True).start()
@@ -133,6 +151,7 @@ def main():
             stop_vc_worker()
         except Exception:
             pass
+        os._exit(0)
 
     try:
         window.events.loaded += on_loaded

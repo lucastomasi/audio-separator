@@ -6,8 +6,8 @@ from uvr_runtime import (
     IS_ZERO_GPU,
     sound_separate,
     unlock_run_button,
-    lock_run_button,
 )
+from exports import open_exports_dir
 from ui_widgets import (
     url_media_conf,
     url_button_conf,
@@ -58,15 +58,11 @@ from app_jobs import (
     clip_for_clone,
     on_audio_ready,
     reset_job,
-    refresh_library,
     refresh_library_ui,
-    import_voice_into_library,
     load_rvc_into_library,
     train_rvc_job,
     rvc_job,
-    clone_job,
     tts_rvc_job,
-    detect_voices_job,
     remix_job,
     remux_job,
     cover_job,
@@ -113,6 +109,12 @@ def get_gui():
             elem_classes=["stepper"],
         )
         status = gr.Markdown(_install_status_line(), elem_id="job-status")
+        import library as _lib_ui
+
+        _lib_ui.ensure_dirs()
+        ensure_demo_voice()
+        _rvc_choices = _lib_ui.dropdown_choices(_lib_ui.list_rvc_voices())
+        _rvc_value = _rvc_choices[0][1] if _rvc_choices else None
         try:
             from install_rvc_assets import rvc_assets_ready as _rvc_ready
 
@@ -169,7 +171,6 @@ def get_gui():
                                 clip_btn = gr.Button("Recortar", scale=1)
                     aud = audio_conf()
                     with gr.Row(elem_classes=["action-row"]):
-                        detect_btn = gr.Button("Detectar voces", variant="secondary")
                         demo_btn = gr.Button("Cargar demo", variant="secondary")
                     gr.Examples(
                         examples=[[DEMO_SONG]] if os.path.isfile(DEMO_SONG) else [],
@@ -244,8 +245,9 @@ def get_gui():
                 with gr.Tab("Convertir"):
                     rvc_pick = gr.Dropdown(
                         label="Modelo en biblioteca",
-                        choices=[],
-                        info="Vacío: entrená una voz o cargá un .pth abajo.",
+                        choices=_rvc_choices,
+                        value=_rvc_value,
+                        info="Si está vacío, entrená una voz o cargá un .pth abajo.",
                     )
                     rvc_btn = gr.Button(
                         "Convertir voz", variant="primary", elem_id="rvc-btn"
@@ -359,10 +361,7 @@ def get_gui():
             )
             with gr.Row():
                 import tts_rvc_engine as _tts_rvc_ui
-                import library as _lib_ui
 
-                _lib_ui.ensure_dirs()
-                _rvc_choices = _lib_ui.dropdown_choices(_lib_ui.list_rvc_voices())
                 tts_edge = gr.Dropdown(
                     label="Voz Edge (idioma base)",
                     choices=_tts_rvc_ui.EDGE_VOICES,
@@ -373,36 +372,13 @@ def get_gui():
             tts_rvc_pick = gr.Dropdown(
                 label="Modelo RVC (biblioteca)",
                 choices=_rvc_choices,
-                value=(_rvc_choices[0][1] if _rvc_choices else None),
-                info="El mismo que en el paso 4. Si está vacío, entrená o cargá un .pth.",
+                value=_rvc_value,
+                info="El mismo que en el paso 4.",
             )
             tts_btn = gr.Button(
                 "Generar voz", variant="primary", elem_id="tts-rvc-btn"
             )
             tts_audio = out_audio("Salida")
-            # Kept for Detectar voces / import (wired below)
-            clone_ref = gr.Audio(
-                label="Referencia (detectar / importar)",
-                type="filepath",
-                sources=["upload"],
-                visible=False,
-            )
-            voice_pick = gr.Dropdown(
-                label="Clips de voz en biblioteca", choices=[], visible=False
-            )
-            voice_import = gr.File(
-                label="Importar clip",
-                file_types=[".wav", ".mp3", ".flac", ".m4a"],
-                visible=False,
-            )
-            speaker_pick = gr.Dropdown(
-                label="Voces detectadas",
-                choices=[],
-                visible=False,
-            )
-            clone_text = tts_text
-            clone_btn = tts_btn
-            clone_audio = tts_audio
 
         with gr.Accordion("Opciones avanzadas", open=False):
             with gr.Row():
@@ -454,7 +430,6 @@ def get_gui():
                 aud,
                 button_base,
                 rvc_pick,
-                voice_pick,
                 tts_rvc_pick,
             ],
             show_progress="full",
@@ -462,7 +437,7 @@ def get_gui():
         )
         demo_btn.click(
             load_demo_bundle,
-            outputs=[aud, button_base, rvc_pick, voice_pick, tts_rvc_pick, status],
+            outputs=[aud, button_base, rvc_pick, tts_rvc_pick, status],
         )
         url_button_gui.click(
             lock_download_button,
@@ -491,8 +466,13 @@ def get_gui():
             background_effects_gui,
             background_acc,
         )
+        def _open_folder():
+            from ui_status import KIND_OK, status_update
+
+            return status_update(KIND_OK, f"Carpeta abierta: {open_exports_dir()}")
+
         open_folder_btn.click(
-            lambda: f"Carpeta abierta: {open_exports_dir()}",
+            _open_folder,
             outputs=[status],
         )
         nueva_btn.click(
@@ -511,33 +491,18 @@ def get_gui():
                 remix_file,
                 rvc_audio,
                 rvc_model,
-                clone_audio,
-                clone_text,
-                clone_ref,
+                tts_audio,
+                tts_text,
             ],
         )
         clip_btn.click(
             clip_for_clone,
             inputs=[aud, clip_start, clip_end],
-            outputs=[clone_ref, status],
+            outputs=[aud, status],
             show_progress="full",
-        )
-        vocal_out.change(lambda path: path, vocal_out, clone_ref)
-        detect_btn.click(
-            detect_voices_job,
-            inputs=[aud],
-            outputs=[speaker_pick, clone_ref, voice_pick, status],
-            show_progress="full",
-        )
-        speaker_pick.change(lambda path: path, speaker_pick, clone_ref)
-        voice_pick.change(lambda path: path, voice_pick, clone_ref)
-        voice_import.change(
-            import_voice_into_library,
-            inputs=[voice_import],
-            outputs=[voice_pick, clone_ref, status],
         )
         refresh_lib_btn.click(
-            refresh_library_ui, outputs=[rvc_pick, voice_pick, tts_rvc_pick]
+            refresh_library_ui, outputs=[rvc_pick, tts_rvc_pick]
         )
         tts_btn.click(
             tts_rvc_job,
@@ -569,7 +534,7 @@ def get_gui():
         load_rvc_btn.click(
             load_rvc_into_library,
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
-            outputs=[rvc_pick, voice_pick, tts_rvc_pick, status],
+            outputs=[rvc_pick, tts_rvc_pick, status],
         )
         rvc_btn.click(
             rvc_job,
@@ -581,7 +546,7 @@ def get_gui():
         train_btn.click(
             train_rvc_job,
             inputs=[train_name, train_dataset, train_epochs],
-            outputs=[rvc_pick, voice_pick, train_status, tts_rvc_pick],
+            outputs=[rvc_pick, status, tts_rvc_pick, train_status],
             show_progress="full",
             concurrency_limit=1,
         )
@@ -595,21 +560,23 @@ def get_gui():
             if last_audio and not os.path.isfile(last_audio):
                 last_audio = None
             ensure_demo_voice()
-            rvc_upd, voice_upd, tts_upd = refresh_library_ui()
+            rvc_upd, tts_upd = refresh_library_ui()
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
-            status_txt = (
-                DEMO_STATUS
-                if song and song == demo_song_path() and not last_audio
-                else (_install_status_line() if not song else READY_STATUS)
-            )
-            return rvc_upd, voice_upd, tts_upd, last_vid, last_vid, song, run, status_txt
+            from ui_status import KIND_OK, status_update
+
+            if song and song == demo_song_path() and not last_audio:
+                status_txt = status_update(KIND_OK, DEMO_STATUS)
+            elif not song:
+                status_txt = status_update(KIND_OK, _install_status_line())
+            else:
+                status_txt = status_update(KIND_OK, READY_STATUS)
+            return rvc_upd, tts_upd, last_vid, last_vid, song, run, status_txt
 
         app.load(
             _boot_ui,
             outputs=[
                 rvc_pick,
-                voice_pick,
                 tts_rvc_pick,
                 last_video,
                 remux_video_in,
@@ -634,9 +601,6 @@ def get_gui():
             concurrency_limit=1,
         )
         button_base.click(
-            lock_run_button,
-            outputs=[button_base, status],
-        ).then(
             sound_separate,
             inputs=[
                 aud,

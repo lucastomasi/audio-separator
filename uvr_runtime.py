@@ -25,6 +25,15 @@ from audio_text import (
     stem_choice_to_list,
 )
 from exports import copy_to_downloads, open_exports_dir
+from ui_status import (
+    KIND_ERROR,
+    KIND_OK,
+    KIND_RUN,
+    MSG_SEPARATE,
+    RUN_SEPARATE,
+    fail,
+    status_update,
+)
 import numpy as np
 import soundfile as sf
 from utils import (
@@ -119,7 +128,8 @@ def convert_to_stereo_and_wav(audio_path):
     _out, errors = process_wav.communicate()
     if process_wav.returncode != 0 or not os.path.isfile(stereo_path):
         err = (errors or b"").decode("utf-8", "ignore")[:300]
-        raise Exception("No pude pasar el audio a WAV 44.1 kHz estéreo. " + err)
+        logger.error("ffmpeg stereo: %s", err)
+        raise ValueError("No pude pasar el audio a WAV 44.1 kHz estéreo.")
     return stereo_path
 
 
@@ -413,23 +423,12 @@ def convert_format(file_paths, media_dir, target_format):
 
 
 READY_STATUS = "Audio listo. Elegí qué extraer y pulsá Separar."
-RUN_STATUS = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
+RUN_STATUS = RUN_SEPARATE
 DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
 
 
 def _separate_error_message(error):
-    raw = str(error) or ""
-    prefix = "No se pudo separar la voz: "
-    if raw.startswith(prefix):
-        raw = raw[len(prefix) :]
-    lowered = raw.lower()
-    if isinstance(error, NameError) or "is not defined" in lowered:
-        return "Falló la separación. Cerrá la app y abrila de nuevo."
-    if "no pude pasar el audio" in lowered or "falta el archivo" in lowered:
-        return raw
-    if raw.startswith("No se pudo") or raw.startswith("Falló"):
-        return raw
-    return "No se pudo separar la voz. Probá de nuevo o con otro archivo."
+    return fail("uvr", error, MSG_SEPARATE)
 
 def unlock_run_button():
     return gr.update(interactive=True, value="Separar audio")
@@ -452,8 +451,15 @@ def sound_separate(
     target_format="WAV",
     progress=gr.Progress(track_tqdm=True),
 ):
+    yield (
+        None,
+        None,
+        None,
+        status_update(KIND_RUN, RUN_STATUS),
+        gr.update(interactive=False, value="Separando…"),
+    )
     try:
-        return _sound_separate(
+        vocal, background, files, status, button = _sound_separate(
             media_file, stem, main, dereverb, vocal_effects, background_effects,
             vocal_reverb_room_size, vocal_reverb_damping, vocal_reverb_dryness, vocal_reverb_wet_level,
             vocal_delay_seconds, vocal_delay_mix,
@@ -466,18 +472,16 @@ def sound_separate(
             target_format,
             progress=progress,
         )
+        yield vocal, background, files, status_update(KIND_OK, status), button
     except Exception as error:
-        logger.exception("sound_separate failed")
-        log_path = os.path.join(BASE_DIR, "library", "train_runs", "uvr.log")
-        try:
-            os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as handle:
-                handle.write(traceback.format_exc() + "\n")
-        except OSError:
-            pass
         message = _separate_error_message(error)
-        gr.Warning(message)
-        return None, None, None, f"**Error.** {message}", unlock_run_button()
+        yield (
+            None,
+            None,
+            None,
+            status_update(KIND_ERROR, message),
+            unlock_run_button(),
+        )
 
 
 def _sound_separate(
@@ -495,11 +499,11 @@ def _sound_separate(
 ):
     media_file = _audio_path(media_file)
     if not media_file or not os.path.isfile(media_file):
-        raise gr.Error("Falta el archivo de audio.")
+        raise ValueError("Falta el archivo de audio.")
 
     stem = stem_choice_to_list(stem)
     if not stem:
-        raise gr.Error("Elige voz, instrumental, o ambos.")
+        raise ValueError("Elige voz, instrumental, o ambos.")
 
     hash_audio = str(get_hash(media_file))
     media_dir = os.path.dirname(media_file)
@@ -540,9 +544,9 @@ def _sound_separate(
                 vocal_audio = out_effects_path
 
             outputs.append(vocal_audio)
-        except Exception as error:
+        except Exception:
             logger.exception("process_uvr_task vocal failed")
-            raise gr.Error(_separate_error_message(error)) from error
+            raise
 
     if "background" in stem:
         if instrumentals_from_vocal and os.path.isfile(instrumentals_from_vocal):
@@ -577,7 +581,7 @@ def _sound_separate(
     logger.info(f"Execution time: {execution_time} seconds")
 
     if not outputs:
-        raise gr.Error("No se pudo separar el audio.")
+        raise ValueError("No se pudo separar el audio.")
 
     files = convert_format(outputs, media_dir, target_format)
     want_vocal = "vocal" in stem
