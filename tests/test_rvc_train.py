@@ -89,6 +89,35 @@ class RvcTrainTests(unittest.TestCase):
                 rvc_train._prepare_dataset([{"orig_name": "a.wav"}], "demo")
         self.assertIn("al menos un audio", str(ctx.exception))
 
+    def test_features_ready_needs_npy(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        exp = rvc_train.Path(tmp.name)
+        self.assertFalse(rvc_train._features_ready(exp))
+        feat = exp / "3_feature768"
+        feat.mkdir(parents=True)
+        self.assertFalse(rvc_train._features_ready(exp))
+        (feat / "a.npy").write_bytes(b"x")
+        self.assertTrue(rvc_train._features_ready(exp))
+
+    def test_snapshot_copies_generator_ckpt(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        logs = root / "logs" / "demo"
+        logs.mkdir(parents=True)
+        src = logs / "G_2333333.pth"
+        src.write_bytes(b"x" * 100)
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch.object(rvc_train, "APP_ROOT", root):
+                copied = rvc_train.snapshot_checkpoints("demo")
+        dest = root / "library" / "train_runs" / "demo" / "ckpt" / "G_2333333.pth"
+        self.assertTrue(dest.is_file())
+        self.assertTrue(any(p.name == "G_2333333.pth" for p in copied))
+
+    def test_save_every_epoch_is_one(self):
+        self.assertEqual(rvc_train.SAVE_EVERY_EPOCH, 1)
+
     def test_epochs_default_is_ten(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RVC_TRAIN_EPOCHS", None)

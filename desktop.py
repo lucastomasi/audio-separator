@@ -77,7 +77,6 @@ def start_server():
         import traceback
 
         traceback.print_exc()
-        raise
 
 
 def wait_until_ready(timeout=300):

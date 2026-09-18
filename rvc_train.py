@@ -1,6 +1,7 @@
 """Official RVC-WebUI training on CPU. Minimal + robust."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ SR = "40k"
 SR_HZ = 40000
 VERSION = "v2"
 EPOCHS_DEFAULT = 10
+SAVE_EVERY_EPOCH = 1
 BATCH = 1
 WORKERS = 2
 
@@ -78,7 +80,81 @@ def require_train_assets():
     return {"hubert": hubert, "rmvpe": rmvpe, "g": g, "d": d}
 
 
-def _run(cmd, log_path: Path, progress=None, frac=None, desc=None):
+def _features_ready(exp_dir: Path) -> bool:
+    feat = exp_dir / "3_feature768"
+    if not feat.is_dir():
+        return False
+    try:
+        return any(feat.iterdir())
+    except OSError:
+        return False
+
+
+def _ckpt_dir(exp_name: str) -> Path:
+    path = APP_ROOT / "library" / "train_runs" / exp_name / "ckpt"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def snapshot_checkpoints(exp_name: str) -> list[Path]:
+    """Copy train dumps + inference pth into train_runs/<exp>/ckpt. Never raises."""
+    copied: list[Path] = []
+    try:
+        dest = _ckpt_dir(exp_name)
+        logs = RVC_ROOT / "logs" / exp_name
+        weights = RVC_ROOT / "assets" / "weights"
+        sources: list[Path] = []
+        if logs.is_dir():
+            sources.extend(logs.glob("G_*.pth"))
+            sources.extend(logs.glob("D_*.pth"))
+        if weights.is_dir():
+            sources.extend(weights.glob(f"{exp_name}*.pth"))
+        for src in sources:
+            try:
+                target = dest / src.name
+                if (
+                    not target.is_file()
+                    or src.stat().st_mtime > target.stat().st_mtime
+                    or src.stat().st_size != target.stat().st_size
+                ):
+                    shutil.copy2(src, target)
+                    copied.append(target)
+            except OSError:
+                continue
+        small = _find_small_weight(exp_name)
+        if small is not None:
+            try:
+                register("rvc_voices", str(small), f"{exp_name}.pth")
+            except Exception:
+                pass
+    except Exception:
+        return copied
+    return copied
+
+
+def train_running(exp_name: str) -> str | None:
+    """Return a command line if train.train is alive for this experiment."""
+    try:
+        out = subprocess.check_output(["pgrep", "-af", "train.train"], text=True)
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    needle = f"-e {exp_name} "
+    for line in out.splitlines():
+        if needle in line and "pgrep" not in line:
+            return line.strip()
+    return None
+
+
+def _run(
+    cmd,
+    log_path: Path,
+    progress=None,
+    frac=None,
+    desc=None,
+    detach=False,
+    exp_name=None,
+    total_epochs=None,
+):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(RVC_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["RVC_AUDIO_FORCE_CPU"] = "1"
@@ -95,21 +171,36 @@ def _run(cmd, log_path: Path, progress=None, frac=None, desc=None):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=detach,
         )
         last = ""
         for line in proc.stdout:
             log.write(line)
             log.flush()
             last = (line or "").strip()
+            frac_now = frac
+            if total_epochs and last:
+                match = re.search(r"Training epoch:\s*(\d+)", last)
+                if match:
+                    epoch = int(match.group(1))
+                    frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
+                    if exp_name:
+                        snapshot_checkpoints(exp_name)
+            if exp_name and last and (
+                "savee" in last.lower() or "checkpoint" in last.lower()
+            ):
+                snapshot_checkpoints(exp_name)
             if progress is not None and last:
                 try:
-                    progress(frac if frac is not None else 0, desc=last[:80])
+                    progress(frac_now if frac_now is not None else 0, desc=last[:80])
                 except Exception:
                     pass
         code = proc.wait()
     if code != 0:
         err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
+    if exp_name:
+        snapshot_checkpoints(exp_name)
     if desc and progress is not None:
         try:
             progress(frac if frac is not None else 0, desc=desc)
@@ -436,24 +527,35 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.log"
 
+    running = train_running(exp_name)
+    if running:
+        raise ValueError(
+            f"{exp_name} sigue entrenando. No lo relances. "
+            "Cerrar la ventana no lo corta."
+        )
+
     _sync_assets(assets)
     _ensure_savee_absolute()
     (RVC_ROOT / "assets" / "weights").mkdir(parents=True, exist_ok=True)
     (RVC_ROOT / "assets" / "indices").mkdir(parents=True, exist_ok=True)
     dataset_dir = _prepare_dataset(dataset_files, exp_name)
     exp_dir = RVC_ROOT / "logs" / exp_name
-    if exp_dir.exists():
-        shutil.rmtree(exp_dir)
-    exp_dir.mkdir(parents=True, exist_ok=True)
-
+    resume = _features_ready(exp_dir)
     py = sys.executable
-    if log_path.is_file():
-        log_path.write_text("", encoding="utf-8")
-    _run(
-        [
-            py,
-            "-m",
-            "train.preprocess",
+    if resume:
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"\n[resume] features listas en {exp_dir}; no se borra.\n")
+    else:
+        if exp_dir.exists():
+            shutil.rmtree(exp_dir)
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        if log_path.is_file():
+            log_path.write_text("", encoding="utf-8")
+        _run(
+            [
+                py,
+                "-m",
+                "train.preprocess",
             str(dataset_dir),
             str(SR_HZ),
             str(WORKERS),
@@ -464,41 +566,41 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
         log_path,
         progress=progress,
         frac=0.1,
-        desc="Cortando audios…",
-    )
-    _run(
-        [
-            py,
-            "-m",
-            "train.dataset.extract_f0",
-            "cpu",
-            str(exp_dir),
-            str(WORKERS),
-            "rmvpe",
-        ],
-        log_path,
-        progress=progress,
-        frac=0.25,
-        desc="Extrayendo F0…",
-    )
-    _run(
-        [
-            py,
-            "-m",
-            "train.dataset.extract_hubert_feature",
-            "cpu",
-            "1",
-            "0",
-            str(exp_dir),
-            VERSION,
-            "false",
-        ],
-        log_path,
-        progress=progress,
-        frac=0.4,
-        desc="HuBERT…",
-    )
-    _write_filelist_and_config(exp_dir)
+            desc="Cortando audios…",
+        )
+        _run(
+            [
+                py,
+                "-m",
+                "train.dataset.extract_f0",
+                "cpu",
+                str(exp_dir),
+                str(WORKERS),
+                "rmvpe",
+            ],
+            log_path,
+            progress=progress,
+            frac=0.25,
+            desc="Extrayendo F0…",
+        )
+        _run(
+            [
+                py,
+                "-m",
+                "train.dataset.extract_hubert_feature",
+                "cpu",
+                "1",
+                "0",
+                str(exp_dir),
+                VERSION,
+                "false",
+            ],
+            log_path,
+            progress=progress,
+            frac=0.4,
+            desc="HuBERT…",
+        )
+        _write_filelist_and_config(exp_dir)
     _run(
         [
             py,
@@ -515,7 +617,7 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
             "-te",
             str(total),
             "-se",
-            str(min(5, total)),
+            str(SAVE_EVERY_EPOCH),
             "-pg",
             "assets/pretrained_v2/f0G40k.pth",
             "-pd",
@@ -533,7 +635,11 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
         progress=progress,
         frac=0.7,
         desc=f"Entrenando {total} epochs (CPU)…",
+        detach=True,
+        exp_name=exp_name,
+        total_epochs=total,
     )
+    snapshot_checkpoints(exp_name)
     indices_dir = RVC_ROOT / "assets" / "indices"
     indices_dir.mkdir(parents=True, exist_ok=True)
     try:
