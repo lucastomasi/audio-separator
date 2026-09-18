@@ -467,7 +467,14 @@ def sound_separate(
             progress=progress,
         )
     except Exception as error:
-        logger.error(str(error))
+        logger.exception("sound_separate failed")
+        log_path = os.path.join(BASE_DIR, "library", "train_runs", "uvr.log")
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write(traceback.format_exc() + "\n")
+        except OSError:
+            pass
         message = _separate_error_message(error)
         gr.Warning(message)
         return None, None, None, f"**Error.** {message}", unlock_run_button()
@@ -534,7 +541,7 @@ def _sound_separate(
 
             outputs.append(vocal_audio)
         except Exception as error:
-            logger.error(str(error))
+            logger.exception("process_uvr_task vocal failed")
             raise gr.Error(_separate_error_message(error)) from error
 
     if "background" in stem:

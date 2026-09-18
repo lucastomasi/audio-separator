@@ -84,6 +84,12 @@ class ConvertWavTests(unittest.TestCase):
         self.assertNotIn("torch", msg.lower())
         self.assertIn("Cerrá la app", msg)
 
+    def test_mdx_model_imports_soundfile(self):
+        import mdx_model
+
+        self.assertTrue(hasattr(mdx_model, "sf"))
+        self.assertTrue(callable(mdx_model.sf.write))
+
     def test_ensure_ml_returns_torch(self):
         import mdx_model
 
