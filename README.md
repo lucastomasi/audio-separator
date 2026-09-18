@@ -1,77 +1,85 @@
 # Audio Separator
 
-App local para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, **entrenar y convertir voz con RVC**, y volver a unir. Todo en disco; sin subir audio a internet.
+App local para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. El audio queda en disco.
+
+YouTube y Edge TTS sí usan red. El resto corre offline.
 
 ## Requisitos
 
-- macOS 13+  
-- CPU **x86_64** (Intel) o Rosetta 2  
-- ~3 GB libres para el `.app` standalone completo  
+- macOS 13+
+- CPU x86_64 o Rosetta 2
+- Python 3.12 para desarrollo
+- ~3 GB libres para el `.app` standalone
 
-## Ejecutable standalone
+## App empaquetada
 
-### Full (pesos adentro)
+| Zip | Qué trae |
+|---|---|
+| `Audio-Separator-macOS-Intel.zip` | Full, pesos adentro (~2 GB) |
+| `Audio-Separator-macOS-Intel-Lite.zip` | Sin ~700 MB de RVC; **Completar instalación** la primera vez |
 
-1. **Audio-Separator-macOS-Intel.zip** (~2 GB).  
-2. Descomprimí → clic derecho → **Abrir**.  
-3. Listo para Separar / Entrenar / Convertir.
+Clic derecho → **Abrir**. No está notarizado por Apple.
 
-### Lite (recomendado para descargas chicas)
-
-1. **Audio-Separator-macOS-Intel-Lite.zip** (sin ~700 MB de pesos RVC).  
-2. Abrí la app → **Completar instalación (pesos RVC)** (una vez; baja HuBERT, RMVPE, f0G/D desde Hugging Face público).  
-3. Después Entrenar / Convertir funcionan offline.
-
-Ambas: Mac **Intel** / Rosetta. No notarizado por Apple.
-
-## Flujo en la UI
-
-1. **Canción** — archivo o YouTube  
-2. **Extraer** — voz / instrumental  
-3. **Resultado**  
-4. **Voz (RVC)** — Entrenar → Convertir  
-5. **Unir**  
-
-Texto→habla (XTTS) es opcional y **no** viene con pesos; para clonar usá RVC.
-
-## Desarrollo (repo)
+Los zip **no** van en git. Se arman con:
 
 ```bash
-cd /path/to/Audio_separator
+./scripts/build_standalone.sh
+./scripts/build_standalone_lite.sh
+```
+
+## Flujo
+
+1. **Canción** — archivo o YouTube  
+2. **Extraer** — voz / instrumental (minutos en Intel)  
+3. **Resultado** — `~/Downloads/Audio Separator`  
+4. **Voz (RVC)** — Entrenar (cada epoch se guarda) → Convertir  
+5. **Unir**  
+6. **Texto → habla** — Edge (internet) → tu `.pth` RVC  
+
+Cerrar la ventana no corta un train ya largado. No relances el mismo nombre si sigue corriendo.
+
+## Desarrollo
+
+```bash
+git clone https://github.com/lucastomasi/audio-separator.git
+cd audio-separator
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-macos.txt
-# Colocá third_party/RVC-WebUI y library/models/rvc/ (ver abajo)
+```
+
+### Lo que no viene en el clone
+
+| Hace falta | Dónde |
+|---|---|
+| Pesos RVC (HuBERT, RMVPE, f0G/D) | App → **Completar instalación**, o `library/models/rvc/` |
+| ONNX UVR | `mdx_models/*.onnx` (no se suben; van en el zip full) |
+| RVC-WebUI (solo para **Entrenar**) | `git clone --depth 1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI third_party/RVC-WebUI` |
+
+```bash
 python desktop.py
-# o: python app.py
 ```
 
-### Pesos locales (`library/models/rvc/`)
-
-| Archivo / carpeta | Uso |
-| --- | --- |
-| `hubert_base/` (Transformers: `config.json` + `model.safetensors`) | Entrenar |
-| `hubert_base.pt` | Convertir (`infer_rvc_python`) |
-| `rmvpe.pt` | Pitch |
-| `f0G40k.pth` / `f0D40k.pth` | Base train |
-
-Voces entrenadas: `library/models/rvc_voices/<nombre>.pth` (+ `.index`).
-
-### CLI (con la app **cerrada**)
+Tests:
 
 ```bash
-./convert_rvc.sh library/voices/voz_1.wav smoke_voice 0
+.venv/bin/python -m unittest discover -s tests -q
 ```
 
-No abras `desktop.py` y el CLI a la vez (segfault OpenMP en Intel).
+No abras `desktop.py` y `./convert_rvc.sh` a la vez (OpenMP en Intel).
 
-### Empaquetar de nuevo
+## Publicar este repo
+
+El `main` local es la historia real. GitHub puede tener otra: **no hagas pull**. Con sesión de `gh`:
 
 ```bash
-./scripts/build_standalone.sh       # full + zip
-./scripts/build_standalone_lite.sh  # quita pesos RVC + zip lite
+cd /Users/lucastomasi/grok/Audio_separator
+gh auth login
+git push -u --force-with-lease origin main
 ```
+
+Eso pisa `origin/main`. No sube `dist/`, `library.json`, voces, ONNX ni RVC-WebUI.
 
 ## Licencia
 
-MIT. RVC-WebUI y modelos de terceros conservan sus licencias originales.
+MIT. RVC-WebUI, UVR y modelos de terceros conservan las suyas.
