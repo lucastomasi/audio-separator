@@ -135,12 +135,12 @@ def snapshot_checkpoints(exp_name: str) -> list[Path]:
 def train_running(exp_name: str) -> str | None:
     """Return a command line if train.train is alive for this experiment."""
     try:
-        out = subprocess.check_output(["pgrep", "-af", "train.train"], text=True)
+        out = subprocess.check_output(["ps", "ax", "-o", "command="], text=True)
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return None
     needle = f"-e {exp_name} "
     for line in out.splitlines():
-        if needle in line and "pgrep" not in line:
+        if "train.train" in line and needle in line:
             return line.strip()
     return None
 

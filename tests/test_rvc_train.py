@@ -115,6 +115,15 @@ class RvcTrainTests(unittest.TestCase):
         self.assertTrue(dest.is_file())
         self.assertTrue(any(p.name == "G_2333333.pth" for p in copied))
 
+    def test_train_running_reads_ps_command_line(self):
+        fake = (
+            "python -m train.train -e PELA1 -sr 40k -f0 1\n"
+            "python -m train.train -e other -sr 40k\n"
+        )
+        with mock.patch("subprocess.check_output", return_value=fake):
+            self.assertIn("PELA1", rvc_train.train_running("PELA1") or "")
+            self.assertIsNone(rvc_train.train_running("nope"))
+
     def test_save_every_epoch_is_one(self):
         self.assertEqual(rvc_train.SAVE_EVERY_EPOCH, 1)
 
