@@ -64,40 +64,63 @@ mdxnet_models_dir = os.path.join(BASE_DIR, "mdx_models")
 output_dir = os.path.join(BASE_DIR, "clean_song_output")
 
 
+def _audio_path(value):
+    if not value:
+        return None
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("name")
+    if isinstance(value, (list, tuple)) and value:
+        return _audio_path(value[0])
+    return str(value) if value else None
+
+
 def convert_to_stereo_and_wav(audio_path):
-    if str(audio_path).lower().endswith(".wav"):
-        try:
-            info = sf.info(audio_path)
-            if info.channels == 2 and int(info.samplerate) == 44100:
-                return audio_path
-        except Exception:
-            pass
+    """UVR/MDX expects 44.1 kHz stereo WAV. YouTube work files are 48 kHz."""
+    audio_path = _audio_path(audio_path)
+    if not audio_path or not os.path.isfile(audio_path):
+        raise ValueError("Falta el archivo de audio.")
+    try:
+        info = sf.info(audio_path)
+        if (
+            str(audio_path).lower().endswith(".wav")
+            and info.channels == 2
+            and int(info.samplerate) == 44100
+        ):
+            return audio_path
+    except Exception:
+        pass
 
-    wave, sr = librosa.load(audio_path, mono=False, sr=44100)
-
-    # check if mono
-    if type(wave[0]) != np.ndarray or audio_path[-4:].lower() != ".wav": # noqa
-        stereo_name = f"{os.path.splitext(os.path.basename(audio_path))[0]}_stereo.wav"
-        stereo_path = os.path.join(output_dir, stereo_name)
-
-        command = shlex.split(
-            f'ffmpeg -y -loglevel error -i "{audio_path}" -ac 2 -f wav "{stereo_path}"'
-        )
-        sub_params = {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
-            "creationflags": subprocess.CREATE_NO_WINDOW
-            if sys.platform == "win32"
-            else 0,
-        }
-        process_wav = subprocess.Popen(command, **sub_params)
-        output, errors = process_wav.communicate()
-        if process_wav.returncode != 0 or not os.path.exists(stereo_path):
-            raise Exception("Error processing audio to stereo wav")
-
-        return stereo_path
-    else:
-        return audio_path
+    os.makedirs(output_dir, exist_ok=True)
+    stereo_name = f"{os.path.splitext(os.path.basename(audio_path))[0]}_44100_stereo.wav"
+    stereo_path = os.path.join(output_dir, stereo_name)
+    command = [
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        audio_path,
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-f",
+        "wav",
+        stereo_path,
+    ]
+    sub_params = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "creationflags": subprocess.CREATE_NO_WINDOW
+        if sys.platform == "win32"
+        else 0,
+    }
+    process_wav = subprocess.Popen(command, **sub_params)
+    _out, errors = process_wav.communicate()
+    if process_wav.returncode != 0 or not os.path.isfile(stereo_path):
+        err = (errors or b"").decode("utf-8", "ignore")[:300]
+        raise Exception("No pude pasar el audio a WAV 44.1 kHz estéreo. " + err)
+    return stereo_path
 
 
 def get_hash(filepath):
@@ -126,6 +149,15 @@ def random_sleep():
     time.sleep(sleep_time)
 
 
+def _tick(progress, frac, desc):
+    if progress is None:
+        return
+    try:
+        progress(frac, desc=desc)
+    except Exception:
+        pass
+
+
 def process_uvr_task(
     orig_song_path: str = "aud_test.mp3",
     main_vocals: bool = False,
@@ -133,6 +165,7 @@ def process_uvr_task(
     song_id: str = "mdx",  # folder output name
     only_voiceless: bool = False,
     remove_files_output_dir: bool = False,
+    progress=None,
 ):
 
     _ensure_ml()
@@ -147,12 +180,14 @@ def process_uvr_task(
 
     song_output_dir = os.path.join(output_dir, song_id)
     create_directories(song_output_dir)
+    _tick(progress, 0.08, "Pasando a WAV 44.1 kHz…")
     orig_song_path = convert_to_stereo_and_wav(orig_song_path)
 
     logger.info(f"onnxruntime device >> {ort.get_device()}")
 
     if only_voiceless:
         logger.info("Voiceless Track Separation...")
+        _tick(progress, 0.35, "Separando instrumental…")
 
         process = run_mdx(
             mdx_model_params,
@@ -166,9 +201,11 @@ def process_uvr_task(
             device_base=device_base,
         )
 
+        _tick(progress, 1.0, "Listo")
         return process
 
     logger.info("Vocal Track Isolation...")
+    _tick(progress, 0.25, "Separando voz…")
     vocals_path, instrumentals_path = run_mdx(
         mdx_model_params,
         song_output_dir,
@@ -183,6 +220,7 @@ def process_uvr_task(
         random_sleep()
         msg_main = "Separando la voz principal de los coros…"
         logger.info(msg_main)
+        _tick(progress, 0.55, msg_main)
         gr.Info(msg_main)
         try:
             backup_vocals_path, main_vocals_path = run_mdx(
@@ -213,6 +251,7 @@ def process_uvr_task(
         random_sleep()
         msg_dereverb = "Quitando reverb de la voz…"
         logger.info(msg_dereverb)
+        _tick(progress, 0.75, msg_dereverb)
         gr.Info(msg_dereverb)
         try:
             _, vocals_dereverb_path = run_mdx(
@@ -239,6 +278,7 @@ def process_uvr_task(
     else:
         vocals_dereverb_path = main_vocals_path
 
+    _tick(progress, 0.95, "Guardando pistas…")
     return (
         vocals_path,
         instrumentals_path,
@@ -395,6 +435,7 @@ def sound_separate(
     background_compressor_threshold_db=-20, background_compressor_ratio=2.5, background_compressor_attack_ms=15, background_compressor_release_ms=80,
     background_gain_db=3,
     target_format="WAV",
+    progress=gr.Progress(track_tqdm=True),
 ):
     try:
         return _sound_separate(
@@ -408,6 +449,7 @@ def sound_separate(
             background_compressor_threshold_db, background_compressor_ratio, background_compressor_attack_ms, background_compressor_release_ms,
             background_gain_db,
             target_format,
+            progress=progress,
         )
     except Exception as error:
         logger.error(str(error))
@@ -427,8 +469,10 @@ def _sound_separate(
     background_compressor_threshold_db, background_compressor_ratio, background_compressor_attack_ms, background_compressor_release_ms,
     background_gain_db,
     target_format,
+    progress=None,
 ):
-    if not media_file:
+    media_file = _audio_path(media_file)
+    if not media_file or not os.path.isfile(media_file):
         raise gr.Error("Falta el archivo de audio.")
 
     stem = stem_choice_to_list(stem)
@@ -457,6 +501,7 @@ def _sound_separate(
                 main_vocals=main,
                 dereverb=dereverb,
                 remove_files_output_dir=False,
+                progress=progress,
             )
 
             if vocal_effects:
@@ -475,7 +520,10 @@ def _sound_separate(
             outputs.append(vocal_audio)
         except Exception as error:
             logger.error(str(error))
-            raise gr.Error("No se pudo separar la voz. Prueba el ejemplo u otro archivo.") from error
+            raise gr.Error(
+                "No se pudo separar la voz: "
+                + (str(error) or "error desconocido")
+            ) from error
 
     if "background" in stem:
         if instrumentals_from_vocal and os.path.isfile(instrumentals_from_vocal):
@@ -486,6 +534,7 @@ def _sound_separate(
                 song_id=hash_audio + "voiceless",
                 only_voiceless=True,
                 remove_files_output_dir=False,
+                progress=progress,
             )
 
         if background_effects:

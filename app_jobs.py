@@ -60,7 +60,7 @@ def _install_status_line():
         return IDLE_STATUS
 
 
-def install_rvc_job():
+def install_rvc_job(progress=gr.Progress()):
     try:
         from install_rvc_assets import install_rvc_assets, missing_rvc_assets
 
@@ -68,6 +68,10 @@ def install_rvc_job():
 
         def _log(msg):
             lines.append(msg)
+            try:
+                progress((min(len(lines), 8)) / 10, desc=str(msg)[:80])
+            except Exception:
+                pass
 
         written = install_rvc_assets(log=_log)
         try:
@@ -117,8 +121,12 @@ def unlock_download_button():
     return gr.update(interactive=True, value="Descargar")
 
 
-def audio_downloader(url_media, with_video=True):
+def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
     unlock = unlock_download_button()
+    try:
+        progress(0.1, desc="Descargando de YouTube…")
+    except Exception:
+        pass
     empty_video = None
     if IS_ZERO_GPU and url_media and "youtube.com" in url_media:
         gr.Info("Esta opción no está disponible en Hugging Face.")
@@ -129,6 +137,10 @@ def audio_downloader(url_media, with_video=True):
         path, video_path, reused, note = download_media(
             url_media, with_video=bool(with_video)
         )
+        try:
+            progress(0.85, desc="Preparando WAV 48 kHz…")
+        except Exception:
+            pass
     except ValueError as error:
         gr.Warning(str(error))
         return None, empty_video, gr.update(), str(error), unlock
@@ -298,9 +310,14 @@ def load_rvc_into_library(
     )
 
 
-def train_rvc_job(exp_name, dataset_files):
+def train_rvc_job(exp_name, dataset_files, progress=gr.Progress()):
     try:
         from rvc_train import train_voice
+
+        try:
+            progress(0.05, desc="Entrenando (CPU, puede tardar)…")
+        except Exception:
+            pass
 
         files = dataset_files or []
         if isinstance(files, (str, os.PathLike)):
@@ -327,9 +344,14 @@ def train_rvc_job(exp_name, dataset_files):
         return rvc_upd, voice_upd, f"Falló el entrenamiento: {error}", tts_upd
 
 
-def rvc_job(audio_path, library_model, model_file, index_file):
+def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progress()):
     import library
     from rvc_engine import convert_voice
+
+    try:
+        progress(0.08, desc="Preparando motor de conversión…")
+    except Exception:
+        pass
 
     audio_path = _gradio_path(audio_path)
     if not audio_path or not os.path.isfile(audio_path):
@@ -365,7 +387,15 @@ def rvc_job(audio_path, library_model, model_file, index_file):
             item = library.register("rvc_voices", uploaded_index, index_name)
             index_path = item["path"]
     try:
+        try:
+            progress(0.35, desc="Convirtiendo voz…")
+        except Exception:
+            pass
         out_path = convert_voice(audio_path, model_path, index_path=index_path)
+        try:
+            progress(1.0, desc="Listo")
+        except Exception:
+            pass
         note = " (+index)" if index_path else ""
         from vc_runner import infer_log_path, last_infer_tail
 
@@ -411,17 +441,30 @@ def clone_job(text, speaker_wav):
         return None, "No se pudo clonar la voz."
 
 
-def tts_rvc_job(text, rvc_model, edge_voice, pitch):
+def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
     try:
         from tts_rvc_engine import resolve_edge_voice, speak_with_rvc
 
+        try:
+            progress(0.15, desc="Edge TTS…")
+        except Exception:
+            pass
+
         voice_id = resolve_edge_voice(edge_voice)
+        try:
+            progress(0.45, desc="Convirtiendo con RVC…")
+        except Exception:
+            pass
         out = speak_with_rvc(
             text,
             rvc_model,
             edge_voice=voice_id,
             pitch=int(pitch or 0),
         )
+        try:
+            progress(1.0, desc="Listo")
+        except Exception:
+            pass
         return out, out, f"Listo (Edge {voice_id} → RVC). {out}"
     except ValueError as error:
         gr.Warning(str(error))
@@ -467,8 +510,13 @@ def remix_job(
     voice_db,
     instrumental_db,
     target_format,
+    progress=gr.Progress(),
 ):
     try:
+        try:
+            progress(0.3, desc="Uniendo pistas…")
+        except Exception:
+            pass
         out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         wav_path = os.path.join(out_dir, "remix.wav")
@@ -497,7 +545,7 @@ def remix_job(
         return None, None, "No se pudo armar el remix."
 
 
-def remux_job(video_path, audio_path):
+def remux_job(video_path, audio_path, progress=gr.Progress()):
     try:
         video_path = _gradio_path(video_path)
         audio_path = _gradio_path(audio_path)
@@ -506,6 +554,10 @@ def remux_job(video_path, audio_path):
         out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         raw = os.path.join(out_dir, "remux.mp4")
+        try:
+            progress(0.4, desc="Pegando audio al video (copy)…")
+        except Exception:
+            pass
         remux_audio_onto_video(video_path, audio_path, raw, shortest=True)
         _, copied = copy_to_downloads([raw], ["video_nuevo_audio"])
         saved = copied[0] if copied else raw

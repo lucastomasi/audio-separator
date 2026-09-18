@@ -51,6 +51,11 @@ footer {
   color: #FF9F0A !important;
 }
 
+.progress-bar,
+div.progress-bar {
+  background: #007AFF !important;
+}
+
 #job-status {
   position: sticky;
   top: 0;
