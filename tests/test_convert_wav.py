@@ -1,6 +1,8 @@
+import gc
 import os
 import tempfile
 import unittest
+import warnings
 from unittest import mock
 
 import numpy as np
@@ -57,6 +59,21 @@ class ConvertWavTests(unittest.TestCase):
         second = uvr_runtime.MDX.get_hash(path)
         self.assertEqual(first, second)
         self.assertEqual(uvr_runtime._MODEL_HASHES[os.path.abspath(path)], first)
+
+    def test_small_model_hash_does_not_leak_file(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "tiny.bin")
+        with open(path, "wb") as handle:
+            handle.write(b"x" * 100)
+        uvr_runtime._MODEL_HASHES.clear()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ResourceWarning)
+            digest = uvr_runtime.MDX.get_hash(path)
+            gc.collect()
+        self.assertEqual(len(digest), 32)
 
 
 if __name__ == "__main__":

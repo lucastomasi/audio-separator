@@ -171,12 +171,12 @@ class MDX:
         cached = _MODEL_HASHES.get(path)
         if cached:
             return cached
-        try:
-            with open(path, "rb") as f:
-                f.seek(-10000 * 1024, 2)
-                model_hash = hashlib.md5(f.read()).hexdigest()
-        except Exception:
-            model_hash = hashlib.md5(open(path, "rb").read()).hexdigest()
+        with open(path, "rb") as handle:
+            try:
+                handle.seek(-10000 * 1024, 2)
+            except OSError:
+                handle.seek(0)
+            model_hash = hashlib.md5(handle.read()).hexdigest()
         _MODEL_HASHES[path] = model_hash
         return model_hash
 
