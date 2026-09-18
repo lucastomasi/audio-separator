@@ -38,6 +38,13 @@ _lock = threading.Lock()
 # paths via _paths() / app_env
 
 
+def _write_infer_log(msg: str) -> None:
+    log = infer_log_path()
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(str(msg).rstrip() + "\n")
+
+
 def last_infer_tail(n: int = 12) -> str:
     log = infer_log_path()
     if not os.path.isfile(log):
@@ -56,9 +63,9 @@ def ensure_vc_engine():
         return py
     script = os.path.join(_paths()["app"], "scripts", "ensure_vc_venv.sh")
     if not os.path.isfile(script):
-        raise ValueError(
-            "Falta el motor de conversión. Pulsá Completar instalación."
-        )
+        msg = "Falta el motor de conversión. Pulsá Completar instalación."
+        _write_infer_log("python missing: " + py + " | " + msg)
+        raise ValueError(msg)
     result = subprocess.run(
         ["bash", script],
         cwd=_paths()["app"],
@@ -67,9 +74,11 @@ def ensure_vc_engine():
     )
     if result.returncode != 0 or not os.path.isfile(py):
         err = (result.stderr or result.stdout or "").strip()[-800:]
-        raise ValueError(
+        msg = (
             "Falta el motor de conversión. Pulsá Completar instalación. " + err
         )
+        _write_infer_log(msg)
+        raise ValueError(msg)
     return py
 
 
@@ -121,9 +130,9 @@ def _spawn_worker() -> subprocess.Popen:
     py = ensure_vc_engine()
     worker = os.path.join(vc_root(), "infer_worker.py")
     if not os.path.isfile(worker):
-        raise ValueError(
-            "Falta el motor de conversión. Pulsá Completar instalación."
-        )
+        msg = "Falta el motor de conversión. Pulsá Completar instalación."
+        _write_infer_log("infer_worker missing: " + worker)
+        raise ValueError(msg)
     log_path = infer_log_path()
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     log = open(log_path, "a", encoding="utf-8")

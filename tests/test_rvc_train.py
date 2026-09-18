@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -63,6 +64,69 @@ class RvcTrainTests(unittest.TestCase):
             out = rvc_train._prepare_dataset([src], "demo")
         self.assertTrue(out.is_dir())
         self.assertEqual(len(list(out.glob("sample_*"))), 1)
+
+    def test_prepare_dataset_accepts_gradio_dicts(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "a.wav")
+        extra = os.path.join(tmp.name, "b.mp3")
+        for path in (src, extra):
+            with open(path, "wb") as handle:
+                handle.write(b"wav")
+        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+            out = rvc_train._prepare_dataset(
+                [{"path": src, "orig_name": "a.wav"}, extra],
+                "demo",
+            )
+        names = sorted(p.name for p in out.glob("sample_*"))
+        self.assertEqual(len(names), 2)
+
+    def test_prepare_dataset_rejects_empty_gradio_dicts(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+            with self.assertRaises(ValueError) as ctx:
+                rvc_train._prepare_dataset([{"orig_name": "a.wav"}], "demo")
+        self.assertIn("al menos un audio", str(ctx.exception))
+
+    def test_epochs_default_is_ten(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RVC_TRAIN_EPOCHS", None)
+            self.assertEqual(rvc_train._epochs(), 10)
+
+    def test_ensure_savee_absolute_rewrites_relative_torch_save(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        ckpt = root / "train" / "process_ckpt.py"
+        ckpt.parent.mkdir(parents=True)
+        ckpt.write_text(
+            "i18n = I18nAuto()\n"
+            'torch.save(opt, "assets/weights/%s.pth" % name)\n',
+            encoding="utf-8",
+        )
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            rvc_train._ensure_savee_absolute()
+        text = ckpt.read_text(encoding="utf-8")
+        self.assertIn("def inference_weight_path", text)
+        self.assertIn("inference_weight_path(name)", text)
+        self.assertNotIn('"assets/weights/%s.pth"', text)
+
+    def test_inference_weights_dir_is_absolute(self):
+        prev = os.getcwd()
+        sys_path = list(sys.path)
+        os.chdir(str(rvc_train.RVC_ROOT))
+        sys.path.insert(0, str(rvc_train.RVC_ROOT))
+        try:
+            from train.process_ckpt import inference_weights_dir
+
+            path = inference_weights_dir()
+        finally:
+            os.chdir(prev)
+            sys.path[:] = sys_path
+        self.assertTrue(os.path.isabs(path))
+        self.assertTrue(path.endswith(os.path.join("assets", "weights")))
+        self.assertTrue(os.path.isdir(path))
 
     def test_find_small_weight_skips_G_checkpoints(self):
         tmp = tempfile.TemporaryDirectory()

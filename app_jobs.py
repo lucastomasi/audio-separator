@@ -269,8 +269,16 @@ def load_rvc_into_library(
     model_path = None
     hubert = _gradio_path(hubert_file)
     if hubert:
-        library.register("rvc", hubert, "hubert_base.pt")
-        loaded.append("hubert")
+        if os.path.isdir(hubert) and rvc_engine._is_transformers_hubert_dir(hubert):
+            loaded.append("hubert (carpeta Transformers; no se pisa)")
+        elif str(hubert).lower().endswith((".pt", ".pth")):
+            loaded.append(
+                "hubert ignorado (hace falta carpeta hubert_base/ "
+                "con config.json + model.safetensors, no un .pth de voz)"
+            )
+        else:
+            library.register("rvc", hubert, "hubert_base.pt")
+            loaded.append("hubert")
     rmvpe = _gradio_path(rmvpe_file)
     if rmvpe:
         library.register("rvc", rmvpe, "rmvpe.pt")
@@ -310,7 +318,7 @@ def load_rvc_into_library(
     )
 
 
-def train_rvc_job(exp_name, dataset_files, progress=gr.Progress()):
+def train_rvc_job(exp_name, dataset_files, epochs=10, progress=gr.Progress()):
     try:
         from rvc_train import train_voice
 
@@ -322,7 +330,12 @@ def train_rvc_job(exp_name, dataset_files, progress=gr.Progress()):
         files = dataset_files or []
         if isinstance(files, (str, os.PathLike)):
             files = [files]
-        pth, index = train_voice(exp_name, files)
+        elif not isinstance(files, (list, tuple)):
+            files = [files]
+        files = [_gradio_path(item) or item for item in files]
+        pth, index = train_voice(
+            exp_name, files, epochs=epochs, progress=progress
+        )
         import library
 
         rvc = library.dropdown_choices(library.list_rvc_voices())

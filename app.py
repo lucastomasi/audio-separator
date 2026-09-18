@@ -216,6 +216,18 @@ def get_gui():
                         file_count="multiple",
                         file_types=[".wav", ".mp3", ".flac", ".m4a"],
                     )
+                    train_epochs = gr.Slider(
+                        5,
+                        50,
+                        value=10,
+                        step=1,
+                        label="Epochs (CPU Intel: 10 de prueba)",
+                    )
+                    gr.Markdown(
+                        "CPU Intel: 10 epochs de prueba, minutos u horas según "
+                        "el largo del audio. El modelo aparece en Convertir al terminar.",
+                        elem_classes=["hint"],
+                    )
                     train_btn = gr.Button(
                         "Entrenar", variant="primary", elem_id="train-btn"
                     )
@@ -331,7 +343,8 @@ def get_gui():
         with gr.Group(elem_classes=["step"], elem_id="step-tts"):
             gr.Markdown("## 6. Texto → habla (Edge + RVC)", elem_classes=["panel-title"])
             gr.Markdown(
-                "Texto → Edge (internet) → tu modelo RVC. Hace falta instalación y un .pth.",
+                "No clona desde un wav de referencia. Texto → Edge "
+                "(hace falta internet) → tu .pth RVC.",
                 elem_classes=["hint"],
             )
             tts_text = gr.Textbox(
@@ -562,7 +575,7 @@ def get_gui():
         )
         train_btn.click(
             train_rvc_job,
-            inputs=[train_name, train_dataset],
+            inputs=[train_name, train_dataset, train_epochs],
             outputs=[rvc_pick, voice_pick, train_status, tts_rvc_pick],
             show_progress="full",
             concurrency_limit=1,

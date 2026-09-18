@@ -58,6 +58,51 @@ class VcRunnerWorkerTests(unittest.TestCase):
         self.assertEqual(job["index_rate"], 0.7)
         self.assertTrue(job["split_audio"])
 
+    def test_ensure_vc_engine_writes_log_when_python_missing(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        log = os.path.join(tmp.name, "vc_infer.log")
+        missing_py = os.path.join(tmp.name, "no-python")
+        paths = {
+            "app": tmp.name,
+            "log": log,
+            "pid": os.path.join(tmp.name, "vc_worker.pid"),
+            "py": missing_py,
+            "root": tmp.name,
+        }
+        with mock.patch.object(vc_runner, "_paths", return_value=paths):
+            with self.assertRaises(ValueError) as ctx:
+                vc_runner.ensure_vc_engine()
+        self.assertTrue(os.path.isfile(log))
+        with open(log, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn("Completar instalación", str(ctx.exception))
+        self.assertIn("python", text.lower())
+
+    def test_spawn_worker_writes_log_when_script_missing(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        log = os.path.join(tmp.name, "vc_infer.log")
+        py = os.path.join(tmp.name, "python")
+        with open(py, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\n")
+        os.chmod(py, 0o755)
+        paths = {
+            "app": tmp.name,
+            "log": log,
+            "pid": os.path.join(tmp.name, "vc_worker.pid"),
+            "py": py,
+            "root": os.path.join(tmp.name, "vc"),
+        }
+        os.makedirs(paths["root"], exist_ok=True)
+        with mock.patch.object(vc_runner, "_paths", return_value=paths):
+            with self.assertRaises(ValueError) as ctx:
+                vc_runner._spawn_worker()
+        self.assertTrue(os.path.isfile(log))
+        self.assertIn("Completar instalación", str(ctx.exception))
+        with open(log, encoding="utf-8") as handle:
+            self.assertIn("infer_worker", handle.read())
+
 
 if __name__ == "__main__":
     unittest.main()

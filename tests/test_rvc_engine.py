@@ -72,6 +72,22 @@ class RvcEngineTests(unittest.TestCase):
         self.assertEqual(kwargs["pitch"], 2)
         self.assertEqual(kwargs["index_rate"], 0.8)
 
+    def test_hubert_pth_upload_is_ignored(self):
+        from app_jobs import load_rvc_into_library
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fake = os.path.join(tmp.name, "voice.pth")
+        with open(fake, "wb") as handle:
+            handle.write(b"x")
+        with mock.patch("app_jobs.refresh_library_ui", return_value=([], [], [])):
+            with mock.patch("library.register") as register:
+                _a, _b, _c, status = load_rvc_into_library(
+                    fake, None, None, None
+                )
+        register.assert_not_called()
+        self.assertIn("hubert ignorado", status)
+
 
 if __name__ == "__main__":
     unittest.main()

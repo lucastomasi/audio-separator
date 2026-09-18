@@ -13,16 +13,18 @@ RVC_ROOT = APP_ROOT / "third_party" / "RVC-WebUI"
 SR = "40k"
 SR_HZ = 40000
 VERSION = "v2"
-EPOCHS_DEFAULT = 50
+EPOCHS_DEFAULT = 10
 BATCH = 1
 WORKERS = 2
 
 
-def _epochs():
-    raw = os.environ.get("RVC_TRAIN_EPOCHS", str(EPOCHS_DEFAULT))
+def _epochs(override=None):
+    raw = override if override is not None else os.environ.get(
+        "RVC_TRAIN_EPOCHS", str(EPOCHS_DEFAULT)
+    )
     try:
         value = int(raw)
-    except ValueError:
+    except (TypeError, ValueError):
         value = EPOCHS_DEFAULT
     return max(1, value)
 
@@ -76,29 +78,43 @@ def require_train_assets():
     return {"hubert": hubert, "rmvpe": rmvpe, "g": g, "d": d}
 
 
-def _run(cmd, log_path: Path):
+def _run(cmd, log_path: Path, progress=None, frac=None, desc=None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(RVC_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["RVC_AUDIO_FORCE_CPU"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as log:
         log.write("\n$ " + " ".join(cmd) + "\n")
         log.flush()
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(RVC_ROOT),
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
         )
-        if result.stdout:
-            log.write(result.stdout)
-        if result.stderr:
-            log.write(result.stderr)
-        log.flush()
-    if result.returncode != 0:
-        err = (result.stderr or result.stdout or "").strip()
+        last = ""
+        for line in proc.stdout:
+            log.write(line)
+            log.flush()
+            last = (line or "").strip()
+            if progress is not None and last:
+                try:
+                    progress(frac if frac is not None else 0, desc=last[:80])
+                except Exception:
+                    pass
+        code = proc.wait()
+    if code != 0:
+        err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
+    if desc and progress is not None:
+        try:
+            progress(frac if frac is not None else 0, desc=desc)
+        except Exception:
+            pass
 
 
 def _replace_with_link(src: Path, dest: Path):
@@ -143,6 +159,60 @@ def _sync_assets(assets):
     _replace_with_link(Path(assets["d"]), pre_dst / "f0D40k.pth")
 
 
+_SAVEE_HELPER = '''
+def inference_weights_dir():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "weights")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def inference_weight_path(name):
+    base = os.path.basename(str(name))
+    if not base.endswith(".pth"):
+        base = "%s.pth" % base
+    return os.path.join(inference_weights_dir(), base)
+'''
+
+
+def _ensure_savee_absolute():
+    """RVC-WebUI is gitignored; patch savee so weights are not cwd-relative."""
+    path = RVC_ROOT / "train" / "process_ckpt.py"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    if "def inference_weight_path" in text:
+        return
+    needle = "i18n = I18nAuto()\n"
+    if needle in text:
+        text = text.replace(needle, needle + "\n" + _SAVEE_HELPER.lstrip("\n"), 1)
+    text = text.replace(
+        'torch.save(opt, "assets/weights/%s.pth" % name)',
+        "torch.save(opt, inference_weight_path(name))",
+    )
+    text = text.replace(
+        'torch.save(ckpt, "assets/weights/%s" % name)',
+        "torch.save(ckpt, inference_weight_path(name))",
+    )
+    path.write_text(text, encoding="utf-8")
+
+
+def _src_path(value):
+    if not value:
+        return None
+    if isinstance(value, dict):
+        for key in ("path", "name", "orig_name"):
+            item = value.get(key)
+            if isinstance(item, str) and item:
+                return item
+        return None
+    if isinstance(value, (list, tuple)) and value:
+        return _src_path(value[0])
+    if isinstance(value, (str, os.PathLike)):
+        return str(value)
+    return getattr(value, "name", None) or getattr(value, "path", None)
+
+
 def _prepare_dataset(dataset_files, exp_name):
     dataset_dir = APP_ROOT / "library" / "train_data" / exp_name
     if dataset_dir.exists():
@@ -150,9 +220,7 @@ def _prepare_dataset(dataset_files, exp_name):
     dataset_dir.mkdir(parents=True, exist_ok=True)
     count = 0
     for src in dataset_files or []:
-        if not src:
-            continue
-        path = src if isinstance(src, str) else getattr(src, "name", None)
+        path = _src_path(src)
         if not path or not os.path.isfile(path):
             continue
         ext = os.path.splitext(path)[1].lower() or ".wav"
@@ -280,7 +348,9 @@ def _find_index(exp_name):
     return max(pool, key=lambda p: p.stat().st_size)
 
 
-def _ensure_inference_weight(exp_name, log_path: Path | None = None):
+def _ensure_inference_weight(
+    exp_name, log_path: Path | None = None, epochs=None
+):
     """Prefer assets/weights/<exp>.pth; else extract from G_*.pth via savee."""
     def _log(msg: str):
         if log_path is None:
@@ -317,10 +387,9 @@ def _ensure_inference_weight(exp_name, log_path: Path | None = None):
     weight = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
     prev = os.getcwd()
     try:
-        # savee writes relative "assets/weights/<name>.pth"
         os.chdir(str(RVC_ROOT))
         _log(f"[weight] fallback cwd={os.getcwd()} from {g_candidates[0].name}")
-        msg = savee(weight, SR, 1, exp_name, _epochs(), VERSION, hps)
+        msg = savee(weight, SR, 1, exp_name, epochs or _epochs(), VERSION, hps)
         _log(f"[weight] savee: {msg}")
     finally:
         os.chdir(prev)
@@ -353,7 +422,7 @@ def _publish_voice_to_library(exp_name, pth: Path, index: Path | None, log_path:
     return dest_pth["path"], (dest_index["path"] if dest_index else None)
 
 
-def train_voice(exp_name, dataset_files):
+def train_voice(exp_name, dataset_files, epochs=None, progress=None):
     require_rvc_webui()
     assets = require_train_assets()
     exp_name = "".join(
@@ -361,13 +430,14 @@ def train_voice(exp_name, dataset_files):
     )
     if not exp_name:
         raise ValueError("Poné un nombre para la voz.")
+    total = _epochs(epochs)
 
     run_dir = APP_ROOT / "library" / "train_runs" / exp_name
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.log"
 
     _sync_assets(assets)
-    # Small inference weights are written here by process_ckpt.savee
+    _ensure_savee_absolute()
     (RVC_ROOT / "assets" / "weights").mkdir(parents=True, exist_ok=True)
     (RVC_ROOT / "assets" / "indices").mkdir(parents=True, exist_ok=True)
     dataset_dir = _prepare_dataset(dataset_files, exp_name)
@@ -377,8 +447,6 @@ def train_voice(exp_name, dataset_files):
     exp_dir.mkdir(parents=True, exist_ok=True)
 
     py = sys.executable
-    # Always -m from RVC_ROOT (cwd + PYTHONPATH). Script paths put
-    # train/ on sys.path[0] and break `import train` with circular imports.
     if log_path.is_file():
         log_path.write_text("", encoding="utf-8")
     _run(
@@ -394,6 +462,9 @@ def train_voice(exp_name, dataset_files):
             "3.7",
         ],
         log_path,
+        progress=progress,
+        frac=0.1,
+        desc="Cortando audios…",
     )
     _run(
         [
@@ -406,6 +477,9 @@ def train_voice(exp_name, dataset_files):
             "rmvpe",
         ],
         log_path,
+        progress=progress,
+        frac=0.25,
+        desc="Extrayendo F0…",
     )
     _run(
         [
@@ -420,6 +494,9 @@ def train_voice(exp_name, dataset_files):
             "false",
         ],
         log_path,
+        progress=progress,
+        frac=0.4,
+        desc="HuBERT…",
     )
     _write_filelist_and_config(exp_dir)
     _run(
@@ -436,9 +513,9 @@ def train_voice(exp_name, dataset_files):
             "-bs",
             str(BATCH),
             "-te",
-            str(_epochs()),
+            str(total),
             "-se",
-            str(min(5, _epochs())),
+            str(min(5, total)),
             "-pg",
             "assets/pretrained_v2/f0G40k.pth",
             "-pd",
@@ -453,6 +530,9 @@ def train_voice(exp_name, dataset_files):
             VERSION,
         ],
         log_path,
+        progress=progress,
+        frac=0.7,
+        desc=f"Entrenando {total} epochs (CPU)…",
     )
     indices_dir = RVC_ROOT / "assets" / "indices"
     indices_dir.mkdir(parents=True, exist_ok=True)
@@ -469,20 +549,23 @@ def train_voice(exp_name, dataset_files):
                 "single",
             ],
             log_path,
+            progress=progress,
+            frac=0.9,
+            desc="Índice…",
         )
     except RuntimeError as exc:
-        # index is optional for convert; keep pth if train succeeded
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n[index] omitido: {exc}\n")
 
-    # savee writes relative assets/weights/<name>.pth — spawn cwd is RVC_ROOT.
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"[weight] spawn cwd esperado={RVC_ROOT}\n")
     prev_path = sys.path[:]
     if str(RVC_ROOT) not in sys.path:
         sys.path.insert(0, str(RVC_ROOT))
     try:
-        pth = _ensure_inference_weight(exp_name, log_path=log_path)
+        pth = _ensure_inference_weight(
+            exp_name, log_path=log_path, epochs=total
+        )
     finally:
         sys.path[:] = prev_path
     if not pth:
@@ -492,5 +575,10 @@ def train_voice(exp_name, dataset_files):
             "fallback _ensure_inference_weight desde G_*.pth, "
             f"cwd del spawn={RVC_ROOT}. Log: library/train_runs/{exp_name}/train.log"
         )
+    if progress is not None:
+        try:
+            progress(1.0, desc="Modelo listo")
+        except Exception:
+            pass
     index = _find_index(exp_name)
     return _publish_voice_to_library(exp_name, Path(pth), index, log_path)
