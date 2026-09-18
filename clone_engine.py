@@ -58,18 +58,6 @@ def _stub_vits_deps():
     sys.modules["monotonic_alignment"] = stub
 
 
-def _patch_torch_load():
-    import torch
-
-    original = torch.load
-
-    def _load(*args, **kwargs):
-        kwargs.setdefault("weights_only", False)
-        return original(*args, **kwargs)
-
-    torch.load = _load
-
-
 def get_tts():
     """Same as tonyassi/voice-clone: TTS(...).to(device), but CPU + local files."""
     global _tts
@@ -78,7 +66,6 @@ def get_tts():
     model_dir = active_xtts_dir()
     os.environ["COQUI_TOS_AGREED"] = "1"
     _stub_vits_deps()
-    _patch_torch_load()
     import torch
     from TTS.api import TTS
 

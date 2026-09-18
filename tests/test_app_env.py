@@ -22,6 +22,15 @@ class AppEnvTests(unittest.TestCase):
         src = inspect.getsource(app_env)
         self.assertNotIn("lucastomasi", src)
 
+    def test_ui_copy_admits_youtube_and_edge(self):
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parents[1] / "app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("YouTube", text)
+        self.assertIn("Edge", text)
+        self.assertNotIn("sin subir audio", text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

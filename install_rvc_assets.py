@@ -12,6 +12,9 @@ from pathlib import Path
 from library import ensure_dirs, rvc_support_dir
 
 REPO = "lj1995/VoiceConversionWebUI"
+WEBUI_GIT = (
+    "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git"
+)
 
 # Relative paths inside the HF repo → local names under library/models/rvc/
 # Each local name → candidate paths inside the HF repo (first that exists wins).
@@ -71,6 +74,39 @@ def rvc_assets_ready() -> bool:
     return not missing_rvc_assets()
 
 
+def rvc_webui_root() -> Path:
+    return Path(__file__).resolve().parent / "third_party" / "RVC-WebUI"
+
+
+def ensure_rvc_webui(log=None) -> str | None:
+    """Clone official WebUI once (free git). Train needs it; app stays up if git fails."""
+    dest = rvc_webui_root()
+    train_py = dest / "train" / "train.py"
+    if train_py.is_file():
+        if log:
+            log("OK RVC-WebUI")
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if log:
+        log("Clonando RVC-WebUI (gratis, una vez)…")
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "clone", "--depth", "1", WEBUI_GIT, str(dest)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not train_py.is_file():
+        err = (result.stderr or result.stdout or "").strip()[:200]
+        raise RuntimeError(
+            "Sin red no pude clonar RVC-WebUI. Entrenar queda apagado "
+            "hasta que haya cupo o red. " + err
+        )
+    if log:
+        log("Listo RVC-WebUI")
+    return "RVC-WebUI"
+
+
 def _link_or_copy(src: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() or dest.is_symlink():
@@ -99,14 +135,23 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     _link_or_copy(Path(cached), dest)
 
 
+def _torch_load(path: Path, *, allow_unsafe: bool = False):
+    import torch
+
+    try:
+        return torch.load(str(path), map_location="cpu", weights_only=True)
+    except Exception:
+        if not allow_unsafe:
+            raise
+        return torch.load(str(path), map_location="cpu", weights_only=False)
+
+
 def _hubert_pt_is_fairseq(path: Path) -> bool:
     """True if hubert_base.pt is ContentVec/fairseq, not a misnamed RVC .pth."""
     if not path.is_file() or path.stat().st_size < 80_000_000:
         return False
     try:
-        import torch
-
-        state = torch.load(str(path), map_location="cpu")
+        state = _torch_load(path, allow_unsafe=True)
     except Exception:
         return False
     if not isinstance(state, dict):
@@ -127,10 +172,9 @@ def _ensure_safetensors(hubert_dir: Path) -> None:
         return
     if not bin_path.is_file():
         raise FileNotFoundError(bin_path)
-    import torch
     from safetensors.torch import save_file
 
-    state = torch.load(str(bin_path), map_location="cpu")
+    state = _torch_load(bin_path, allow_unsafe=True)
     if isinstance(state, dict) and "state_dict" in state and len(state) < 5:
         state = state["state_dict"]
     tensors = {
@@ -238,6 +282,13 @@ def install_rvc_assets(log=None) -> list[str]:
             written.append("logs/mute")
     except Exception as exc:
         _log(f"mute opcional omitido: {exc}")
+
+    try:
+        got_webui = ensure_rvc_webui(log=_log)
+        if got_webui:
+            written.append(got_webui)
+    except Exception as exc:
+        _log(str(exc))
 
     left = missing_rvc_assets()
     if left:

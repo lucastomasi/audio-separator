@@ -469,12 +469,24 @@ def _ensure_inference_weight(
     weights_dir = RVC_ROOT / "assets" / "weights"
     weights_dir.mkdir(parents=True, exist_ok=True)
     import torch
+    from rvc_engine import _scan_model
     from train.process_ckpt import savee
     from train.utils import HParams
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
     hps = HParams(**config)
-    ckpt = torch.load(str(g_candidates[0]), map_location="cpu")
+    try:
+        _scan_model(str(g_candidates[0]))
+    except ValueError as exc:
+        raise ValueError(
+            "El checkpoint de train no pasó la revisión. No se abre."
+        ) from exc
+    try:
+        ckpt = torch.load(
+            str(g_candidates[0]), map_location="cpu", weights_only=True
+        )
+    except Exception:
+        ckpt = torch.load(str(g_candidates[0]), map_location="cpu")
     weight = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
     prev = os.getcwd()
     try:

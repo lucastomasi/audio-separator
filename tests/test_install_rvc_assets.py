@@ -48,6 +48,26 @@ class InstallRvcAssetsTests(unittest.TestCase):
                 self.assertEqual(install_rvc_assets.missing_rvc_assets(), [])
                 self.assertTrue(install_rvc_assets.rvc_assets_ready())
 
+    def test_ensure_rvc_webui_errors_when_git_fails(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name) / "RVC-WebUI"
+        fake = mock.Mock(returncode=1, stderr="network", stdout="")
+        with mock.patch.object(install_rvc_assets, "rvc_webui_root", return_value=dest):
+            with mock.patch("subprocess.run", return_value=fake):
+                with self.assertRaises(RuntimeError) as ctx:
+                    install_rvc_assets.ensure_rvc_webui()
+        self.assertIn("Entrenar queda apagado", str(ctx.exception))
+
+    def test_ensure_rvc_webui_skips_if_present(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name) / "RVC-WebUI"
+        (dest / "train").mkdir(parents=True)
+        (dest / "train" / "train.py").write_text("# train\n")
+        with mock.patch.object(install_rvc_assets, "rvc_webui_root", return_value=dest):
+            self.assertIsNone(install_rvc_assets.ensure_rvc_webui())
+
 
 if __name__ == "__main__":
     unittest.main()

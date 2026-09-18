@@ -82,4 +82,4 @@ Eso pisa `origin/main`. No sube `dist/`, `library.json`, voces, ONNX ni RVC-WebU
 
 ## Licencia
 
-MIT. RVC-WebUI, UVR y modelos de terceros conservan las suyas.
+MIT del glue: `LICENSE`. Modelos y webui de terceros: `NOTICE.md`.

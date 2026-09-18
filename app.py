@@ -101,7 +101,9 @@ def get_gui():
     ) as app:
         gr.Markdown("# Audio Separator", elem_classes=["app-header"])
         gr.Markdown(
-            "Local en este Mac. Cerrá la ventana para salir.",
+            "Procesa en este Mac. Internet (gratis) para YouTube, Edge y bajar "
+            "modelos. Si no hay red, Separar / Entrenar / Convertir siguen con "
+            "lo que ya está en disco.",
             elem_classes=["lede"],
         )
         gr.Markdown(
@@ -231,7 +233,8 @@ def get_gui():
                     )
                     gr.Markdown(
                         "CPU Intel: 10 epochs de prueba, minutos u horas según "
-                        "el largo del audio. El modelo aparece en Convertir al terminar.",
+                        "el largo del audio. El modelo aparece en Convertir al terminar. "
+                        "El .pth es esa voz: no lo compartas si no es tuyo.",
                         elem_classes=["hint"],
                     )
                     train_btn = gr.Button(

@@ -142,10 +142,11 @@ def get_hash(filepath):
     return file_hash.hexdigest()[:18]
 
 
-def ensure_uvr_model(filename):
+def ensure_uvr_model(filename, progress=None):
     dest = os.path.join(mdxnet_models_dir, filename)
     if os.path.isfile(dest) and os.path.getsize(dest) > 0:
         return dest
+    _tick(progress, 0.05, f"Bajando modelo UVR (gratis, una vez): {filename}")
     download_manager(
         os.path.join(MDX_DOWNLOAD_LINK, filename), mdxnet_models_dir
     )
@@ -202,7 +203,7 @@ def process_uvr_task(
         process = run_mdx(
             mdx_model_params,
             song_output_dir,
-            ensure_uvr_model("UVR-MDX-NET-Inst_HQ_4.onnx"),
+            ensure_uvr_model("UVR-MDX-NET-Inst_HQ_4.onnx", progress),
             orig_song_path,
             suffix="Voiceless",
             denoise=False,
@@ -219,7 +220,7 @@ def process_uvr_task(
     vocals_path, instrumentals_path = run_mdx(
         mdx_model_params,
         song_output_dir,
-        ensure_uvr_model("UVR-MDX-NET-Voc_FT.onnx"),
+        ensure_uvr_model("UVR-MDX-NET-Voc_FT.onnx", progress),
         orig_song_path,
         denoise=False,
         keep_orig=True,
@@ -236,7 +237,7 @@ def process_uvr_task(
             backup_vocals_path, main_vocals_path = run_mdx(
                 mdx_model_params,
                 song_output_dir,
-                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx"),
+                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx", progress),
                 vocals_path,
                 suffix="Backup",
                 invert_suffix="Main",
@@ -247,7 +248,7 @@ def process_uvr_task(
             backup_vocals_path, main_vocals_path = run_mdx_beta(
                 mdx_model_params,
                 song_output_dir,
-                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx"),
+                ensure_uvr_model("UVR_MDXNET_KARA_2.onnx", progress),
                 vocals_path,
                 suffix="Backup",
                 invert_suffix="Main",
@@ -267,7 +268,7 @@ def process_uvr_task(
             _, vocals_dereverb_path = run_mdx(
                 mdx_model_params,
                 song_output_dir,
-                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx"),
+                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx", progress),
                 main_vocals_path,
                 invert_suffix="DeReverb",
                 exclude_main=True,
@@ -278,7 +279,7 @@ def process_uvr_task(
             _, vocals_dereverb_path = run_mdx_beta(
                 mdx_model_params,
                 song_output_dir,
-                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx"),
+                ensure_uvr_model("Reverb_HQ_By_FoxJoy.onnx", progress),
                 main_vocals_path,
                 invert_suffix="DeReverb",
                 exclude_main=True,
