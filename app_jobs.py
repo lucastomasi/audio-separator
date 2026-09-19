@@ -360,22 +360,16 @@ def train_rvc_job(
             files = [files]
         files = [_gradio_path(item) or item for item in files]
         n_files = len([item for item in files if item])
-        from runpod_train import estimate_copy, available as runpod_on, start_train_pod
+        from runpod_train import estimate_copy
 
         try:
             progress(0.05, desc=estimate_copy(n_files, int(epochs or 10)))
         except Exception:
             pass
-        if hire_gpu:
+        if hire_gpu and runpod_key:
             from gpu_secrets import save as save_secrets
 
-            if runpod_key:
-                save_secrets({"RUNPOD_API_KEY": runpod_key})
-            if runpod_on():
-                try:
-                    start_train_pod()
-                except ValueError:
-                    pass
+            save_secrets({"RUNPOD_API_KEY": runpod_key})
         pth, index = train_voice(
             exp_name, files, epochs=epochs, progress=progress
         )
@@ -478,7 +472,7 @@ def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
             progress(0.45, desc="Convirtiendo con RVC…")
         except Exception:
             pass
-        out = speak_with_rvc(
+        out, src = speak_with_rvc(
             text,
             rvc_model,
             edge_voice=voice_id,
@@ -488,7 +482,6 @@ def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
             progress(1.0, desc="Listo")
         except Exception:
             pass
-        src = "ElevenLabs" if __import__("eleven_tts").available() else f"Edge {voice_id}"
         return out, out, _ok(f"Listo ({src} → RVC).")
     except ValueError as error:
         return None, None, _err("tts_rvc_job", error, MSG_TTS)
@@ -565,6 +558,7 @@ def cover_job(title, artist, audio_path, artistic):
 
         audio_path = _gradio_path(audio_path)
         cover = None
+        gemini_note = ""
         if artistic:
             try:
                 from gemini_cover import available as gemini_on, generate_png
@@ -575,10 +569,12 @@ def cover_job(title, artist, audio_path, artistic):
                     cover = str(generate_png(title or "", artist or "", dest))
             except Exception:
                 cover = None
+                gemini_note = " Gemini no anduvo; portada local."
         if not cover:
             cover = generate_cover(title or "Audio Separator", artist or "", artistic=bool(artistic))
         saved = save_cover_with_audio(cover, audio_path)
-        return saved, _ok("Portada lista (no toca el audio).")
+        used = "Gemini" if cover and "portada_gemini" in cover else "local"
+        return saved, _ok(f"Portada lista ({used}).{gemini_note}")
     except ValueError as error:
         return None, _err("cover_job", error, MSG_COVER)
     except Exception as error:

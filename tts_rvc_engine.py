@@ -144,8 +144,8 @@ def speak_with_rvc(
     edge_voice: str = "es-AR-ElenaNeural",
     pitch: int = 0,
     index_rate: float = 0.66,
-) -> str:
-    """Edge TTS → wav → library RVC convert → Downloads."""
+) -> tuple[str, str]:
+    """TTS (ElevenLabs or Edge) → wav → RVC. Returns (path, source_label)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("Escribí un texto.")
@@ -186,8 +186,8 @@ def speak_with_rvc(
         if Path(out).resolve() != nicer.resolve():
             try:
                 nicer.write_bytes(Path(out).read_bytes())
-                return str(nicer)
+                return str(nicer), ("ElevenLabs" if used_el else f"Edge {voice}")
             except OSError:
                 pass
-        return out
+        return out, ("ElevenLabs" if used_el else f"Edge {voice}")
     raise RuntimeError("La conversión RVC no produjo audio.")
