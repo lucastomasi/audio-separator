@@ -237,6 +237,15 @@ def get_gui():
                         "El .pth es esa voz: no lo compartas si no es tuyo.",
                         elem_classes=["hint"],
                     )
+                    hire_gpu = gr.Checkbox(
+                        False,
+                        label="Alquilar GPU RunPod (se apaga a los 45 min o al cerrar)",
+                    )
+                    runpod_key = gr.Textbox(
+                        label="RunPod API key",
+                        type="password",
+                        placeholder="Opcional; sin key se entrena en este Mac",
+                    )
                     train_btn = gr.Button(
                         "Entrenar", variant="primary", elem_id="train-btn"
                     )
@@ -353,8 +362,7 @@ def get_gui():
         with gr.Group(elem_classes=["step"], elem_id="step-tts"):
             gr.Markdown("## 6. Texto → habla (Edge + RVC)", elem_classes=["panel-title"])
             gr.Markdown(
-                "No clona desde un wav de referencia. Texto → Edge "
-                "(hace falta internet) → tu .pth RVC.",
+                "Texto → ElevenLabs si hay key, si no Edge (internet) → tu .pth RVC.",
                 elem_classes=["hint"],
             )
             tts_text = gr.Textbox(
@@ -548,7 +556,7 @@ def get_gui():
         )
         train_btn.click(
             train_rvc_job,
-            inputs=[train_name, train_dataset, train_epochs],
+            inputs=[train_name, train_dataset, train_epochs, hire_gpu, runpod_key],
             outputs=[rvc_pick, status, tts_rvc_pick, train_status],
             show_progress="full",
             concurrency_limit=1,

@@ -157,7 +157,17 @@ def speak_with_rvc(
     WORK.mkdir(parents=True, exist_ok=True)
     edge_mp3 = WORK / "edge_tmp.mp3"
     edge_wav = WORK / "edge_tmp.wav"
-    asyncio.run(_edge_tts_to_file(text, voice, edge_mp3))
+    used_el = False
+    try:
+        import eleven_tts
+
+        if eleven_tts.available():
+            eleven_tts.speak_to_mp3(text, edge_mp3)
+            used_el = True
+    except Exception:
+        used_el = False
+    if not used_el:
+        asyncio.run(_edge_tts_to_file(text, voice, edge_mp3))
     _to_wav(edge_mp3, edge_wav)
     if not edge_wav.is_file():
         raise ValueError("Falta el audio de Edge TTS tras convertir a WAV.")

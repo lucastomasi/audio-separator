@@ -337,7 +337,14 @@ def load_rvc_into_library(
     )
 
 
-def train_rvc_job(exp_name, dataset_files, epochs=10, progress=gr.Progress()):
+def train_rvc_job(
+    exp_name,
+    dataset_files,
+    epochs=10,
+    hire_gpu=False,
+    runpod_key=None,
+    progress=gr.Progress(),
+):
     try:
         from rvc_train import train_voice
 
@@ -352,6 +359,23 @@ def train_rvc_job(exp_name, dataset_files, epochs=10, progress=gr.Progress()):
         elif not isinstance(files, (list, tuple)):
             files = [files]
         files = [_gradio_path(item) or item for item in files]
+        n_files = len([item for item in files if item])
+        from runpod_train import estimate_copy, available as runpod_on, start_train_pod
+
+        try:
+            progress(0.05, desc=estimate_copy(n_files, int(epochs or 10)))
+        except Exception:
+            pass
+        if hire_gpu:
+            from gpu_secrets import save as save_secrets
+
+            if runpod_key:
+                save_secrets({"RUNPOD_API_KEY": runpod_key})
+            if runpod_on():
+                try:
+                    start_train_pod()
+                except ValueError:
+                    pass
         pth, index = train_voice(
             exp_name, files, epochs=epochs, progress=progress
         )
@@ -464,7 +488,8 @@ def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
             progress(1.0, desc="Listo")
         except Exception:
             pass
-        return out, out, _ok(f"Listo (Edge {voice_id} → RVC).")
+        src = "ElevenLabs" if __import__("eleven_tts").available() else f"Edge {voice_id}"
+        return out, out, _ok(f"Listo ({src} → RVC).")
     except ValueError as error:
         return None, None, _err("tts_rvc_job", error, MSG_TTS)
     except Exception as error:
@@ -539,7 +564,19 @@ def cover_job(title, artist, audio_path, artistic):
         from album_cover import generate_cover, save_cover_with_audio
 
         audio_path = _gradio_path(audio_path)
-        cover = generate_cover(title or "Audio Separator", artist or "", artistic=bool(artistic))
+        cover = None
+        if artistic:
+            try:
+                from gemini_cover import available as gemini_on, generate_png
+                from exports import unique_path, exports_dir
+
+                if gemini_on():
+                    dest = unique_path(exports_dir(), "portada_gemini.png")
+                    cover = str(generate_png(title or "", artist or "", dest))
+            except Exception:
+                cover = None
+        if not cover:
+            cover = generate_cover(title or "Audio Separator", artist or "", artistic=bool(artistic))
         saved = save_cover_with_audio(cover, audio_path)
         return saved, _ok("Portada lista (no toca el audio).")
     except ValueError as error:

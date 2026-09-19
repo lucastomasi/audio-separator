@@ -150,6 +150,12 @@ def main():
             stop_vc_worker()
         except Exception:
             pass
+        try:
+            from runpod_train import stop_pod
+
+            stop_pod()
+        except Exception:
+            pass
         os._exit(0)
 
     try:

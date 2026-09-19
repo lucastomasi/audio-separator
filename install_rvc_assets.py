@@ -126,11 +126,19 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if REPO.startswith("/"):
         raise RuntimeError(f"repo_id inválido: {REPO}")
+    token = None
+    try:
+        from gpu_secrets import get as _secret
+
+        token = _secret("HF_TOKEN")
+    except Exception:
+        token = None
     cached = hf_hub_download(
         repo_id=REPO,
         filename=repo_file,
         cache_dir=str(cache_dir) if cache_dir else None,
         resume_download=True,
+        token=token or None,
     )
     _link_or_copy(Path(cached), dest)
 

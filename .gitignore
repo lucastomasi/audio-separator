@@ -1,3 +1,4 @@
+gpu_secrets.json
 .venv/
 .venv-vc/
 __pycache__/
