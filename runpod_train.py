@@ -29,12 +29,7 @@ def estimate_cpu_minutes(n_files: int, epochs: int) -> int:
 
 def estimate_copy(n_files: int, epochs: int) -> str:
     cpu = estimate_cpu_minutes(n_files, epochs)
-    gpu = max(8, (n_files * epochs) // 20)
-    return (
-        f"{n_files} audios × {epochs} epochs ≈ {cpu} min en este Mac, "
-        f"~{gpu} min en GPU de alquiler. "
-        f"RunPod se apaga solo a los {DEFAULT_TTL_MIN} min."
-    )
+    return f"{n_files} audios × {epochs} epochs ≈ {cpu} min en este Mac."
 
 
 def check_key(session=None) -> str:

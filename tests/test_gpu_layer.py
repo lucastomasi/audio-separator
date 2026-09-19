@@ -29,8 +29,11 @@ class RunpodTrainTests(unittest.TestCase):
         small = runpod_train.estimate_cpu_minutes(3, 10)
         big = runpod_train.estimate_cpu_minutes(300, 15)
         self.assertGreater(big, small)
-        self.assertIn("Mac", runpod_train.estimate_copy(3, 10))
-        self.assertIn("45", runpod_train.estimate_copy(3, 10))
+        copy = runpod_train.estimate_copy(3, 10)
+        self.assertIn("Mac", copy)
+        self.assertNotIn("GPU", copy)
+        self.assertNotIn("45", copy)
+        self.assertNotIn("alquiler", copy)
 
     def test_start_without_image_raises(self):
         with mock.patch.object(runpod_train, "get", return_value="key"):
@@ -49,6 +52,79 @@ class RunpodTrainTests(unittest.TestCase):
                 runpod_train.stop_pod("pod1", session=http)
         http.delete.assert_called()
         saver.assert_called_with({"RUNPOD_POD_ID": ""})
+
+
+class TrainRvcJobGpuTests(unittest.TestCase):
+    def test_hire_gpu_saves_key_without_starting_pod(self):
+        import app_jobs
+
+        saver = mock.Mock()
+        start = mock.Mock()
+        rvc_upd = mock.Mock()
+        tts_upd = mock.Mock()
+        with mock.patch("rvc_train.train_voice", return_value=("/tmp/m.pth", None)):
+            with mock.patch(
+                "app_jobs.refresh_library_ui", return_value=(rvc_upd, tts_upd)
+            ):
+                with mock.patch("library.dropdown_choices", return_value=[]):
+                    with mock.patch("library.list_rvc_voices", return_value=[]):
+                        with mock.patch("gpu_secrets.save", saver):
+                            with mock.patch("runpod_train.start_train_pod", start):
+                                app_jobs.train_rvc_job(
+                                    "demo",
+                                    ["/tmp/a.wav"],
+                                    epochs=10,
+                                    hire_gpu=True,
+                                    runpod_key="rp-test",
+                                    progress=mock.Mock(),
+                                )
+        start.assert_not_called()
+        saver.assert_called_with({"RUNPOD_API_KEY": "rp-test"})
+
+
+class SpeakWithRvcSourceTests(unittest.TestCase):
+    def _run_speak(self, *, eleven_on):
+        import tts_rvc_engine
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        work = Path(tmp.name)
+        out = work / "out.wav"
+        out.write_bytes(b"x" * 20)
+
+        def fake_to_wav(_src, dest):
+            dest.write_bytes(b"RIFF")
+            return dest
+
+        with mock.patch.object(tts_rvc_engine, "WORK", work):
+            with mock.patch.object(
+                tts_rvc_engine, "resolve_voice_model", return_value=("m.pth", None)
+            ):
+                with mock.patch.object(
+                    tts_rvc_engine, "convert_voice", return_value=str(out)
+                ):
+                    with mock.patch.object(
+                        tts_rvc_engine, "_to_wav", side_effect=fake_to_wav
+                    ):
+                        with mock.patch("eleven_tts.available", return_value=eleven_on):
+                            with mock.patch("eleven_tts.speak_to_mp3"):
+                                with mock.patch.object(
+                                    tts_rvc_engine, "_edge_tts_to_file"
+                                ) as edge:
+                                    path, src = tts_rvc_engine.speak_with_rvc(
+                                        "hola", "m.pth"
+                                    )
+        return path, src, edge
+
+    def test_reports_elevenlabs_when_used(self):
+        _path, src, edge = self._run_speak(eleven_on=True)
+        self.assertEqual(src, "ElevenLabs")
+        edge.assert_not_called()
+
+    def test_reports_edge_when_eleven_unavailable(self):
+        _path, src, edge = self._run_speak(eleven_on=False)
+        self.assertTrue(src.startswith("Edge"), src)
+        edge.assert_called()
 
 
 class ElevenTtsTests(unittest.TestCase):

@@ -30,6 +30,9 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("YouTube", text)
         self.assertIn("Edge", text)
         self.assertNotIn("sin subir audio", text.lower())
+        self.assertNotIn("Alquilar GPU RunPod", text)
+        self.assertNotIn("se apaga a los 45 min", text)
+        self.assertIn("el entrenamiento es en este Mac", text)
 
 
 if __name__ == "__main__":

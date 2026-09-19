@@ -239,12 +239,12 @@ def get_gui():
                     )
                     hire_gpu = gr.Checkbox(
                         False,
-                        label="Alquilar GPU RunPod (se apaga a los 45 min o al cerrar)",
+                        label="Guardar key RunPod (el entrenamiento es en este Mac)",
                     )
                     runpod_key = gr.Textbox(
                         label="RunPod API key",
                         type="password",
-                        placeholder="Opcional; sin key se entrena en este Mac",
+                        placeholder="Opcional; se guarda si marcás el checkbox. No alquila GPU.",
                     )
                     train_btn = gr.Button(
                         "Entrenar", variant="primary", elem_id="train-btn"
