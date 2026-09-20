@@ -47,8 +47,9 @@ class TrainRunTests(unittest.TestCase):
 
     def test_execute_train_does_not_import_torch(self):
         src = inspect.getsource(rvc_train.execute_train)
+        src += inspect.getsource(rvc_train.finish_train_publish)
         self.assertNotIn("import torch", src)
-        self.assertIn("export_weight", src)
+        self.assertIn("finish_train_publish", inspect.getsource(rvc_train.execute_train))
 
     def test_run_does_not_pipe_stdout(self):
         src = inspect.getsource(rvc_train._run)

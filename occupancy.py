@@ -96,6 +96,7 @@ def _read_lock() -> Occupancy | None:
     except (TypeError, ValueError):
         pid = None
     if pid is not None and not _pid_alive(pid):
+        _clear_lock()
         return None
     exp = data.get("exp")
     return Occupancy(holder, pid=pid, exp=str(exp) if exp else None)

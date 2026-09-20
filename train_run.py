@@ -197,7 +197,9 @@ def supervise(job_file: str) -> int:
         write_published(exp, ok=True, pth=pth, index=index)
         return 0
     except Exception as exc:
-        write_published(exp, ok=False, error=str(exc)[-1500:])
+        existing = read_published(exp)
+        if not (existing and existing.get("ok") and existing.get("pth")):
+            write_published(exp, ok=False, error=str(exc)[-1500:])
         return 1
     finally:
         occupancy.release(occupancy.HOLD_TRAIN)

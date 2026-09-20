@@ -131,10 +131,103 @@ class RvcTrainTests(unittest.TestCase):
         src.write_bytes(b"x" * 100)
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             with mock.patch.object(rvc_train, "APP_ROOT", root):
-                copied = rvc_train.snapshot_checkpoints("demo")
+                light = rvc_train.snapshot_checkpoints("demo", heavy=False)
+                copied = rvc_train.snapshot_checkpoints("demo", heavy=True)
         dest = root / "library" / "train_runs" / "demo" / "ckpt" / "G_2333333.pth"
+        self.assertFalse(any(p.name == "G_2333333.pth" for p in light))
         self.assertTrue(dest.is_file())
         self.assertTrue(any(p.name == "G_2333333.pth" for p in copied))
+
+    def _sparse(self, path, size):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.seek(size - 1)
+            handle.write(b"x")
+
+    def test_snapshot_publishes_infer_before_heavy(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        voices = root / "voices"
+        voices.mkdir()
+        infer = root / "assets" / "weights" / "demo.pth"
+        heavy = root / "logs" / "demo" / "G_2333333.pth"
+        self._sparse(infer, 21 * 1024 * 1024)
+        self._sparse(heavy, 200 * 1024 * 1024)
+        registered = []
+
+        def fake_register(kind, src, name=None):
+            dest = voices / (name or "x.pth")
+            dest.write_bytes(b"infer")
+            registered.append((kind, src, name))
+            return {"path": str(dest)}
+
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch.object(rvc_train, "APP_ROOT", root):
+                with mock.patch("rvc_train.register", side_effect=fake_register):
+                    rvc_train.snapshot_checkpoints("demo", heavy=False)
+        self.assertTrue(registered)
+        self.assertTrue(all("G_" not in (item[2] or "") for item in registered))
+        self.assertFalse(
+            (root / "library" / "train_runs" / "demo" / "ckpt" / "G_2333333.pth").is_file()
+        )
+
+    def test_finish_train_skips_export_when_infer_exists(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        voices = root / "voices"
+        voices.mkdir()
+        infer = root / "assets" / "weights" / "demo.pth"
+        self._sparse(infer, 21 * 1024 * 1024)
+        log = root / "train.log"
+        log.write_text("", encoding="utf-8")
+
+        def fake_register(kind, src, name=None):
+            dest = voices / (name or "out.pth")
+            dest.write_bytes(b"ok")
+            return {"path": str(dest)}
+
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch.object(rvc_train, "APP_ROOT", root):
+                with mock.patch("rvc_train.register", side_effect=fake_register):
+                    with mock.patch("train_run.export_weight") as export:
+                        with mock.patch.object(rvc_train, "_run", side_effect=RuntimeError("index")):
+                            with mock.patch("app_env.data_dir", return_value=str(root)):
+                                pth, _idx = rvc_train.finish_train_publish(
+                                    "demo", log, 1
+                                )
+                                export.assert_not_called()
+                                self.assertTrue(pth)
+                                published = __import__("train_run").read_published("demo")
+                                self.assertTrue(published["ok"])
+
+    def test_finish_train_ok_if_index_fails(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        voices = root / "voices"
+        voices.mkdir()
+        infer = root / "assets" / "weights" / "demo.pth"
+        self._sparse(infer, 21 * 1024 * 1024)
+        log = root / "train.log"
+        log.write_text("", encoding="utf-8")
+
+        def fake_register(kind, src, name=None):
+            dest = voices / (name or "out.pth")
+            dest.write_bytes(b"ok")
+            return {"path": str(dest)}
+
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch.object(rvc_train, "APP_ROOT", root):
+                with mock.patch("rvc_train.register", side_effect=fake_register):
+                    with mock.patch.object(
+                        rvc_train, "_run", side_effect=RuntimeError("index boom")
+                    ):
+                        with mock.patch("app_env.data_dir", return_value=str(root)):
+                            pth, _idx = rvc_train.finish_train_publish("demo", log, 1)
+        self.assertTrue(pth)
+        self.assertIn("omitido", log.read_text(encoding="utf-8"))
 
     def test_train_running_reads_ps_command_line(self):
         fake = (

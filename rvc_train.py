@@ -105,37 +105,74 @@ def _ckpt_dir(exp_name: str) -> Path:
     return path
 
 
-def snapshot_checkpoints(exp_name: str) -> list[Path]:
-    """Copy train dumps + inference pth into train_runs/<exp>/ckpt. Never raises."""
+def _needs_ckpt_copy(src: Path, dest: Path) -> bool:
+    if not dest.is_file():
+        return True
+    try:
+        return (
+            src.stat().st_mtime > dest.stat().st_mtime
+            or src.stat().st_size != dest.stat().st_size
+        )
+    except OSError:
+        return True
+
+
+def publish_infer_weight(exp_name, log_path: Path | None = None) -> Path | None:
+    """Copy the ~50 MB infer .pth into Convertir. Never opens G_/D_ or torch."""
+    small = _find_small_weight(exp_name)
+    if small is None:
+        return None
+    try:
+        dest = register("rvc_voices", str(small), f"{exp_name}.pth")
+    except Exception:
+        return None
+    path = Path(dest["path"])
+    if log_path is not None:
+        try:
+            with open(log_path, "a", encoding="utf-8") as log:
+                log.write(f"[library] pth -> {path} ({path.stat().st_size} bytes)\n")
+        except OSError:
+            pass
+    return path
+
+
+def snapshot_checkpoints(exp_name: str, *, heavy: bool = False) -> list[Path]:
+    """Copy infer .pth first. G_/D_ only if heavy=True. Never raises."""
     copied: list[Path] = []
     try:
         dest = _ckpt_dir(exp_name)
         logs = RVC_ROOT / "logs" / exp_name
         weights = RVC_ROOT / "assets" / "weights"
-        sources: list[Path] = []
-        if logs.is_dir():
-            sources.extend(logs.glob("G_*.pth"))
-            sources.extend(logs.glob("D_*.pth"))
+        infer_sources: list[Path] = []
         if weights.is_dir():
-            sources.extend(weights.glob(f"{exp_name}*.pth"))
-        for src in sources:
+            infer_sources.extend(
+                path
+                for path in weights.glob(f"{exp_name}*.pth")
+                if _is_infer_weight(path)
+            )
+        for src in infer_sources:
             try:
                 target = dest / src.name
-                if (
-                    not target.is_file()
-                    or src.stat().st_mtime > target.stat().st_mtime
-                    or src.stat().st_size != target.stat().st_size
-                ):
+                if _needs_ckpt_copy(src, target):
                     shutil.copy2(src, target)
                     copied.append(target)
             except OSError:
                 continue
-        small = _find_small_weight(exp_name)
-        if small is not None:
+        publish_infer_weight(exp_name)
+        if not heavy:
+            return copied
+        heavy_sources: list[Path] = []
+        if logs.is_dir():
+            heavy_sources.extend(logs.glob("G_*.pth"))
+            heavy_sources.extend(logs.glob("D_*.pth"))
+        for src in heavy_sources:
             try:
-                register("rvc_voices", str(small), f"{exp_name}.pth")
-            except Exception:
-                pass
+                target = dest / src.name
+                if _needs_ckpt_copy(src, target):
+                    shutil.copy2(src, target)
+                    copied.append(target)
+            except OSError:
+                continue
     except Exception:
         return copied
     return copied
@@ -198,7 +235,7 @@ def _run(
         err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
     if exp_name:
-        snapshot_checkpoints(exp_name)
+        snapshot_checkpoints(exp_name, heavy=False)
     if desc and progress is not None:
         try:
             progress(frac if frac is not None else 0, desc=desc)
@@ -223,11 +260,11 @@ def _tail_train_log(log_path, offset, last, progress, frac, total_epochs, exp_na
                 epoch = int(match.group(1))
                 frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
                 if exp_name:
-                    snapshot_checkpoints(exp_name)
+                    snapshot_checkpoints(exp_name, heavy=False)
         if exp_name and last and (
             "savee" in last.lower() or "checkpoint" in last.lower()
         ):
-            snapshot_checkpoints(exp_name)
+            snapshot_checkpoints(exp_name, heavy=False)
         if progress is not None and last:
             try:
                 progress(frac_now if frac_now is not None else 0, desc=last[:80])
@@ -561,6 +598,64 @@ def _publish_voice_to_library(exp_name, pth: Path, index: Path | None, log_path:
     return dest_pth["path"], (dest_index["path"] if dest_index else None)
 
 
+def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
+    """Publish infer .pth before index / G_/D_ copies. Writes published.json."""
+    pth = publish_infer_weight(exp_name, log_path)
+    if pth is None:
+        exported = train_run.export_weight(exp_name, log_path, total)
+        if not exported:
+            raise RuntimeError(
+                "Train terminó sin .pth de inferencia. "
+                f"{RVC_ROOT / 'assets' / 'weights' / (exp_name + '.pth')}"
+            )
+        pth = Path(exported)
+    dest_pth, dest_index = _publish_voice_to_library(
+        exp_name, Path(pth), _find_index(exp_name), log_path
+    )
+    train_run.write_published(
+        exp_name, ok=True, pth=dest_pth, index=dest_index
+    )
+    if progress is not None:
+        try:
+            progress(1.0, desc="Modelo listo")
+        except Exception:
+            pass
+    indices_dir = RVC_ROOT / "assets" / "indices"
+    indices_dir.mkdir(parents=True, exist_ok=True)
+    runner = py or sys.executable
+    try:
+        _run(
+            [
+                runner,
+                "-m",
+                "train.train_index",
+                exp_name,
+                VERSION,
+                str(indices_dir),
+                str(WORKERS),
+                "single",
+            ],
+            log_path,
+            progress=progress,
+            frac=0.9,
+            desc="Índice…",
+        )
+        dest_pth, dest_index = _publish_voice_to_library(
+            exp_name, Path(dest_pth), _find_index(exp_name), log_path
+        )
+        train_run.write_published(
+            exp_name, ok=True, pth=dest_pth, index=dest_index
+        )
+    except RuntimeError as exc:
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"\n[index] omitido: {exc}\n")
+    try:
+        snapshot_checkpoints(exp_name, heavy=True)
+    except Exception:
+        pass
+    return dest_pth, dest_index
+
+
 def train_voice(exp_name, dataset_files, epochs=None, progress=None):
     if os.environ.get("RVC_TRAIN_SUPERVISOR") == "1":
         return execute_train(
@@ -719,44 +814,6 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
         exp_name=exp_name,
         total_epochs=total,
     )
-    snapshot_checkpoints(exp_name)
-    indices_dir = RVC_ROOT / "assets" / "indices"
-    indices_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        _run(
-            [
-                py,
-                "-m",
-                "train.train_index",
-                exp_name,
-                VERSION,
-                str(indices_dir),
-                str(WORKERS),
-                "single",
-            ],
-            log_path,
-            progress=progress,
-            frac=0.9,
-            desc="Índice…",
-        )
-    except RuntimeError as exc:
-        with open(log_path, "a", encoding="utf-8") as log:
-            log.write(f"\n[index] omitido: {exc}\n")
-
-    with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"[weight] spawn cwd esperado={RVC_ROOT}\n")
-    pth = train_run.export_weight(exp_name, log_path, total)
-    if not pth:
-        raise RuntimeError(
-            "Train terminó sin .pth de inferencia. Orden a revisar: "
-            f"{RVC_ROOT / 'assets' / 'weights' / (exp_name + '.pth')}, "
-            "fallback _ensure_inference_weight desde G_*.pth, "
-            f"cwd del spawn={RVC_ROOT}. Log: library/train_runs/{exp_name}/train.log"
-        )
-    if progress is not None:
-        try:
-            progress(1.0, desc="Modelo listo")
-        except Exception:
-            pass
-    index = _find_index(exp_name)
-    return _publish_voice_to_library(exp_name, Path(pth), index, log_path)
+    return finish_train_publish(
+        exp_name, log_path, total, progress=progress, py=py
+    )

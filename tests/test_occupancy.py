@@ -45,6 +45,7 @@ class OccupancyTests(unittest.TestCase):
         with mock.patch.object(occupancy, "_ps_commands", return_value=""):
             with mock.patch.object(occupancy, "_pid_alive", return_value=False):
                 self.assertIsNone(occupancy.snapshot())
+                self.assertFalse(path.is_file())
 
     def test_lock_path_under_data_dir(self):
         path = occupancy.lock_path()
