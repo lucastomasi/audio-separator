@@ -80,3 +80,11 @@ class RelocateVenvTests(unittest.TestCase):
         cfg = (venv / "pyvenv.cfg").read_text(encoding="utf-8")
         self.assertIn("home = ../python/bin", cfg)
         self.assertNotIn("lucastomasi", cfg)
+        script = venv / "bin" / "f2py"
+        script.write_text(
+            "#!/Users/someone/project/.venv-vc/bin/python\nprint('ok')\n",
+            encoding="utf-8",
+        )
+        script.chmod(script.stat().st_mode | stat.S_IEXEC)
+        subprocess.check_call(["bash", str(ROOT / "scripts" / "relocate_venv.sh"), str(venv)])
+        self.assertEqual(script.read_text(encoding="utf-8").splitlines()[0], "#!/usr/bin/env python3")

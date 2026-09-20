@@ -63,6 +63,7 @@ if [[ -f "$ROOT/library/models/rvc_voices/smoke_voice.pth" ]]; then
     cp -f "$ROOT/library/models/rvc_voices/smoke_voice.index" "$APPDIR/library/models/rvc_voices/"
 fi
 # Do not copy a personal library.json into the bundle.
+printf '%s\n' '{"items": []}' > "$APPDIR/library/library.json"
 mkdir -p "$APPDIR/scripts"
 cp -f "$ROOT/scripts/ensure_vc_venv.sh" "$APPDIR/scripts/ensure_vc_venv.sh"
 cp -f "$ROOT/requirements-vc.txt" "$APPDIR/requirements-vc.txt"
@@ -80,14 +81,7 @@ rm -rf "$APPDIR/third_party/RVC-WebUI"
 rsync -a \
   --exclude '.git' \
   --exclude '__pycache__' \
-  --exclude 'logs/smoke_voice' \
-  --exclude 'logs/*/G_*.pth' \
-  --exclude 'logs/*/D_*.pth' \
-  --exclude 'logs/*/0_gt_wavs' \
-  --exclude 'logs/*/1_16k_wavs' \
-  --exclude 'logs/*/2a_f0' \
-  --exclude 'logs/*/2b-f0nsf' \
-  --exclude 'logs/*/3_feature*' \
+  --exclude 'logs' \
   --exclude 'assets/hubert_base' \
   --exclude 'assets/rmvpe' \
   --exclude 'assets/weights' \
@@ -141,6 +135,7 @@ for bin in python python3 pip; do
   fi
 done
 "$VENV/bin/python" -c "import av, gradio, torch; print('venv ok', av.__version__, torch.__version__)"
+bash "$ROOT/scripts/relocate_venv.sh" "$VENV"
 
 echo "==> Isolated conversion venv"
 if [[ -x "$ROOT/.venv-vc/bin/python" ]]; then
