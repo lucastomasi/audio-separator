@@ -26,6 +26,22 @@ class RvcEngineTests(unittest.TestCase):
                     rvc_engine.require_support_models()
         self.assertIn("Faltan los modelos locales", str(ctx.exception))
 
+    def test_convert_blocked_during_train(self):
+        import occupancy
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        audio = os.path.join(tmp.name, "v.wav")
+        model = os.path.join(tmp.name, "m.pth")
+        for path in (audio, model):
+            with open(path, "wb") as handle:
+                handle.write(b"data")
+        occ = occupancy.Occupancy("train", exp="voz")
+        with mock.patch("occupancy.snapshot", return_value=occ):
+            with self.assertRaises(ValueError) as ctx:
+                rvc_engine.convert_voice(audio, model, copy_downloads=False)
+        self.assertIn("Convertir", str(ctx.exception))
+
     def test_convert_calls_vc_runner(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

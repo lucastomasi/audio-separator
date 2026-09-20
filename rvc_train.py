@@ -5,8 +5,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+import train_run
 from library import ensure_dirs, register, rvc_support_dir
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -90,8 +92,15 @@ def _features_ready(exp_dir: Path) -> bool:
         return False
 
 
+def _library_root() -> Path:
+    package = Path(__file__).resolve().parent
+    if APP_ROOT.resolve() != package:
+        return APP_ROOT / "library"
+    return train_run.library_root()
+
+
 def _ckpt_dir(exp_name: str) -> Path:
-    path = APP_ROOT / "library" / "train_runs" / exp_name / "ckpt"
+    path = _library_root() / "train_runs" / exp_name / "ckpt"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -167,35 +176,24 @@ def _run(
             cmd,
             cwd=str(RVC_ROOT),
             env=env,
-            stdout=subprocess.PIPE,
+            stdout=log,
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
             start_new_session=detach,
         )
-        last = ""
-        for line in proc.stdout:
-            log.write(line)
-            log.flush()
-            last = (line or "").strip()
-            frac_now = frac
-            if total_epochs and last:
-                match = re.search(r"Training epoch:\s*(\d+)", last)
-                if match:
-                    epoch = int(match.group(1))
-                    frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
-                    if exp_name:
-                        snapshot_checkpoints(exp_name)
-            if exp_name and last and (
-                "savee" in last.lower() or "checkpoint" in last.lower()
-            ):
-                snapshot_checkpoints(exp_name)
-            if progress is not None and last:
-                try:
-                    progress(frac_now if frac_now is not None else 0, desc=last[:80])
-                except Exception:
-                    pass
-        code = proc.wait()
+    last = ""
+    try:
+        offset = log_path.stat().st_size
+    except OSError:
+        offset = 0
+    while proc.poll() is None:
+        last, offset = _tail_train_log(
+            log_path, offset, last, progress, frac, total_epochs, exp_name
+        )
+        time.sleep(0.25)
+    last, offset = _tail_train_log(
+        log_path, offset, last, progress, frac, total_epochs, exp_name
+    )
+    code = proc.wait()
     if code != 0:
         err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
@@ -206,6 +204,36 @@ def _run(
             progress(frac if frac is not None else 0, desc=desc)
         except Exception:
             pass
+
+
+def _tail_train_log(log_path, offset, last, progress, frac, total_epochs, exp_name):
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as handle:
+            handle.seek(offset)
+            chunk = handle.read()
+            offset = handle.tell()
+    except OSError:
+        return last, offset
+    for line in chunk.splitlines():
+        last = (line or "").strip()
+        frac_now = frac
+        if total_epochs and last:
+            match = re.search(r"Training epoch:\s*(\d+)", last)
+            if match:
+                epoch = int(match.group(1))
+                frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
+                if exp_name:
+                    snapshot_checkpoints(exp_name)
+        if exp_name and last and (
+            "savee" in last.lower() or "checkpoint" in last.lower()
+        ):
+            snapshot_checkpoints(exp_name)
+        if progress is not None and last:
+            try:
+                progress(frac_now if frac_now is not None else 0, desc=last[:80])
+            except Exception:
+                pass
+    return last, offset
 
 
 def _replace_with_link(src: Path, dest: Path):
@@ -305,7 +333,7 @@ def _src_path(value):
 
 
 def _prepare_dataset(dataset_files, exp_name):
-    dataset_dir = APP_ROOT / "library" / "train_data" / exp_name
+    dataset_dir = _library_root() / "train_data" / exp_name
     if dataset_dir.exists():
         shutil.rmtree(dataset_dir)
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -315,7 +343,13 @@ def _prepare_dataset(dataset_files, exp_name):
         if not path or not os.path.isfile(path):
             continue
         ext = os.path.splitext(path)[1].lower() or ".wav"
-        shutil.copy2(path, dataset_dir / f"sample_{count:04d}{ext}")
+        from youtube_lib import VIDEO_FILE_EXTS, extract_audio_from_media
+
+        if ext in VIDEO_FILE_EXTS:
+            dest = dataset_dir / f"sample_{count:04d}.wav"
+            extract_audio_from_media(path, str(dest), sample_rate=SR_HZ, mono=True)
+        else:
+            shutil.copy2(path, dataset_dir / f"sample_{count:04d}{ext}")
         count += 1
     if count == 0:
         raise ValueError("Subí al menos un audio de la voz a entrenar.")
@@ -485,8 +519,10 @@ def _ensure_inference_weight(
         ckpt = torch.load(
             str(g_candidates[0]), map_location="cpu", weights_only=True
         )
-    except Exception:
-        ckpt = torch.load(str(g_candidates[0]), map_location="cpu")
+    except Exception as exc:
+        raise ValueError(
+            "No pude leer el checkpoint de train de forma segura."
+        ) from exc
     weight = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
     prev = os.getcwd()
     try:
@@ -526,6 +562,45 @@ def _publish_voice_to_library(exp_name, pth: Path, index: Path | None, log_path:
 
 
 def train_voice(exp_name, dataset_files, epochs=None, progress=None):
+    if os.environ.get("RVC_TRAIN_SUPERVISOR") == "1":
+        return execute_train(
+            exp_name, dataset_files, epochs=epochs, progress=progress
+        )
+    require_rvc_webui()
+    require_train_assets()
+    exp_name = "".join(
+        c if c.isalnum() or c in "-_" else "_" for c in (exp_name or "").strip()
+    )
+    if not exp_name:
+        raise ValueError("Poné un nombre para la voz.")
+    total = _epochs(epochs)
+    running = train_running(exp_name)
+    if running:
+        raise ValueError(
+            f"{exp_name} sigue entrenando. No lo relances. "
+            "Cerrar la ventana no lo corta."
+        )
+    import occupancy
+
+    snap = occupancy.snapshot()
+    if snap is not None:
+        raise ValueError(occupancy.blocked_message(snap))
+    files = []
+    for item in dataset_files or []:
+        path = _src_path(item)
+        if path:
+            files.append(path)
+    if not files:
+        raise ValueError("Subí al menos un audio de la voz a entrenar.")
+    job = train_run.write_job(exp_name, files, total)
+    published = train_run.published_path(exp_name)
+    if published.is_file():
+        published.unlink()
+    proc = train_run.spawn_supervisor(job)
+    return train_run.wait_supervisor(proc, exp_name, progress, total)
+
+
+def execute_train(exp_name, dataset_files, epochs=None, progress=None):
     require_rvc_webui()
     assets = require_train_assets()
     exp_name = "".join(
@@ -535,16 +610,9 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
         raise ValueError("Poné un nombre para la voz.")
     total = _epochs(epochs)
 
-    run_dir = APP_ROOT / "library" / "train_runs" / exp_name
+    run_dir = _library_root() / "train_runs" / exp_name
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.log"
-
-    running = train_running(exp_name)
-    if running:
-        raise ValueError(
-            f"{exp_name} sigue entrenando. No lo relances. "
-            "Cerrar la ventana no lo corta."
-        )
 
     _sync_assets(assets)
     _ensure_savee_absolute()
@@ -647,7 +715,7 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
         progress=progress,
         frac=0.7,
         desc=f"Entrenando {total} epochs (CPU)…",
-        detach=True,
+        detach=False,
         exp_name=exp_name,
         total_epochs=total,
     )
@@ -677,15 +745,7 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
 
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"[weight] spawn cwd esperado={RVC_ROOT}\n")
-    prev_path = sys.path[:]
-    if str(RVC_ROOT) not in sys.path:
-        sys.path.insert(0, str(RVC_ROOT))
-    try:
-        pth = _ensure_inference_weight(
-            exp_name, log_path=log_path, epochs=total
-        )
-    finally:
-        sys.path[:] = prev_path
+    pth = train_run.export_weight(exp_name, log_path, total)
     if not pth:
         raise RuntimeError(
             "Train terminó sin .pth de inferencia. Orden a revisar: "

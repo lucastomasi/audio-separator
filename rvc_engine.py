@@ -95,16 +95,22 @@ def convert_voice(
         )
     if not model_path or not os.path.isfile(str(model_path)):
         raise ValueError("Falta el modelo RVC (.pth) en disco.")
-    _scan_model(str(model_path))
-    produced = run_vc_infer(
-        str(audio_path),
-        str(model_path),
-        index_path,
-        pitch=pitch,
-        index_rate=index_rate,
-        f0_method=f0_method,
-        protect=protect,
-    )
+    import occupancy
+
+    occupancy.acquire(occupancy.HOLD_CONVERT)
+    try:
+        _scan_model(str(model_path))
+        produced = run_vc_infer(
+            str(audio_path),
+            str(model_path),
+            index_path,
+            pitch=pitch,
+            index_rate=index_rate,
+            f0_method=f0_method,
+            protect=protect,
+        )
+    finally:
+        occupancy.release(occupancy.HOLD_CONVERT)
     if not copy_downloads:
         return produced
     _, copied = copy_to_downloads([produced], ["voz_rvc"])

@@ -14,8 +14,10 @@ from pathlib import Path
 from library import find_index_for_model, list_rvc_voices
 from rvc_engine import convert_voice
 
+from app_env import data_dir
+
 APP_ROOT = Path(__file__).resolve().parent
-WORK = APP_ROOT / "library" / "tts_rvc_work"
+WORK = Path(data_dir()) / "library" / "tts_rvc_work"
 
 # Gradio 6 Dropdown tuples: (label, value). Value MUST be the Edge ShortName.
 EDGE_VOICES = [

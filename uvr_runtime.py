@@ -460,19 +460,25 @@ def sound_separate(
         gr.update(interactive=False, value="Separando…"),
     )
     try:
-        vocal, background, files, status, button = _sound_separate(
-            media_file, stem, main, dereverb, vocal_effects, background_effects,
-            vocal_reverb_room_size, vocal_reverb_damping, vocal_reverb_dryness, vocal_reverb_wet_level,
-            vocal_delay_seconds, vocal_delay_mix,
-            vocal_compressor_threshold_db, vocal_compressor_ratio, vocal_compressor_attack_ms, vocal_compressor_release_ms,
-            vocal_gain_db,
-            background_highpass_freq, background_lowpass_freq,
-            background_reverb_room_size, background_reverb_damping, background_reverb_wet_level,
-            background_compressor_threshold_db, background_compressor_ratio, background_compressor_attack_ms, background_compressor_release_ms,
-            background_gain_db,
-            target_format,
-            progress=progress,
-        )
+        import occupancy
+
+        occupancy.acquire(occupancy.HOLD_UVR)
+        try:
+            vocal, background, files, status, button = _sound_separate(
+                media_file, stem, main, dereverb, vocal_effects, background_effects,
+                vocal_reverb_room_size, vocal_reverb_damping, vocal_reverb_dryness, vocal_reverb_wet_level,
+                vocal_delay_seconds, vocal_delay_mix,
+                vocal_compressor_threshold_db, vocal_compressor_ratio, vocal_compressor_attack_ms, vocal_compressor_release_ms,
+                vocal_gain_db,
+                background_highpass_freq, background_lowpass_freq,
+                background_reverb_room_size, background_reverb_damping, background_reverb_wet_level,
+                background_compressor_threshold_db, background_compressor_ratio, background_compressor_attack_ms, background_compressor_release_ms,
+                background_gain_db,
+                target_format,
+                progress=progress,
+            )
+        finally:
+            occupancy.release(occupancy.HOLD_UVR)
         yield vocal, background, files, status_update(KIND_OK, status), button
     except Exception as error:
         message = _separate_error_message(error)

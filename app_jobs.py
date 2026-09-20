@@ -388,7 +388,11 @@ def train_rvc_job(
         return rvc_upd, bar, tts_upd, bar
     except ValueError as error:
         rvc_upd, tts_upd = refresh_library_ui()
-        bar = _err("train_rvc_job", error, MSG_TRAIN)
+        text = str(error)
+        if "sigue entrenando" in text or "Convertir está bloqueado" in text:
+            bar = status_update(KIND_RUN, text)
+        else:
+            bar = _err("train_rvc_job", error, MSG_TRAIN)
         return rvc_upd, bar, tts_upd, bar
     except Exception as error:
         rvc_upd, tts_upd = refresh_library_ui()

@@ -83,6 +83,18 @@ def require_exclusive_cli() -> None:
 
     Two torch/OpenMP processes on this Mac Intel → intermittent SIGSEGV.
     """
+    import occupancy
+
+    snap = occupancy.snapshot()
+    if snap is not None and snap.holder == occupancy.HOLD_TRAIN:
+        print(
+            "ERROR: "
+            + occupancy.blocked_message(snap)
+            + "\nCerrá Convertir en la app o esperá a que termine el train.",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(1)
     hits = _conflicting_rvc_processes()
     if not hits:
         return

@@ -9,6 +9,7 @@ from audio_text import normalize_media_url
 # Prefer lossless/work files first; never prefer 192 kbps mp3.
 AUDIO_EXTS = ("wav", "flac", "m4a", "opus", "ogg", "webm", "mp3")
 VIDEO_EXTS = ("mp4", "mkv", "webm", "mov")
+VIDEO_FILE_EXTS = (".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi")
 YOUTUBE_ID_RE = re.compile(
     r"(?:v=|/youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})"
 )
@@ -53,6 +54,44 @@ def ffmpeg_binary():
     if os.path.isfile(home):
         return home
     return None
+
+
+def extract_audio_from_media(
+    source_path, dest_path=None, *, sample_rate=40000, mono=True
+):
+    """Pull the audio track out of a video (or any ffmpeg-readable file) to WAV."""
+    if not source_path or not os.path.isfile(source_path):
+        raise ValueError("Falta el video para sacar el audio.")
+    ffmpeg = ffmpeg_binary()
+    if not ffmpeg:
+        raise ValueError("No encuentro ffmpeg para sacar el audio.")
+    if dest_path is None:
+        directory = downloads_dir()
+        os.makedirs(directory, exist_ok=True)
+        stem = os.path.splitext(os.path.basename(source_path))[0]
+        dest_path = os.path.join(directory, f"{stem}.wav")
+    dest_path = os.path.abspath(dest_path)
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        source_path,
+        "-vn",
+        "-ac",
+        "1" if mono else "2",
+        "-ar",
+        str(int(sample_rate)),
+        "-c:a",
+        "pcm_s16le",
+        dest_path,
+    ]
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0 or not os.path.isfile(dest_path) or os.path.getsize(dest_path) == 0:
+        raise ValueError("No se pudo sacar el audio del video.")
+    return dest_path
 
 
 def node_binary():
@@ -239,9 +278,9 @@ def download_video(url, directory=None):
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)
     url = normalize_media_url(url)
-    if not url:
-        raise ValueError("Pega un enlace de YouTube.")
     video_id = extract_youtube_id(url)
+    if not video_id:
+        raise ValueError("Pega un enlace de YouTube.")
     cached = existing_video(video_id, directory)
     if cached:
         return cached, True
@@ -267,7 +306,7 @@ def download_video(url, directory=None):
 def download_media(url, with_video=True, directory=None):
     """Audio WAV 48 kHz (+ optional MP4). Returns audio, video, reused, note."""
     url = normalize_media_url(url)
-    if not url:
+    if not extract_youtube_id(url):
         raise ValueError("Pega un enlace de YouTube.")
 
     directory = directory or downloads_dir()

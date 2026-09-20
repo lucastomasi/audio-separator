@@ -6,6 +6,7 @@ from unittest import mock
 from youtube_lib import (
     clip_audio,
     download_audio,
+    extract_audio_from_media,
     extract_youtube_id,
     parse_seconds,
     ydl_options,
@@ -63,6 +64,25 @@ class ParseSecondsTests(unittest.TestCase):
         self.assertTrue(path.endswith("song_10-20.wav"))
         self.assertTrue(os.path.isfile(path))
 
+    def test_extract_audio_from_video(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "clip.mp4")
+        dest = os.path.join(tmp.name, "clip.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"mp4")
+
+        def fake_run(cmd, capture_output=True):
+            with open(cmd[-1], "wb") as handle:
+                handle.write(b"RIFF")
+            return mock.Mock(returncode=0)
+
+        with mock.patch("youtube_lib.ffmpeg_binary", return_value="ffmpeg"):
+            with mock.patch("youtube_lib.subprocess.run", side_effect=fake_run):
+                path = extract_audio_from_media(src, dest)
+        self.assertEqual(path, os.path.abspath(dest))
+        self.assertTrue(os.path.isfile(path))
+
 
 class DownloadAudioTests(unittest.TestCase):
     def setUp(self):
@@ -75,6 +95,13 @@ class DownloadAudioTests(unittest.TestCase):
     def test_empty_url(self):
         with self.assertRaises(ValueError):
             download_audio("  ", directory=self.dir)
+
+    def test_rejects_non_youtube_url(self):
+        with mock.patch("yt_dlp.YoutubeDL") as ydl:
+            with self.assertRaises(ValueError) as ctx:
+                download_audio("https://example.com/secret.wav", directory=self.dir)
+        self.assertIn("YouTube", str(ctx.exception))
+        ydl.assert_not_called()
 
     def test_skips_redownload_if_wav_exists(self):
         path = os.path.join(self.dir, "jNQXAC9IVRw.wav")

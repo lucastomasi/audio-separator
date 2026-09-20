@@ -81,6 +81,27 @@ class RvcTrainTests(unittest.TestCase):
         names = sorted(p.name for p in out.glob("sample_*"))
         self.assertEqual(len(names), 2)
 
+    def test_prepare_dataset_extracts_video(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "talk.mp4")
+        with open(src, "wb") as handle:
+            handle.write(b"mp4")
+
+        def fake_extract(path, dest, sample_rate=40000, mono=True):
+            with open(dest, "wb") as handle:
+                handle.write(b"RIFF")
+            return dest
+
+        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+            with mock.patch(
+                "youtube_lib.extract_audio_from_media", side_effect=fake_extract
+            ):
+                out = rvc_train._prepare_dataset([src], "from_video")
+        wavs = list(out.glob("sample_*.wav"))
+        self.assertEqual(len(wavs), 1)
+        self.assertGreater(wavs[0].stat().st_size, 0)
+
     def test_prepare_dataset_rejects_empty_gradio_dicts(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -182,6 +203,48 @@ class RvcTrainTests(unittest.TestCase):
             found = rvc_train._find_small_weight("demo")
         self.assertEqual(found, small)
 
+    def test_ensure_inference_weight_no_pickle_fallback(self):
+        import inspect
+        import types
+
+        src = inspect.getsource(rvc_train._ensure_inference_weight)
+        self.assertIn("weights_only=True", src)
+        self.assertNotIn("weights_only=False", src)
+        self.assertIn("de forma segura", src)
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        logs = root / "logs" / "demo"
+        logs.mkdir(parents=True)
+        (logs / "G_1.pth").write_bytes(b"x" * 100)
+        (logs / "config.json").write_text("{}", encoding="utf-8")
+        train_pkg = types.ModuleType("train")
+        train_pkg.__path__ = []
+        utils = types.ModuleType("train.utils")
+        ckpt = types.ModuleType("train.process_ckpt")
+        utils.HParams = mock.Mock(return_value=mock.Mock())
+        ckpt.savee = mock.Mock()
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "train": train_pkg,
+                "train.utils": utils,
+                "train.process_ckpt": ckpt,
+            },
+        ):
+            with mock.patch.object(rvc_train, "RVC_ROOT", root):
+                with mock.patch("rvc_engine._scan_model"):
+                    with mock.patch(
+                        "torch.load", side_effect=RuntimeError("unsafe")
+                    ) as loader:
+                        with self.assertRaises(ValueError) as ctx:
+                            rvc_train._ensure_inference_weight("demo")
+        self.assertIn("segura", str(ctx.exception))
+        self.assertTrue(
+            all(call.kwargs.get("weights_only") is True for call in loader.call_args_list)
+        )
+
     def test_replace_with_link_does_not_copy_bytes(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -191,6 +254,51 @@ class RvcTrainTests(unittest.TestCase):
         rvc_train._replace_with_link(src, dest)
         self.assertTrue(dest.exists())
         self.assertEqual(dest.read_bytes(), b"payload")
+
+    def test_library_root_uses_data_dir_when_unpatched(self):
+        with mock.patch(
+            "train_run.library_root",
+            return_value=rvc_train.Path("/tmp/as-data-lib"),
+        ):
+            root = rvc_train._library_root()
+        self.assertEqual(root, rvc_train.Path("/tmp/as-data-lib"))
+
+    def test_train_voice_spawns_supervisor(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "a.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"wav")
+        fake_proc = mock.Mock()
+        with mock.patch.dict(os.environ, {"AUDIO_SEPARATOR_DATA": tmp.name}):
+            with mock.patch.object(rvc_train, "require_rvc_webui"):
+                with mock.patch.object(rvc_train, "require_train_assets"):
+                    with mock.patch.object(rvc_train, "train_running", return_value=None):
+                        with mock.patch("occupancy.snapshot", return_value=None):
+                            with mock.patch(
+                                "train_run.spawn_supervisor", return_value=fake_proc
+                            ) as spawn:
+                                with mock.patch(
+                                    "train_run.wait_supervisor",
+                                    return_value=("/tmp/x.pth", None),
+                                ):
+                                    out = rvc_train.train_voice(
+                                        "demo", [src], epochs=1
+                                    )
+                                    self.assertEqual(out[0], "/tmp/x.pth")
+                                    spawn.assert_called_once()
+
+    def test_train_voice_blocked_when_occupied(self):
+        import occupancy
+
+        occ = occupancy.Occupancy("convert")
+        with mock.patch.object(rvc_train, "require_rvc_webui"):
+            with mock.patch.object(rvc_train, "require_train_assets"):
+                with mock.patch.object(rvc_train, "train_running", return_value=None):
+                    with mock.patch("occupancy.snapshot", return_value=occ):
+                        with self.assertRaises(ValueError) as ctx:
+                            rvc_train.train_voice("demo", ["a.wav"], epochs=1)
+        self.assertIn("conversión", str(ctx.exception))
 
     def test_find_index_prefers_added(self):
         tmp = tempfile.TemporaryDirectory()
