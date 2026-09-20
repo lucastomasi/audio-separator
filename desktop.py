@@ -33,12 +33,25 @@ SPLASH = """<!DOCTYPE html>
     .card { text-align: center; padding: 2rem; }
     h1 { font-size: 1.45rem; margin: 0 0 .4rem; font-weight: 700; letter-spacing: -0.03em; }
     p { margin: 0; color: #86868B; font-size: 0.9rem; }
+    .bar {
+      width: 120px; height: 3px; margin: 18px auto 0; overflow: hidden;
+      border-radius: 3px; background: #E5E5EA;
+    }
+    .bar i {
+      display: block; width: 40%; height: 100%; background: #007AFF;
+      animation: slide 1.1s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Audio Separator</h1>
     <p>Arrancando… el primer inicio puede tardar uno o dos minutos.</p>
+    <div class="bar" aria-hidden="true"><i></i></div>
   </div>
 </body>
 </html>

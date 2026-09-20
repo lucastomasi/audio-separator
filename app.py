@@ -98,17 +98,23 @@ def get_gui():
         fill_width=False,
         fill_height=False,
         delete_cache=(3200, 10800),
+        theme=APP_THEME,
+        css=UI_CSS,
     ) as app:
         gr.Markdown("# Audio Separator", elem_classes=["app-header"])
         gr.Markdown(
-            "Procesa en este Mac. Internet (gratis) para YouTube, Edge y bajar "
-            "modelos. Si no hay red, Separar / Entrenar / Convertir siguen con "
-            "lo que ya está en disco.",
+            "Trabaja en este Mac. YouTube, Edge y bajar modelos usan internet "
+            "gratis. Sin red, Separar / Entrenar / Convertir siguen con lo que "
+            "ya está en disco.",
             elem_classes=["lede"],
         )
-        gr.Markdown(
-            "Canción → Extraer → Resultado → Voz → Unir · Texto",
-            elem_classes=["stepper"],
+        gr.HTML(
+            '<nav class="stepper" aria-label="Pasos">'
+            "<span>1 Canción</span><span>2 Extraer</span>"
+            "<span>3 Resultado</span><span>4 Voz</span>"
+            "<span>5 Unir</span><span>6 Texto</span>"
+            "</nav>",
+            elem_classes=["stepper-wrap"],
         )
         status = gr.Markdown(_install_status_line(), elem_id="job-status")
         import library as _lib_ui
@@ -137,7 +143,7 @@ def get_gui():
                 label="Log",
                 interactive=False,
                 lines=2,
-                placeholder="Pesos + motor. Solo la primera vez.",
+                placeholder="Solo la primera vez: pesos públicos (~700 MB).",
             )
 
         with gr.Row(equal_height=False, elem_classes=["top-row"]):
@@ -147,7 +153,7 @@ def get_gui():
                     with gr.Tabs():
                         with gr.Tab("Archivo"):
                             gr.Markdown(
-                                "Arrastrá el audio al reproductor o usá el ejemplo.",
+                                "Arrastrá el audio al reproductor o cargá el demo.",
                                 elem_classes=["hint"],
                             )
                         with gr.Tab("YouTube"):
@@ -156,22 +162,22 @@ def get_gui():
                                 url_button_gui = url_button_conf()
                             want_video = gr.Checkbox(
                                 True,
-                                label="También descargar video (para pegar el audio nuevo después)",
+                                label="También bajar el video (para pegarlo después)",
                             )
                             last_video = gr.State(value=None)
-                            with gr.Row():
-                                clip_start = gr.Textbox(
-                                    label="Inicio",
-                                    placeholder="0:15 o 15",
-                                    scale=1,
-                                )
-                                clip_end = gr.Textbox(
-                                    label="Fin",
-                                    placeholder="0:25 o 25",
-                                    scale=1,
-                                )
-                                clip_btn = gr.Button("Recortar", scale=1)
                     aud = audio_conf()
+                    with gr.Row():
+                        clip_start = gr.Textbox(
+                            label="Inicio",
+                            placeholder="0:15",
+                            scale=1,
+                        )
+                        clip_end = gr.Textbox(
+                            label="Fin",
+                            placeholder="0:25",
+                            scale=1,
+                        )
+                        clip_btn = gr.Button("Recortar", scale=1)
                     with gr.Row(elem_classes=["action-row"]):
                         demo_btn = gr.Button("Cargar demo", variant="secondary")
                     gr.Examples(
@@ -220,9 +226,19 @@ def get_gui():
                 with gr.Tab("Entrenar"):
                     train_name = gr.Textbox(label="Nombre", placeholder="mi_voz")
                     train_dataset = gr.File(
-                        label="Audios de la persona (wav limpios)",
+                        label="Audios o videos de la persona",
                         file_count="multiple",
-                        file_types=[".wav", ".mp3", ".flac", ".m4a"],
+                        file_types=[
+                            ".wav",
+                            ".mp3",
+                            ".flac",
+                            ".m4a",
+                            ".mp4",
+                            ".mov",
+                            ".mkv",
+                            ".webm",
+                            ".avi",
+                        ],
                     )
                     train_epochs = gr.Slider(
                         5,
@@ -232,19 +248,11 @@ def get_gui():
                         label="Epochs (CPU Intel: 10 de prueba)",
                     )
                     gr.Markdown(
-                        "CPU Intel: 10 epochs de prueba, minutos u horas según "
-                        "el largo del audio. El modelo aparece en Convertir al terminar. "
-                        "El .pth es esa voz: no lo compartas si no es tuyo.",
+                        "Si subís un video, se extrae el audio y se entrena en este Mac. "
+                        "10 epochs de prueba: minutos u horas según el largo. "
+                        "El .pth aparece en Convertir al terminar. "
+                        "No lo compartas si la voz no es tuya.",
                         elem_classes=["hint"],
-                    )
-                    hire_gpu = gr.Checkbox(
-                        False,
-                        label="Guardar key RunPod (el entrenamiento es en este Mac)",
-                    )
-                    runpod_key = gr.Textbox(
-                        label="RunPod API key",
-                        type="password",
-                        placeholder="Opcional; se guarda si marcás el checkbox. No alquila GPU.",
                     )
                     train_btn = gr.Button(
                         "Entrenar", variant="primary", elem_id="train-btn"
@@ -254,6 +262,21 @@ def get_gui():
                         interactive=False,
                         placeholder="Al terminar, el modelo aparece en Convertir.",
                     )
+                    with gr.Accordion("Opcional: key RunPod", open=False):
+                        gr.Markdown(
+                            "El entrenamiento es en este Mac. Esto solo guarda "
+                            "la key; no alquila GPU.",
+                            elem_classes=["hint"],
+                        )
+                        hire_gpu = gr.Checkbox(
+                            False,
+                            label="Guardar key RunPod",
+                        )
+                        runpod_key = gr.Textbox(
+                            label="RunPod API key",
+                            type="password",
+                            placeholder="Opcional. No alquila GPU.",
+                        )
                 with gr.Tab("Convertir"):
                     rvc_pick = gr.Dropdown(
                         label="Modelo en biblioteca",
@@ -267,9 +290,8 @@ def get_gui():
                     rvc_audio = out_audio("Voz convertida")
             with gr.Accordion("Pesos / biblioteca", open=False):
                 gr.Markdown(
-                    "Hubert Transformers (`hubert_base/`), rmvpe y f0G/D40k viven en "
-                    "`library/models/rvc/`. Los `.pth`/`.index` de voz van a "
-                    "`library/models/rvc_voices/`.",
+                    "Si Convertir está vacío, entrená una voz o cargá un .pth. "
+                    "Los pesos de apoyo (hubert, rmvpe) se instalan una vez arriba.",
                     elem_classes=["hint"],
                 )
                 with gr.Row():
@@ -343,8 +365,10 @@ def get_gui():
                     )
                     cover_artist = gr.Textbox(label="Artista", placeholder="Opcional")
                 with gr.Row():
-                    cover_btn = gr.Button("Generar portada", variant="secondary")
-                    cover_ai_btn = gr.Button("Portada artística", variant="secondary")
+                    cover_btn = gr.Button("Portada local", variant="secondary")
+                    cover_ai_btn = gr.Button(
+                        "Portada artística", variant="secondary"
+                    )
                 cover_preview = gr.Image(label="Portada", type="filepath")
             with gr.Accordion("Si la voz es otra grabación", open=False):
                 remix_delay = gr.Slider(
@@ -360,9 +384,10 @@ def get_gui():
                 )
 
         with gr.Group(elem_classes=["step"], elem_id="step-tts"):
-            gr.Markdown("## 6. Texto → habla (Edge + RVC)", elem_classes=["panel-title"])
+            gr.Markdown("## 6. Texto → voz", elem_classes=["panel-title"])
             gr.Markdown(
-                "Texto → ElevenLabs si hay key, si no Edge (internet) → tu .pth RVC.",
+                "ElevenLabs si hay key; si no, Edge (internet). Después aplica "
+                "tu modelo RVC de la biblioteca.",
                 elem_classes=["hint"],
             )
             tts_text = gr.Textbox(
@@ -574,9 +599,13 @@ def get_gui():
             rvc_upd, tts_upd = refresh_library_ui()
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
-            from ui_status import KIND_OK, status_update
+            from occupancy import HOLD_TRAIN, snapshot
+            from ui_status import KIND_OK, KIND_RUN, RUN_TRAIN, status_update
 
-            if song and song == demo_song_path() and not last_audio:
+            occ = snapshot()
+            if occ is not None and occ.holder == HOLD_TRAIN:
+                status_txt = status_update(KIND_RUN, RUN_TRAIN)
+            elif song and song == demo_song_path() and not last_audio:
                 status_txt = status_update(KIND_OK, DEMO_STATUS)
             elif not song:
                 status_txt = status_update(KIND_OK, _install_status_line())

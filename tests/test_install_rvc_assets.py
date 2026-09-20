@@ -48,6 +48,22 @@ class InstallRvcAssetsTests(unittest.TestCase):
                 self.assertEqual(install_rvc_assets.missing_rvc_assets(), [])
                 self.assertTrue(install_rvc_assets.rvc_assets_ready())
 
+    def test_torch_load_requires_weights_only(self):
+        with mock.patch("torch.load", return_value={"model": 1}) as loader:
+            install_rvc_assets._torch_load(Path("/tmp/x.pt"))
+        self.assertTrue(loader.call_args.kwargs.get("weights_only") is True)
+
+    def test_hubert_fairseq_does_not_unpickle(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "hubert_base.pt"
+        path.write_bytes(b"x" * 80_000_001)
+        with mock.patch.object(
+            install_rvc_assets, "_torch_load", side_effect=RuntimeError("weights")
+        ) as loader:
+            self.assertTrue(install_rvc_assets._hubert_pt_is_fairseq(path))
+        loader.assert_called_once()
+
     def test_ensure_rvc_webui_errors_when_git_fails(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

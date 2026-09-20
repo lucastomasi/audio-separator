@@ -59,6 +59,15 @@ class LibraryTests(unittest.TestCase):
         choices = library.dropdown_choices(voices)
         self.assertIn("+index", choices[0][0])
 
+    def test_register_rejects_path_escape(self):
+        src = os.path.join(self.tmp.name, "clip.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"wav")
+        with self.assertRaises(ValueError):
+            library.register("voices", src, "../escape.wav")
+        escaped = os.path.join(self.tmp.name, "escape.wav")
+        self.assertFalse(os.path.isfile(escaped))
+
     def test_session_meta(self):
         library.set_session_meta(last_video_path="/tmp/a.mp4")
         self.assertEqual(library.get_session_meta()["last_video_path"], "/tmp/a.mp4")

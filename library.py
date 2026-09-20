@@ -85,8 +85,17 @@ def register(kind, src_path, name=None):
     if not src_path or not os.path.isfile(src_path):
         raise ValueError("No hay archivo para guardar en la biblioteca.")
     dest_dir = PATHS[kind]
-    filename = name or os.path.basename(src_path)
+    raw = str(name or os.path.basename(src_path)).replace("\\", "/")
+    if ".." in raw or raw.startswith("/") or (len(raw) > 1 and raw[1] == ":"):
+        raise ValueError("Nombre de archivo inválido.")
+    filename = os.path.basename(raw)
+    if not filename or filename in (".", ".."):
+        raise ValueError("Nombre de archivo inválido.")
     dest = os.path.join(dest_dir, filename)
+    dest_abs = os.path.abspath(dest)
+    dest_root = os.path.abspath(dest_dir)
+    if os.path.commonpath([dest_root, dest_abs]) != dest_root:
+        raise ValueError("Nombre de archivo inválido.")
     if os.path.abspath(src_path) != os.path.abspath(dest):
         shutil.copy2(src_path, dest)
     data = _load()

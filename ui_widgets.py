@@ -190,7 +190,7 @@ def button_conf():
 
 
 def output_conf():
-    return out_file("Archivos (también en Abrir Descargas)", file_count="multiple")
+    return out_file("Archivos en Descargas", file_count="multiple")
 
 
 def show_vocal_components(value_name):

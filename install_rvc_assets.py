@@ -143,15 +143,10 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     _link_or_copy(Path(cached), dest)
 
 
-def _torch_load(path: Path, *, allow_unsafe: bool = False):
+def _torch_load(path: Path):
     import torch
 
-    try:
-        return torch.load(str(path), map_location="cpu", weights_only=True)
-    except Exception:
-        if not allow_unsafe:
-            raise
-        return torch.load(str(path), map_location="cpu", weights_only=False)
+    return torch.load(str(path), map_location="cpu", weights_only=True)
 
 
 def _hubert_pt_is_fairseq(path: Path) -> bool:
@@ -159,9 +154,10 @@ def _hubert_pt_is_fairseq(path: Path) -> bool:
     if not path.is_file() or path.stat().st_size < 80_000_000:
         return False
     try:
-        state = _torch_load(path, allow_unsafe=True)
+        state = _torch_load(path)
     except Exception:
-        return False
+        # Fairseq pickles no cargan con weights_only; no ejecutamos pickle.
+        return True
     if not isinstance(state, dict):
         return False
     # RVC infer weights look like this — reject them.

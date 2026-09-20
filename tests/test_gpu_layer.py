@@ -22,6 +22,7 @@ class GpuSecretsTests(unittest.TestCase):
         path = Path(gpu_secrets.secrets_path())
         self.assertTrue(path.is_file())
         self.assertIn("sk-test", path.read_text(encoding="utf-8"))
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
 
 class RunpodTrainTests(unittest.TestCase):

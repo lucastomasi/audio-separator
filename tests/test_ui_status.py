@@ -33,7 +33,18 @@ class UiStatusTests(unittest.TestCase):
 
     def test_status_error_sets_class(self):
         upd = ui_status.status_update(ui_status.KIND_ERROR, "boom")
-        self.assertIn("is-error", upd.get("elem_classes") or upd["elem_classes"])
+        classes = upd.get("elem_classes") or upd["elem_classes"]
+        self.assertIn("is-error", classes)
+
+    def test_run_train_copy(self):
+        self.assertIn("Convertir", ui_status.RUN_TRAIN)
+        self.assertIn("ventana", ui_status.RUN_TRAIN)
+
+    def test_status_ok_and_run_set_class(self):
+        ok = ui_status.status_update(ui_status.KIND_OK, "listo")
+        run = ui_status.status_update(ui_status.KIND_RUN, "va")
+        self.assertIn("is-ok", ok.get("elem_classes") or ok["elem_classes"])
+        self.assertIn("is-run", run.get("elem_classes") or run["elem_classes"])
 
     def test_append_log_writes(self):
         tmp = tempfile.TemporaryDirectory()

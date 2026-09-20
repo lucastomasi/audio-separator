@@ -11,8 +11,9 @@ from datetime import datetime
 
 from utils import logger
 
-IDLE = "1 Canción → 2 Extraer → 3 Resultado → 4 Voz (RVC) → 5 Unir."
+IDLE = "1 Canción → 2 Extraer → 3 Resultado → 4 Voz → 5 Unir → 6 Texto."
 RUN_SEPARATE = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
+RUN_TRAIN = "Entrenando… podés cerrar la ventana; Convertir queda bloqueado."
 READY = "Audio listo. Elegí qué extraer y pulsá Separar."
 
 KIND_IDLE = "idle"
@@ -72,5 +73,10 @@ def fail(where: str, exc: BaseException, user_msg: str) -> str:
 def status_update(kind: str, text: str):
     import gradio as gr
 
-    classes = ["is-error"] if kind == KIND_ERROR else []
+    classes = {
+        KIND_ERROR: ["is-error"],
+        KIND_RUN: ["is-run"],
+        KIND_OK: ["is-ok"],
+        KIND_IDLE: ["is-idle"],
+    }.get(kind, [])
     return gr.update(value=text, elem_classes=classes)

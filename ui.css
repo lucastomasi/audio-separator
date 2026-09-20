@@ -27,17 +27,39 @@ footer {
 }
 
 .lede {
-  margin: 2px 0 6px !important;
+  margin: 2px 0 8px !important;
   font-size: 0.82rem !important;
   color: #86868B !important;
 }
 
+.stepper-wrap {
+  margin: 0 0 12px !important;
+}
+
 .stepper {
-  margin: 0 0 10px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
   font-size: 0.72rem !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
   letter-spacing: 0.01em !important;
   color: #86868B !important;
+}
+
+.stepper span {
+  position: relative;
+  padding: 4px 10px 4px 0;
+  margin-right: 8px;
+}
+
+.stepper span:not(:last-child)::after {
+  content: "›";
+  position: absolute;
+  right: -2px;
+  color: #C7C7CC;
+  font-weight: 400;
 }
 
 .hint {
@@ -77,6 +99,15 @@ div.progress-bar {
   background: rgba(255, 59, 48, 0.08) !important;
 }
 
+#job-status.is-ok {
+  border-color: rgba(52, 199, 89, 0.35) !important;
+}
+
+#job-status.is-run {
+  border-color: rgba(0, 122, 255, 0.4) !important;
+  background: rgba(0, 122, 255, 0.06) !important;
+}
+
 .step {
   margin-bottom: 10px !important;
   padding: 12px 14px 14px !important;
@@ -86,8 +117,26 @@ div.progress-bar {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
-#step-voice {
+#step-voice,
+#step-tts {
   box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+.step .tab-nav button,
+.step .tabs > div:first-child button {
+  font-size: 0.84rem !important;
+  font-weight: 600 !important;
+}
+
+.step label,
+.step .label-wrap span {
+  font-size: 0.8rem !important;
+}
+
+.step .accordion {
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 10px !important;
+  margin-top: 8px !important;
 }
 
 .panel-title {
@@ -162,9 +211,27 @@ a[download],
   background: rgba(255, 69, 58, 0.16) !important;
 }
 
+.dark #job-status.is-ok {
+  border-color: rgba(48, 209, 88, 0.45) !important;
+}
+
+.dark #job-status.is-run {
+  border-color: rgba(10, 132, 255, 0.55) !important;
+  background: rgba(10, 132, 255, 0.12) !important;
+}
+
 .dark .step {
   background: #2C2C2E !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark #step-voice,
+.dark #step-tts {
+  box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .stepper span:not(:last-child)::after {
+  color: #636366;
 }
 
 @media (max-width: 720px) {

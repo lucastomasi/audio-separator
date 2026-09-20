@@ -57,6 +57,7 @@ def save(updates: dict) -> None:
             current.pop(key, None)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    os.chmod(path, 0o600)
 
 
 def get(name: str) -> str | None:
