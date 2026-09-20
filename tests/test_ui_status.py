@@ -40,6 +40,10 @@ class UiStatusTests(unittest.TestCase):
         self.assertIn("Convertir", ui_status.RUN_TRAIN)
         self.assertIn("ventana", ui_status.RUN_TRAIN)
 
+    def test_status_idle_sets_class(self):
+        idle = ui_status.status_update(ui_status.KIND_IDLE, "idle")
+        self.assertIn("is-idle", idle.get("elem_classes") or idle["elem_classes"])
+
     def test_status_ok_and_run_set_class(self):
         ok = ui_status.status_update(ui_status.KIND_OK, "listo")
         run = ui_status.status_update(ui_status.KIND_RUN, "va")

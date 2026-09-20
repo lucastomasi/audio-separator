@@ -31,10 +31,23 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("Edge", text)
         self.assertNotIn("sin subir audio", text.lower())
         self.assertNotIn("Alquilar GPU RunPod", text)
+        self.assertNotIn("RunPod", text)
+        self.assertNotIn("hire_gpu", text)
         self.assertNotIn("se apaga a los 45 min", text)
         self.assertIn("el entrenamiento es en este mac", text.lower())
+        self.assertIn('gr.Tab("1 Canción")', text)
+        self.assertIn('gr.Tab("6 Texto")', text)
         self.assertNotIn("el resto corre offline", text.lower())
         self.assertIn("hugging face", text.lower())
+
+    def test_rvc_job_missing_model_is_error(self):
+        import inspect
+
+        import app_jobs
+
+        src = inspect.getsource(app_jobs.rvc_job)
+        self.assertIn("KIND_ERROR", src)
+        self.assertNotIn("return None, None, _ok(msg)", src)
 
     def test_remix_status_uses_target_format(self):
         import inspect

@@ -115,7 +115,10 @@ def install_rvc_job(progress=gr.Progress()):
         left = missing_rvc_assets()
         if left:
             return (
-                _ok("Instalación incompleta. Pulsá Completar instalación de nuevo."),
+                status_update(
+                    KIND_ERROR,
+                    "Instalación incompleta. Pulsá Completar instalación de nuevo.",
+                ),
                 "\n".join(lines[-12:]),
                 None,
                 gr.update(),
@@ -378,7 +381,7 @@ def train_rvc_job(
             note += " (+index)"
         note += ". Ya podés Convertir / Texto→RVC."
         bar = _ok(note)
-        return rvc_upd, bar, tts_upd, bar
+        return rvc_upd, bar, tts_upd
     except ValueError as error:
         rvc_upd, tts_upd = refresh_library_ui()
         text = str(error)
@@ -386,11 +389,11 @@ def train_rvc_job(
             bar = status_update(KIND_RUN, text)
         else:
             bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd, bar
+        return rvc_upd, bar, tts_upd
     except Exception as error:
         rvc_upd, tts_upd = refresh_library_ui()
         bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd, bar
+        return rvc_upd, bar, tts_upd
 
 
 def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progress()):
@@ -408,7 +411,7 @@ def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progr
             "Falta la pista de voz. Primero Separá (paso 2–3) "
             "o usá el paso 6 Texto → habla."
         )
-        return None, None, _ok(msg)
+        return None, None, status_update(KIND_ERROR, msg)
 
     voices_root = os.path.abspath(library.PATHS["rvc_voices"])
     model_path = library_model
@@ -424,8 +427,8 @@ def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progr
         item = library.register("rvc_voices", model_path)
         model_path = item["path"]
     if not model_path:
-        msg = "Elegí un modelo RVC en la biblioteca (paso 4)."
-        return None, None, _ok(msg)
+        msg = "Elegí un modelo en la biblioteca (Voz)."
+        return None, None, status_update(KIND_ERROR, msg)
     index_path = library.find_index_for_model(model_path) if model_path else None
     if index_file:
         uploaded_index = _gradio_path(index_file)

@@ -1,7 +1,7 @@
 /* macOS-like shell: SF stack, system blue, grouped panels */
 
 .gradio-container {
-  max-width: 900px !important;
+  max-width: 1040px !important;
   padding: 10px 14px 32px !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
     Inter, sans-serif !important;
@@ -14,7 +14,13 @@
   -webkit-font-smoothing: antialiased;
 }
 
-footer {
+footer,
+.footer,
+#footer,
+.api-docs,
+button[aria-label="Use via API"],
+button[aria-label="Settings"],
+.built-with {
   display: none !important;
 }
 
@@ -108,6 +114,10 @@ div.progress-bar {
   background: rgba(0, 122, 255, 0.06) !important;
 }
 
+#job-status.is-idle {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
 .step {
   margin-bottom: 10px !important;
   padding: 12px 14px 14px !important;
@@ -115,11 +125,6 @@ div.progress-bar {
   border: 1px solid rgba(0, 0, 0, 0.06) !important;
   background: #FFFFFF !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-}
-
-#step-voice,
-#step-tts {
-  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 .step .tab-nav button,
@@ -225,13 +230,8 @@ a[download],
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-.dark #step-voice,
-.dark #step-tts {
-  box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
-}
-
-.dark .stepper span:not(:last-child)::after {
-  color: #636366;
+.dark #job-status.is-idle {
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 @media (max-width: 720px) {
