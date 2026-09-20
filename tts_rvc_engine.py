@@ -139,6 +139,17 @@ def _to_wav(src: Path, dest_wav: Path) -> Path:
     return dest_wav
 
 
+def tts_backend_label() -> str:
+    try:
+        import eleven_tts
+
+        if eleven_tts.available():
+            return "ElevenLabs"
+    except Exception:
+        pass
+    return "Edge"
+
+
 def speak_with_rvc(
     text: str,
     model_path: str | None = None,

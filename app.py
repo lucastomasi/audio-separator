@@ -103,9 +103,9 @@ def get_gui():
     ) as app:
         gr.Markdown("# Audio Separator", elem_classes=["app-header"])
         gr.Markdown(
-            "Trabaja en este Mac. YouTube, Edge y bajar modelos usan internet "
-            "gratis. Sin red, Separar / Entrenar / Convertir siguen con lo que "
-            "ya está en disco.",
+            "Trabaja en este Mac. YouTube, Edge y Completar instalación "
+            "(Hugging Face) usan internet. Sin los pesos en disco, Separar / "
+            "Entrenar / Convertir no arrancan offline.",
             elem_classes=["lede"],
         )
         gr.HTML(

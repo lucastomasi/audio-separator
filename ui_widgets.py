@@ -213,6 +213,6 @@ def format_conf():
         choices=FORMAT_OPTIONS,
         value="WAV",
         label="Formato de salida",
-        info="WAV = máxima fidelidad. MP3 320 solo para compartir liviano.",
+        info="WAV = máxima fidelidad. MP3 más chico, menos fiel.",
     )
 

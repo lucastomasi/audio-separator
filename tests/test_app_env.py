@@ -33,6 +33,25 @@ class AppEnvTests(unittest.TestCase):
         self.assertNotIn("Alquilar GPU RunPod", text)
         self.assertNotIn("se apaga a los 45 min", text)
         self.assertIn("el entrenamiento es en este mac", text.lower())
+        self.assertNotIn("el resto corre offline", text.lower())
+        self.assertIn("hugging face", text.lower())
+
+    def test_remix_status_uses_target_format(self):
+        import inspect
+
+        import app_jobs
+
+        src = inspect.getsource(app_jobs.remix_job)
+        self.assertIn("target_format", src)
+        self.assertNotIn("Pistas unidas (WAV)", src)
+
+    def test_mp3_copy_not_320(self):
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parents[1] / "ui_widgets.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("MP3 320", text)
 
 
 if __name__ == "__main__":

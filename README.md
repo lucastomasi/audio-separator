@@ -2,7 +2,7 @@
 
 App local para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. El audio queda en disco.
 
-YouTube y Edge TTS sí usan red. El resto corre offline.
+YouTube, Edge TTS y Completar instalación (Hugging Face / pesos) usan red. Separar, Entrenar y Convertir van offline solo si los modelos ya están en disco.
 
 ## Requisitos
 

@@ -359,13 +359,6 @@ def train_rvc_job(
         elif not isinstance(files, (list, tuple)):
             files = [files]
         files = [_gradio_path(item) or item for item in files]
-        n_files = len([item for item in files if item])
-        from runpod_train import estimate_copy
-
-        try:
-            progress(0.05, desc=estimate_copy(n_files, int(epochs or 10)))
-        except Exception:
-            pass
         if hire_gpu and runpod_key:
             from gpu_secrets import save as save_secrets
 
@@ -466,8 +459,10 @@ def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
     try:
         from tts_rvc_engine import resolve_edge_voice, speak_with_rvc
 
+        from tts_rvc_engine import tts_backend_label
+
         try:
-            progress(0.15, desc="Edge TTS…")
+            progress(0.15, desc=f"{tts_backend_label()}…")
         except Exception:
             pass
 
@@ -526,7 +521,8 @@ def remix_job(
         final = files[0]
         export_dir, copied = copy_to_downloads([final], ["remix"])
         saved = copied[0] if copied else final
-        return saved, saved, _ok(f"Pistas unidas (WAV). Archivo en {export_dir}")
+        fmt = (target_format or "WAV").upper()
+        return saved, saved, _ok(f"Pistas unidas ({fmt}). Archivo en {export_dir}")
     except ValueError as error:
         return None, None, _err("remix_job", error, MSG_REMIX)
     except Exception as error:

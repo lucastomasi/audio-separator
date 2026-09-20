@@ -83,6 +83,16 @@ class TrainRvcJobGpuTests(unittest.TestCase):
         saver.assert_called_with({"RUNPOD_API_KEY": "rp-test"})
 
 
+class TtsBackendLabelTests(unittest.TestCase):
+    def test_label_follows_eleven_key(self):
+        import tts_rvc_engine
+
+        with mock.patch("eleven_tts.available", return_value=True):
+            self.assertEqual(tts_rvc_engine.tts_backend_label(), "ElevenLabs")
+        with mock.patch("eleven_tts.available", return_value=False):
+            self.assertEqual(tts_rvc_engine.tts_backend_label(), "Edge")
+
+
 class SpeakWithRvcSourceTests(unittest.TestCase):
     def _run_speak(self, *, eleven_on):
         import tts_rvc_engine
