@@ -1,0 +1,82 @@
+import ast
+import os
+import stat
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from bundle_py import BUNDLE_PY
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class BundlePyTests(unittest.TestCase):
+    def test_required_modules_listed(self):
+        names = set(BUNDLE_PY)
+        for name in (
+            "occupancy.py",
+            "train_run.py",
+            "ui_status.py",
+            "gpu_secrets.py",
+            "eleven_tts.py",
+            "desktop.py",
+        ):
+            self.assertIn(name, names)
+
+    def test_covers_local_imports(self):
+        names = set(BUNDLE_PY)
+        for mod in ("app.py", "app_jobs.py", "desktop.py"):
+            tree = ast.parse((ROOT / mod).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom) or not node.module:
+                    continue
+                top = node.module.split(".")[0] + ".py"
+                if (ROOT / top).is_file():
+                    self.assertIn(top, names, f"{mod} imports {top}")
+
+
+class SeedSupportTests(unittest.TestCase):
+    def test_seed_copies_once(self):
+        import library
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        home = Path(tmp.name) / "home"
+        data = Path(tmp.name) / "data"
+        hubert = home / "library" / "models" / "rvc" / "hubert_base"
+        hubert.mkdir(parents=True)
+        (hubert / "config.json").write_text("from-bundle", encoding="utf-8")
+        env = {
+            "AUDIO_SEPARATOR_HOME": str(home),
+            "AUDIO_SEPARATOR_DATA": str(data),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            library.seed_support_weights()
+            dest = data / "library" / "models" / "rvc" / "hubert_base" / "config.json"
+            self.assertEqual(dest.read_text(encoding="utf-8"), "from-bundle")
+            dest.write_text("keep", encoding="utf-8")
+            library.seed_support_weights()
+            self.assertEqual(dest.read_text(encoding="utf-8"), "keep")
+
+
+class RelocateVenvTests(unittest.TestCase):
+    def test_relative_python_and_cfg(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "python" / "bin").mkdir(parents=True)
+        py = root / "python" / "bin" / "python3.12"
+        py.write_text("#!/bin/sh\n", encoding="utf-8")
+        py.chmod(py.stat().st_mode | stat.S_IEXEC)
+        venv = root / "venv-vc"
+        (venv / "bin").mkdir(parents=True)
+        script = ROOT / "scripts" / "relocate_venv.sh"
+        subprocess.check_call(["bash", str(script), str(venv)])
+        link = os.readlink(venv / "bin" / "python")
+        self.assertEqual(link, "../../python/bin/python3.12")
+        cfg = (venv / "pyvenv.cfg").read_text(encoding="utf-8")
+        self.assertIn("home = ../python/bin", cfg)
+        self.assertNotIn("lucastomasi", cfg)

@@ -15,7 +15,7 @@ exec /usr/bin/env -i \
   TMPDIR="${TMPDIR:-/tmp}" \
   LANG="en_US.UTF-8" \
   LC_ALL="en_US.UTF-8" \
-  PATH="$VENV/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  PATH="$VENV/bin:$CONTENTS/Resources/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   VIRTUAL_ENV="$VENV" \
   PYTHONNOUSERSITE=1 \
   PYTHONUNBUFFERED=1 \

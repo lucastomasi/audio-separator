@@ -34,7 +34,26 @@ def _apply_paths():
 _apply_paths()
 
 
+def seed_support_weights():
+    """Copy bundled RVC support weights into DATA on first .app launch."""
+    from app_env import data_dir, home
+
+    src = os.path.join(home(), "library", "models", "rvc")
+    dst = os.path.join(data_dir(), "library", "models", "rvc")
+    src_mark = os.path.join(src, "hubert_base", "config.json")
+    dst_mark = os.path.join(dst, "hubert_base", "config.json")
+    if not os.path.isfile(src_mark):
+        return
+    if os.path.abspath(src) == os.path.abspath(dst):
+        return
+    if os.path.isfile(dst_mark):
+        return
+    os.makedirs(dst, exist_ok=True)
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+
+
 def ensure_dirs():
+    seed_support_weights()
     for path in PATHS.values():
         os.makedirs(path, exist_ok=True)
     if not os.path.isfile(INDEX):

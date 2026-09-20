@@ -18,7 +18,9 @@ YouTube, Edge TTS y Completar instalación (Hugging Face / pesos) usan red. Sepa
 | `Audio-Separator-macOS-Intel.zip` | Full, pesos adentro (~2 GB) |
 | `Audio-Separator-macOS-Intel-Lite.zip` | Sin ~700 MB de RVC; **Completar instalación** la primera vez |
 
-Clic derecho → **Abrir**. No está notarizado por Apple.
+**Entregable:** `dist/Audio-Separator-macOS-Intel.zip`. Copiá `Audio Separator.app` a Aplicaciones. Clic derecho → **Abrir**. No hace falta Terminal ni Grok. No está notarizado por Apple.
+
+El alias de desarrollo en `~/grok` **no** es el producto.
 
 Los zip **no** van en git. Se arman con:
 

@@ -29,18 +29,10 @@ fi
 
 echo "==> Sync app sources → Resources/app"
 mkdir -p "$APPDIR"
-PY_FILES=(
-  app.py app_env.py app_jobs.py desktop.py
-  rvc_engine.py rvc_train.py rvc_api.py vc_runner.py
-  library.py clone_engine.py exports.py remix.py diarize.py
-  youtube_lib.py audio_io.py audio_text.py utils.py
-  uvr_runtime.py mdx_model.py ui_widgets.py
-  tts_rvc_engine.py install_rvc_assets.py
-  album_cover.py video_remux.py
-)
-for f in "${PY_FILES[@]}"; do
+while IFS= read -r f; do
+  [[ -n "$f" ]] || continue
   cp -f "$ROOT/$f" "$APPDIR/$f"
-done
+done < <("$SRC_VENV/bin/python" -c "from bundle_py import BUNDLE_PY; print('\\n'.join(BUNDLE_PY))")
 cp -f "$ROOT/ui.css" "$APPDIR/ui.css"
 cp -f "$ROOT/convert_rvc.sh" "$APPDIR/convert_rvc.sh"
 cp -f "$ROOT/requirements-macos.txt" "$APPDIR/requirements-macos.txt"
@@ -154,8 +146,21 @@ echo "==> Isolated conversion venv"
 if [[ -x "$ROOT/.venv-vc/bin/python" ]]; then
   mkdir -p "$RES/venv-vc"
   rsync -a --delete --exclude '__pycache__' "$ROOT/.venv-vc/" "$RES/venv-vc/"
+  bash "$ROOT/scripts/relocate_venv.sh" "$RES/venv-vc"
 else
-  echo "WARN: no .venv-vc; Completar instalación lo crea en DATA"
+  echo "ERROR: falta $ROOT/.venv-vc (el zip full no puede crear uv en el Mac de destino)"
+  exit 1
+fi
+# Relative VC weight links (bundle library, not this machine's repo)
+PRED="$APPDIR/third_party/vc/rvc/models/predictors"
+EMB="$APPDIR/third_party/vc/rvc/models/embedders/contentvec"
+mkdir -p "$PRED" "$EMB"
+ln -sfn ../../../../../library/models/rvc/rmvpe.pt "$PRED/rmvpe.pt"
+ln -sfn ../../../../../../library/models/rvc/hubert_base/config.json "$EMB/config.json"
+ln -sfn ../../../../../../library/models/rvc/hubert_base/model.safetensors "$EMB/model.safetensors"
+if [[ -f "$APPDIR/library/models/rvc/hubert_base/preprocessor_config.json" ]]; then
+  ln -sfn ../../../../../../library/models/rvc/hubert_base/preprocessor_config.json \
+    "$EMB/preprocessor_config.json"
 fi
 
 echo "==> Launcher env -i"
