@@ -396,7 +396,15 @@ def train_rvc_job(
         return rvc_upd, bar, tts_upd
 
 
-def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progress()):
+def rvc_job(
+    audio_path,
+    library_model,
+    model_file,
+    index_file,
+    train_files=None,
+    allow_same=False,
+    progress=gr.Progress(),
+):
     import library
     from rvc_engine import convert_voice
 
@@ -407,11 +415,19 @@ def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progr
 
     audio_path = _gradio_path(audio_path)
     if not audio_path or not os.path.isfile(audio_path):
-        msg = (
-            "Falta la pista de voz. Primero Separá (paso 2–3) "
-            "o usá el paso 6 Texto → habla."
-        )
+        msg = "Falta el audio a convertir. Cargalo en este tab."
         return None, None, status_update(KIND_ERROR, msg)
+    train_paths = []
+    for item in train_files or []:
+        got = _gradio_path(item) or (item if isinstance(item, str) else None)
+        if got:
+            train_paths.append(os.path.abspath(got))
+    if os.path.abspath(audio_path) in train_paths and not allow_same:
+        return None, None, status_update(
+            KIND_ERROR,
+            "Ese archivo está en Entrenar. Marcá "
+            "«Convertir este mismo archivo» si es a propósito.",
+        )
 
     voices_root = os.path.abspath(library.PATHS["rvc_voices"])
     model_path = library_model
@@ -441,16 +457,28 @@ def rvc_job(audio_path, library_model, model_file, index_file, progress=gr.Progr
             progress(0.35, desc="Convirtiendo voz…")
         except Exception:
             pass
-        out_path = convert_voice(audio_path, model_path, index_path=index_path)
+        out_path = convert_voice(
+            audio_path,
+            model_path,
+            index_path=index_path,
+            pitch=0,
+            index_rate=0.75 if index_path else 0.0,
+            f0_method="rmvpe",
+            protect=0.33,
+        )
         try:
             progress(1.0, desc="Listo")
         except Exception:
             pass
-        note = " (+index)" if index_path else ""
+        name = os.path.basename(audio_path)
+        model_name = os.path.splitext(os.path.basename(model_path))[0]
+        index_bit = "sí" if index_path else "no"
         return (
             out_path,
             out_path,
-            _ok(f"Voz convertida{note}. Está lista para unir."),
+            _ok(
+                f"Melodía: {name}. Voz: {model_name}. Índice: {index_bit}."
+            ),
         )
     except ValueError as error:
         return None, None, _err("rvc_job", error, MSG_CONVERT)
@@ -511,7 +539,7 @@ def remix_job(
         wav_path = os.path.join(out_dir, "remix.wav")
         from remix import remix_to_wav
 
-        remix_to_wav(
+        _path, aligned_ms = remix_to_wav(
             voice_path,
             instrumental_path,
             wav_path,
@@ -519,13 +547,18 @@ def remix_job(
             match_duration=bool(match_duration),
             voice_db=voice_db or 0,
             instrumental_db=instrumental_db or 0,
+            auto_align=True,
         )
         files = convert_format([wav_path], out_dir, target_format or "WAV")
         final = files[0]
         export_dir, copied = copy_to_downloads([final], ["remix"])
         saved = copied[0] if copied else final
         fmt = (target_format or "WAV").upper()
-        return saved, saved, _ok(f"Pistas unidas ({fmt}). Archivo en {export_dir}")
+        lag = int(round(aligned_ms))
+        lag_note = f" Alineé la voz {lag} ms." if lag else ""
+        return saved, saved, _ok(
+            f"Pistas unidas ({fmt}).{lag_note} Archivo en {export_dir}"
+        )
     except ValueError as error:
         return None, None, _err("remix_job", error, MSG_REMIX)
     except Exception as error:

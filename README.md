@@ -75,7 +75,7 @@ No abras `desktop.py` y `./convert_rvc.sh` a la vez (OpenMP en Intel).
 El `main` local es la historia real. GitHub puede tener otra: **no hagas pull**. Con sesión de `gh`:
 
 ```bash
-cd /Users/lucastomasi/grok/Audio_separator
+cd Audio_separator
 gh auth login
 git push -u --force-with-lease origin main
 ```

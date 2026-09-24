@@ -496,18 +496,19 @@ def _find_index(exp_name):
         search.extend(logs.glob("*.index"))
     if indices.is_dir():
         search.extend(indices.glob("*.index"))
-    if not search:
+    real = [p for p in search if p.is_file()]
+    if not real:
         return None
     exp = exp_name.lower()
-    # Prefer added_* (has vectors) over trained_* (empty IVF shell).
     added = [
-        p for p in search if "added" in p.name.lower() and exp in p.name.lower()
+        p for p in real if "added" in p.name.lower() and exp in p.name.lower()
     ]
     if added:
         return max(added, key=lambda p: p.stat().st_size)
-    named = [p for p in search if exp in p.name.lower()]
-    pool = named or list(search)
-    return max(pool, key=lambda p: p.stat().st_size)
+    named = [p for p in real if exp in p.name.lower()]
+    if named:
+        return max(named, key=lambda p: p.stat().st_size)
+    return None
 
 
 def _ensure_inference_weight(
@@ -646,7 +647,7 @@ def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
         train_run.write_published(
             exp_name, ok=True, pth=dest_pth, index=dest_index
         )
-    except RuntimeError as exc:
+    except Exception as exc:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n[index] omitido: {exc}\n")
     try:
@@ -775,7 +776,7 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
             frac=0.4,
             desc="HuBERT…",
         )
-        _write_filelist_and_config(exp_dir)
+    _write_filelist_and_config(exp_dir)
     _run(
         [
             py,

@@ -407,6 +407,24 @@ class RvcTrainTests(unittest.TestCase):
             found = rvc_train._find_index("demo")
         self.assertEqual(found, added)
 
+    def test_find_index_skips_broken_symlink_and_other_exp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        indices = root / "assets" / "indices"
+        indices.mkdir(parents=True)
+        broken = indices / "smoke_voice_added_IVF48.index"
+        broken.symlink_to(root / "missing.index")
+        other = indices / "other_added_IVF.index"
+        other.write_bytes(b"x" * 100)
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            self.assertIsNone(rvc_train._find_index("gordopablo"))
+        own = indices / "gordopablo_added_IVF.index"
+        own.write_bytes(b"y" * 50)
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            found = rvc_train._find_index("gordopablo")
+        self.assertEqual(found, own)
+
 
 if __name__ == "__main__":
     unittest.main()

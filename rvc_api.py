@@ -68,7 +68,7 @@ def _conflicting_rvc_processes() -> list[str]:
     for line in out.splitlines():
         if me in line.split(None, 1)[:1]:
             continue
-        if "Audio_separator" not in line and "grok/Audio_separator" not in line:
+        if "Audio_separator" not in line:
             continue
         if "desktop.py" in line or "rvc_api.py" in line:
             # skip this process if pgrep matched ourselves oddly

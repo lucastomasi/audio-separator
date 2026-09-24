@@ -11,7 +11,7 @@ from datetime import datetime
 
 from utils import logger
 
-IDLE = "1 Canción → 2 Extraer → 3 Resultado → 4 Voz → 5 Unir → 6 Texto."
+IDLE = "1 Canción → 2 Extraer → 3 Resultado → 4 Convertir → 5 Entrenar → 6 Unir → 7 Texto."
 RUN_SEPARATE = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
 RUN_TRAIN = "Entrenando… podés cerrar la ventana; Convertir queda bloqueado."
 READY = "Audio listo. Elegí qué extraer y pulsá Separar."

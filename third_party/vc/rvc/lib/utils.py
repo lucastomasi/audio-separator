@@ -142,8 +142,9 @@ def load_embedding(embedder_model, custom_embedder=None):
         model_path = embedding_list[embedder_model]
         bin_file = os.path.join(model_path, "pytorch_model.bin")
         json_file = os.path.join(model_path, "config.json")
+        safe_file = os.path.join(model_path, "model.safetensors")
         os.makedirs(model_path, exist_ok=True)
-        if not os.path.exists(bin_file):
+        if not os.path.exists(bin_file) and not os.path.exists(safe_file):
             url = online_embedders[embedder_model]
             print(f"Downloading {url} to {model_path}...")
             wget.download(url, out=bin_file)
@@ -152,5 +153,8 @@ def load_embedding(embedder_model, custom_embedder=None):
             print(f"Downloading {url} to {model_path}...")
             wget.download(url, out=json_file)
 
-    models = HubertModelWithFinalProj.from_pretrained(model_path)
+    use_safe = os.path.exists(os.path.join(model_path, "model.safetensors"))
+    models = HubertModelWithFinalProj.from_pretrained(
+        model_path, use_safetensors=use_safe
+    )
     return models

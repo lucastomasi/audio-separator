@@ -217,65 +217,38 @@ def get_gui():
                             "Nueva canción", variant="secondary"
                         )
 
-            with gr.Tab("4 Voz"):
+            with gr.Tab("4 Convertir"):
                 with gr.Group(elem_classes=["step"]):
+                    rvc_in = gr.Audio(
+                        label="Audio a convertir",
+                        type="filepath",
+                        sources=["upload"],
+                        buttons=[],
+                    )
                     gr.Markdown(
-                        "Entrená una voz o convertí con un modelo de la biblioteca.",
+                        "La melodía sale de este archivo. El modelo solo cambia la voz.",
                         elem_classes=["hint"],
                     )
-                    with gr.Tabs():
-                        with gr.Tab("Entrenar"):
-                            train_name = gr.Textbox(
-                                label="Nombre", placeholder="mi_voz"
-                            )
-                            train_dataset = gr.File(
-                                label="Audios o videos de la persona",
-                                file_count="multiple",
-                                file_types=[
-                                    ".wav",
-                                    ".mp3",
-                                    ".flac",
-                                    ".m4a",
-                                    ".mp4",
-                                    ".mov",
-                                    ".mkv",
-                                    ".webm",
-                                    ".avi",
-                                ],
-                            )
-                            train_epochs = gr.Slider(
-                                5,
-                                50,
-                                value=10,
-                                step=1,
-                                label="Epochs (CPU Intel: 10 de prueba)",
-                            )
-                            gr.Markdown(
-                                "El entrenamiento es en este Mac. "
-                                "Si subís un video, se extrae el audio. "
-                                "10 epochs de prueba: minutos u horas según el largo. "
-                                "El modelo aparece en Convertir al terminar. "
-                                "No lo compartas si la voz no es tuya.",
-                                elem_classes=["hint"],
-                            )
-                            train_btn = gr.Button(
-                                "Entrenar",
-                                variant="primary",
-                                elem_id="train-btn",
-                            )
-                        with gr.Tab("Convertir"):
-                            rvc_pick = gr.Dropdown(
-                                label="Modelo en biblioteca",
-                                choices=_rvc_choices,
-                                value=_rvc_value,
-                                info="Si está vacío, entrená una voz o cargá un .pth.",
-                            )
-                            rvc_btn = gr.Button(
-                                "Convertir voz",
-                                variant="primary",
-                                elem_id="rvc-btn",
-                            )
-                            rvc_audio = out_audio("Voz convertida")
+                    with gr.Row(elem_classes=["action-row"]):
+                        use_sep_btn = gr.Button(
+                            "Traer voz de Separar", variant="secondary"
+                        )
+                        rvc_same = gr.Checkbox(
+                            False,
+                            label="Es un archivo de Entrenar",
+                        )
+                    rvc_pick = gr.Dropdown(
+                        label="Modelo en biblioteca",
+                        choices=_rvc_choices,
+                        value=_rvc_value,
+                        info="Si está vacío, entrená una voz o cargá un .pth.",
+                    )
+                    rvc_btn = gr.Button(
+                        "Convertir voz",
+                        variant="primary",
+                        elem_id="rvc-btn",
+                    )
+                    rvc_audio = out_audio("Voz convertida")
                     with gr.Accordion("Pesos / biblioteca", open=False):
                         gr.Markdown(
                             "Si Convertir está vacío, entrená una voz o cargá un .pth. "
@@ -312,7 +285,48 @@ def get_gui():
                                 "Actualizar listas", variant="secondary"
                             )
 
-            with gr.Tab("5 Unir"):
+            with gr.Tab("5 Entrenar"):
+                with gr.Group(elem_classes=["step"]):
+                    train_name = gr.Textbox(
+                        label="Nombre", placeholder="mi_voz"
+                    )
+                    train_dataset = gr.File(
+                        label="Audios o videos de la persona",
+                        file_count="multiple",
+                        file_types=[
+                            ".wav",
+                            ".mp3",
+                            ".flac",
+                            ".m4a",
+                            ".mp4",
+                            ".mov",
+                            ".mkv",
+                            ".webm",
+                            ".avi",
+                        ],
+                    )
+                    train_epochs = gr.Slider(
+                        5,
+                        50,
+                        value=10,
+                        step=1,
+                        label="Epochs (CPU Intel: 10 de prueba)",
+                    )
+                    gr.Markdown(
+                        "El entrenamiento es en este Mac. "
+                        "Si subís un video, se extrae el audio. "
+                        "10 epochs de prueba: minutos u horas según el largo. "
+                        "El modelo aparece en Convertir al terminar. "
+                        "No lo compartas si la voz no es tuya.",
+                        elem_classes=["hint"],
+                    )
+                    train_btn = gr.Button(
+                        "Entrenar",
+                        variant="primary",
+                        elem_id="train-btn",
+                    )
+
+            with gr.Tab("6 Unir"):
                 with gr.Group(elem_classes=["step"]):
                     with gr.Row():
                         remix_voice = gr.Audio(
@@ -338,8 +352,12 @@ def get_gui():
                             step=1,
                             label="Volumen instrumental (dB)",
                         )
+                    gr.Markdown(
+                        "Alinea sola un desfase de hasta 2 s. No estira el tiempo.",
+                        elem_classes=["hint"],
+                    )
                     remix_btn = gr.Button(
-                        "Unir voz + instrumental",
+                        "Unir",
                         variant="primary",
                         elem_id="join-btn",
                     )
@@ -381,7 +399,7 @@ def get_gui():
                             type="filepath",
                             buttons=[],
                         )
-                    with gr.Accordion("Si la voz es otra grabación", open=False):
+                    with gr.Accordion("Ajuste de tiempo", open=False):
                         remix_delay = gr.Slider(
                             -2000,
                             2000,
@@ -394,7 +412,7 @@ def get_gui():
                             label="Igualar duración al instrumental",
                         )
 
-            with gr.Tab("6 Texto"):
+            with gr.Tab("7 Texto"):
                 with gr.Group(elem_classes=["step"]):
                     gr.Markdown(
                         "ElevenLabs si hay key; si no, Edge (internet). "
@@ -587,9 +605,27 @@ def get_gui():
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
             outputs=[rvc_pick, tts_rvc_pick, status],
         )
+        def _pull_separated(vocal):
+            from ui_status import KIND_ERROR, KIND_OK, status_update
+
+            path = vocal.get("path") if isinstance(vocal, dict) else vocal
+            if not path or not os.path.isfile(str(path)):
+                return None, status_update(
+                    KIND_ERROR, "Separar no tiene una voz para traer."
+                )
+            name = os.path.basename(str(path))
+            return path, status_update(
+                KIND_OK, f"Melodía: {name} (desde Separar)."
+            )
+
+        use_sep_btn.click(
+            _pull_separated,
+            inputs=[vocal_out],
+            outputs=[rvc_in, status],
+        )
         rvc_btn.click(
             rvc_job,
-            inputs=[vocal_out, rvc_pick, rvc_model, rvc_index],
+            inputs=[rvc_in, rvc_pick, rvc_model, rvc_index, train_dataset, rvc_same],
             outputs=[rvc_audio, remix_voice, status],
             show_progress="minimal",
             concurrency_limit=1,
@@ -615,7 +651,7 @@ def get_gui():
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
             from occupancy import HOLD_TRAIN, snapshot
-            from ui_status import KIND_OK, KIND_RUN, RUN_TRAIN, status_update
+            from ui_status import KIND_ERROR, KIND_OK, KIND_RUN, RUN_TRAIN, status_update
 
             occ = snapshot()
             rvc_on, tts_on = _convert_interactive()
