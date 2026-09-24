@@ -59,6 +59,24 @@ class LibraryTests(unittest.TestCase):
         choices = library.dropdown_choices(voices)
         self.assertIn("+index", choices[0][0])
 
+    def test_voice_folder_wins_over_flat_copy(self):
+        flat_dir = library.PATHS["rvc_voices"]
+        os.makedirs(flat_dir, exist_ok=True)
+        flat = os.path.join(flat_dir, "ana.pth")
+        with open(flat, "wb") as handle:
+            handle.write(b"flat")
+        owned = library.place_voice_file(flat, "ana")
+        with open(owned, "wb") as handle:
+            handle.write(b"folder")
+        voices = library.list_rvc_voices()
+        self.assertEqual([row["name"] for row in voices], ["ana"])
+        self.assertEqual(os.path.abspath(voices[0]["path"]), os.path.abspath(owned))
+        self.assertTrue(library.is_installed_voice(owned))
+        outside = os.path.join(self.tmp.name, "other.pth")
+        with open(outside, "wb") as handle:
+            handle.write(b"x")
+        self.assertFalse(library.is_installed_voice(outside))
+
     def test_register_rejects_path_escape(self):
         src = os.path.join(self.tmp.name, "clip.wav")
         with open(src, "wb") as handle:

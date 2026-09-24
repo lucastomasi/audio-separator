@@ -28,10 +28,33 @@ def library_root() -> Path:
     return Path(data_dir()) / "Voces"
 
 
+def _cache_has_files(path: Path) -> bool:
+    try:
+        return any(child.name != ".DS_Store" for child in path.iterdir())
+    except OSError:
+        return False
+
+
 def runs_dir(exp_name: str) -> Path:
-    path = voice_dir(exp_name) / "trabajo"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    """RVC experiment dir. Bytes live in Cache; Voces/<name>/trabajo is a link.
+
+    Deleting Cache drops features and G_/D_. The .pth, .index and entrada stay.
+    """
+    from app_env import data_dir
+
+    cache = Path(data_dir()) / "Cache" / "voces" / exp_name
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    link = voice_dir(exp_name) / "trabajo"
+    if not link.is_symlink() and link.is_dir():
+        if _cache_has_files(cache):
+            return link
+        if cache.exists():
+            cache.rmdir()
+        link.rename(cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    if not link.is_symlink() and not link.exists():
+        link.symlink_to(os.path.relpath(cache, start=link.parent))
+    return link
 
 
 def train_data_dir(exp_name: str) -> Path:

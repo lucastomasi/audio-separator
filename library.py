@@ -172,13 +172,72 @@ def find_index_for_model(model_path):
     return None
 
 
+def is_installed_voice(path):
+    """True when path is already Voces/<nombre>/<nombre>.pth or the legacy flat folder."""
+    if not path or not os.path.isfile(path):
+        return False
+    root = os.path.abspath(ROOT)
+    abs_path = os.path.abspath(path)
+    try:
+        if os.path.commonpath([root, abs_path]) != root:
+            return False
+    except ValueError:
+        return False
+    parts = os.path.relpath(abs_path, root).split(os.sep)
+    if len(parts) == 3 and parts[0] == "models" and parts[1] == "rvc_voices":
+        return True
+    if len(parts) == 2 and os.path.splitext(parts[1])[0] == parts[0]:
+        return parts[1].lower().endswith((".pth", ".pt", ".safetensors"))
+    return False
+
+
+def place_named(src_path, stem, suffix):
+    """Copy into Voces/<stem>/<stem><suffix>. Same path is a no-op."""
+    if not src_path or not os.path.isfile(src_path):
+        raise ValueError("No hay archivo para guardar en la biblioteca.")
+    if suffix not in (".pth", ".index"):
+        raise ValueError("Nombre de archivo inválido.")
+    raw = str(stem or "").replace("\\", "/").strip()
+    if not raw or raw in (".", "..") or "/" in raw or ".." in raw:
+        raise ValueError("Nombre de archivo inválido.")
+    dest_dir = os.path.join(ROOT, raw)
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, raw + suffix)
+    if os.path.abspath(src_path) != os.path.abspath(dest):
+        shutil.copy2(src_path, dest)
+    return dest
+
+
+def place_voice_file(src_path, stem):
+    """Copy a model into Voces/<stem>/<stem>.pth. Same path is a no-op."""
+    return place_named(src_path, stem, ".pth")
+
+
+def place_beside(model_path, src_path, suffix):
+    """Copy src next to an installed model, using the model's stem."""
+    if not model_path or not os.path.isfile(model_path):
+        raise ValueError("No hay modelo para acompañar el índice.")
+    if not src_path or not os.path.isfile(src_path):
+        raise ValueError("No hay archivo para guardar en la biblioteca.")
+    if suffix not in (".index", ".pth"):
+        raise ValueError("Nombre de archivo inválido.")
+    stem = os.path.splitext(os.path.basename(model_path))[0]
+    if not stem or stem in (".", "..") or "/" in stem or ".." in stem:
+        raise ValueError("Nombre de archivo inválido.")
+    dest = os.path.join(os.path.dirname(os.path.abspath(model_path)), stem + suffix)
+    if os.path.abspath(src_path) != os.path.abspath(dest):
+        shutil.copy2(src_path, dest)
+    return dest
+
+
 def list_rvc_voices():
     items = _scan_dir("rvc_voices", (".pth", ".pt", ".safetensors"))
     by_name = {item["name"]: item for item in items}
-    voices = os.path.join(data_home(), "Voces")
-    if os.path.isdir(voices):
-        for name in sorted(os.listdir(voices)):
-            path = os.path.join(voices, name, f"{name}.pth")
+    if os.path.isdir(ROOT):
+        for name in sorted(os.listdir(ROOT)):
+            if name == "models" or name.startswith("."):
+                continue
+            path = os.path.join(ROOT, name, f"{name}.pth")
             if os.path.isfile(path):
                 by_name[name] = {"name": name, "path": path, "kind": "rvc_voices"}
     found = [by_name[name] for name in sorted(by_name)]

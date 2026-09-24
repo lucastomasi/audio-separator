@@ -211,6 +211,7 @@ class VoiceConverter:
         index_rate: float = 0.75,
         volume_envelope: float = 1.0,
         protect: float = 0.5,
+        filter_radius: int = 0,
         hop_length: int = 128,
         split_audio: bool = False,
         f0_autotune: bool = False,
@@ -314,6 +315,7 @@ class VoiceConverter:
                 f0_autotune_strength=f0_autotune_strength,
                 proposed_pitch=proposed_pitch,
                 proposed_pitch_threshold=proposed_pitch_threshold,
+                filter_radius=int(filter_radius or 0),
             )
             converted_chunks.append(audio_opt)
             if split_audio:

@@ -62,6 +62,7 @@ def main() -> int:
                 f0_method=job.get("f0_method") or "rmvpe",
                 index_rate=float(job.get("index_rate") or 0.75),
                 protect=float(job.get("protect") or 0.5),
+                filter_radius=int(job.get("filter_radius", 0) or 0),
                 split_audio=bool(job.get("split_audio", True)),
                 embedder_model=job.get("embedder") or "contentvec",
                 export_format="WAV",

@@ -314,16 +314,16 @@ def load_rvc_into_library(
         loaded.append("f0D40k")
     model = _gradio_path(model_file)
     if model:
-        item = library.register("rvc_voices", model)
-        model_path = item["path"]
+        stem = os.path.splitext(os.path.basename(model))[0]
+        model_path = library.place_voice_file(model, stem)
         loaded.append(".pth")
     index = _gradio_path(index_file)
     if index and model_path:
-        index_name = os.path.splitext(os.path.basename(model_path))[0] + ".index"
-        library.register("rvc_voices", index, index_name)
+        library.place_beside(model_path, index, ".index")
         loaded.append(".index")
     elif index and not model_path:
-        library.register("rvc_voices", index)
+        stem = os.path.splitext(os.path.basename(index))[0]
+        library.place_named(index, stem, ".index")
         loaded.append(".index")
     rvc_engine._converter = None
     rvc_upd, tts_upd = refresh_library_ui()
@@ -429,19 +429,15 @@ def rvc_job(
             "«Convertir este mismo archivo» si es a propósito.",
         )
 
-    voices_root = os.path.abspath(library.PATHS["rvc_voices"])
     model_path = library_model
     if model_file:
         uploaded = _gradio_path(model_file)
         if uploaded:
-            item = library.register("rvc_voices", uploaded)
-            model_path = item["path"]
-    # Convert only uses library/models/rvc_voices/ (never assets/weights directly).
-    if model_path and os.path.abspath(model_path).startswith(voices_root + os.sep):
-        pass
-    elif model_path and os.path.isfile(model_path):
-        item = library.register("rvc_voices", model_path)
-        model_path = item["path"]
+            stem = os.path.splitext(os.path.basename(uploaded))[0]
+            model_path = library.place_voice_file(uploaded, stem)
+    elif model_path and os.path.isfile(model_path) and not library.is_installed_voice(model_path):
+        stem = os.path.splitext(os.path.basename(model_path))[0]
+        model_path = library.place_voice_file(model_path, stem)
     if not model_path:
         msg = "Elegí un modelo en la biblioteca (Voz)."
         return None, None, status_update(KIND_ERROR, msg)
@@ -449,9 +445,7 @@ def rvc_job(
     if index_file:
         uploaded_index = _gradio_path(index_file)
         if uploaded_index and model_path:
-            index_name = os.path.splitext(os.path.basename(model_path))[0] + ".index"
-            item = library.register("rvc_voices", uploaded_index, index_name)
-            index_path = item["path"]
+            index_path = library.place_beside(model_path, uploaded_index, ".index")
     try:
         try:
             progress(0.35, desc="Convirtiendo voz…")

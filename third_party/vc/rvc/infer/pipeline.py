@@ -206,6 +206,7 @@ class Pipeline:
         f0_autotune_strength: float = 1.0,
         proposed_pitch: bool = False,
         proposed_pitch_threshold: float = 155.0,
+        filter_radius: int = 0,
     ):
         """
         Estimates the fundamental frequency (F0) of a given audio signal using various methods.
@@ -243,6 +244,14 @@ class Pipeline:
             )
             f0 = model.get_f0(x, p_len, filter_radius=0.006)
             del model
+
+        # Integer filter_radius is the median smoother. 0 leaves the F0 curve as RMVPE wrote it.
+        # The 0.03 / 0.006 values above are voicing thresholds, not this knob.
+        radius = int(filter_radius or 0)
+        if radius > 2 and getattr(f0, "size", 0) > 2:
+            if radius % 2 == 0:
+                radius += 1
+            f0 = signal.medfilt(f0, kernel_size=radius)
 
         # f0 adjustments
         if f0_autotune is True:
@@ -404,6 +413,7 @@ class Pipeline:
         f0_autotune_strength,
         proposed_pitch,
         proposed_pitch_threshold,
+        filter_radius=0,
     ):
         """
         The main pipeline function for performing voice conversion.
@@ -467,6 +477,7 @@ class Pipeline:
                 f0_autotune_strength,
                 proposed_pitch,
                 proposed_pitch_threshold,
+                filter_radius,
             )
             pitch = pitch[:p_len]
             pitchf = pitchf[:p_len]

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import train_run
-from library import ensure_dirs, register, rvc_support_dir
+from library import ensure_dirs, rvc_support_dir
 
 APP_ROOT = Path(__file__).resolve().parent
 RVC_ROOT = APP_ROOT / "third_party" / "RVC-WebUI"
@@ -121,10 +121,11 @@ def publish_infer_weight(exp_name, log_path: Path | None = None) -> Path | None:
     if small is None:
         return None
     try:
-        dest = register("rvc_voices", str(small), f"{exp_name}.pth")
+        path = train_run.voice_dir(exp_name) / f"{exp_name}.pth"
+        if small.resolve() != path.resolve():
+            shutil.copy2(small, path)
     except Exception:
         return None
-    path = Path(dest["path"])
     if log_path is not None:
         try:
             with open(log_path, "a", encoding="utf-8") as log:
@@ -576,31 +577,25 @@ def _ensure_inference_weight(
 
 
 def _publish_voice_to_library(exp_name, pth: Path, index: Path | None, log_path: Path):
-    """Always copy inference pth + added index into library/models/rvc_voices/.
-
-    Convert / dropdown only read that folder so runtime assets/weights cannot
-    drift from what the UI lists.
-    """
+    """Copy inference pth + index into Voces/<exp>/. One folder, no second copy."""
     folder = train_run.voice_dir(exp_name)
     canonical = folder / f"{exp_name}.pth"
     if pth.resolve() != canonical.resolve():
         shutil.copy2(pth, canonical)
+    index_dest = None
     if index is not None and index.is_file():
-        shutil.copy2(index, folder / f"{exp_name}.index")
-    dest_pth = register("rvc_voices", str(canonical), f"{exp_name}.pth")
-    dest_index = None
-    if index is not None and index.is_file():
-        dest_index = register("rvc_voices", str(folder / f"{exp_name}.index"), f"{exp_name}.index")
+        index_dest = folder / f"{exp_name}.index"
+        if index.resolve() != index_dest.resolve():
+            shutil.copy2(index, index_dest)
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(
-            f"[library] pth -> {dest_pth['path']} "
-            f"({Path(dest_pth['path']).stat().st_size} bytes)\n"
+            f"[library] pth -> {canonical} ({canonical.stat().st_size} bytes)\n"
         )
-        if dest_index:
-            log.write(f"[library] index -> {dest_index['path']}\n")
+        if index_dest:
+            log.write(f"[library] index -> {index_dest}\n")
         else:
             log.write("[library] sin index (convert igual puede usar el .pth)\n")
-    return dest_pth["path"], (dest_index["path"] if dest_index else None)
+    return str(canonical), (str(index_dest) if index_dest else None)
 
 
 def finish_train_publish(exp_name, log_path, total, progress=None, py=None):

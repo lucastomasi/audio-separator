@@ -80,7 +80,7 @@ def convert_voice(
     index_rate=0.66,
     f0_method="rmvpe",
     protect=0.33,
-    filter_radius=3,
+    filter_radius=0,
     rms_mix_rate=0.25,
     copy_downloads=True,
 ):
@@ -108,6 +108,7 @@ def convert_voice(
             index_rate=index_rate,
             f0_method=f0_method,
             protect=protect,
+            filter_radius=filter_radius,
         )
     finally:
         occupancy.release(occupancy.HOLD_CONVERT)

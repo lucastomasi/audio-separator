@@ -196,6 +196,7 @@ def run_vc_infer(
     index_rate: float = 0.66,
     f0_method: str = "rmvpe",
     protect: float = 0.33,
+    filter_radius: int = 0,
 ) -> str:
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     tmp.close()
@@ -209,6 +210,7 @@ def run_vc_infer(
         "index_rate": float(index_rate),
         "protect": float(protect),
         "f0_method": f0_method or "rmvpe",
+        "filter_radius": int(filter_radius),
         "split_audio": True,
         "embedder": "contentvec",
     }

@@ -87,6 +87,7 @@ class RvcEngineTests(unittest.TestCase):
         kwargs = infer.call_args.kwargs
         self.assertEqual(kwargs["pitch"], 2)
         self.assertEqual(kwargs["index_rate"], 0.8)
+        self.assertEqual(kwargs["filter_radius"], 0)
 
     def test_hubert_pth_upload_is_ignored(self):
         from app_jobs import load_rvc_into_library

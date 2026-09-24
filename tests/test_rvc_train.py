@@ -154,20 +154,14 @@ class RvcTrainTests(unittest.TestCase):
         heavy = root / "logs" / "demo" / "G_2333333.pth"
         self._sparse(infer, 21 * 1024 * 1024)
         self._sparse(heavy, 200 * 1024 * 1024)
-        registered = []
-
-        def fake_register(kind, src, name=None):
-            dest = voices / (name or "x.pth")
-            dest.write_bytes(b"infer")
-            registered.append((kind, src, name))
-            return {"path": str(dest)}
 
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             with mock.patch("app_env.data_dir", return_value=str(root)):
-                with mock.patch("rvc_train.register", side_effect=fake_register):
-                    rvc_train.snapshot_checkpoints("demo", heavy=False)
-        self.assertTrue(registered)
-        self.assertTrue(all("G_" not in (item[2] or "") for item in registered))
+                rvc_train.snapshot_checkpoints("demo", heavy=False)
+        canonical = root / "Voces" / "demo" / "demo.pth"
+        self.assertTrue(canonical.is_file())
+        self.assertGreater(canonical.stat().st_size, 20 * 1024 * 1024)
+        self.assertFalse((root / "Voces" / "models" / "rvc_voices" / "demo.pth").exists())
         self.assertFalse(
             (root / "library" / "train_runs" / "demo" / "ckpt" / "G_2333333.pth").is_file()
         )
@@ -183,24 +177,19 @@ class RvcTrainTests(unittest.TestCase):
         log = root / "train.log"
         log.write_text("", encoding="utf-8")
 
-        def fake_register(kind, src, name=None):
-            dest = voices / (name or "out.pth")
-            dest.write_bytes(b"ok")
-            return {"path": str(dest)}
-
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             with mock.patch.object(rvc_train, "APP_ROOT", root):
-                with mock.patch("rvc_train.register", side_effect=fake_register):
-                    with mock.patch("train_run.export_weight") as export:
-                        with mock.patch.object(rvc_train, "_run", side_effect=RuntimeError("index")):
-                            with mock.patch("app_env.data_dir", return_value=str(root)):
-                                pth, _idx = rvc_train.finish_train_publish(
-                                    "demo", log, 1
-                                )
-                                export.assert_not_called()
-                                self.assertTrue(pth)
-                                published = __import__("train_run").read_published("demo")
-                                self.assertTrue(published["ok"])
+                with mock.patch("train_run.export_weight") as export:
+                    with mock.patch.object(rvc_train, "_run", side_effect=RuntimeError("index")):
+                        with mock.patch("app_env.data_dir", return_value=str(root)):
+                            pth, _idx = rvc_train.finish_train_publish(
+                                "demo", log, 1
+                            )
+                            export.assert_not_called()
+                            self.assertTrue(pth)
+                            self.assertTrue(str(pth).endswith(os.path.join("Voces", "demo", "demo.pth")))
+                            published = __import__("train_run").read_published("demo")
+                            self.assertTrue(published["ok"])
 
     def test_finish_train_ok_if_index_fails(self):
         tmp = tempfile.TemporaryDirectory()
@@ -213,19 +202,13 @@ class RvcTrainTests(unittest.TestCase):
         log = root / "train.log"
         log.write_text("", encoding="utf-8")
 
-        def fake_register(kind, src, name=None):
-            dest = voices / (name or "out.pth")
-            dest.write_bytes(b"ok")
-            return {"path": str(dest)}
-
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             with mock.patch.object(rvc_train, "APP_ROOT", root):
-                with mock.patch("rvc_train.register", side_effect=fake_register):
-                    with mock.patch.object(
-                        rvc_train, "_run", side_effect=RuntimeError("index boom")
-                    ):
-                        with mock.patch("app_env.data_dir", return_value=str(root)):
-                            pth, _idx = rvc_train.finish_train_publish("demo", log, 1)
+                with mock.patch.object(
+                    rvc_train, "_run", side_effect=RuntimeError("index boom")
+                ):
+                    with mock.patch("app_env.data_dir", return_value=str(root)):
+                        pth, _idx = rvc_train.finish_train_publish("demo", log, 1)
         self.assertTrue(pth)
         self.assertIn("omitido", log.read_text(encoding="utf-8"))
 
