@@ -22,9 +22,10 @@ class TrainRunTests(unittest.TestCase):
     def test_paths_use_data_dir(self):
         log = train_run.log_path("demo")
         self.assertTrue(str(log).startswith(str(self.root)))
-        self.assertTrue(str(log).endswith(os.path.join("train_runs", "demo", "train.log")))
+        self.assertTrue(str(log).endswith(os.path.join("Voces", "demo", "trabajo", "train.log")))
         data = train_run.train_data_dir("demo")
-        self.assertIn("train_data", str(data))
+        self.assertIn(os.path.join("Voces", "demo", "entrada"), str(data))
+        self.assertFalse((self.root / "library").exists())
 
     def test_write_and_read_published(self):
         train_run.write_published("demo", ok=True, pth="/tmp/a.pth", index=None)

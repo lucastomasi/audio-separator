@@ -138,6 +138,44 @@ div.progress-bar {
   font-weight: 600 !important;
 }
 
+.model-search {
+  margin-top: 4px !important;
+}
+
+.model-search label span {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.model-search input,
+.model-search textarea {
+  border-radius: 12px !important;
+  background: rgba(118, 118, 128, 0.12) !important;
+  border: 1px solid transparent !important;
+  min-height: 40px !important;
+  padding: 8px 14px !important;
+  font-size: 15px !important;
+}
+
+.model-search input:focus,
+.model-search textarea:focus {
+  background: #fff !important;
+  border-color: #007AFF !important;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.18) !important;
+  outline: none !important;
+}
+
+.dark .model-search input,
+.dark .model-search textarea {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .model-search input:focus,
+.dark .model-search textarea:focus {
+  background: #1c1c1e !important;
+}
+
 #rvc-btn,
 #train-btn,
 #join-btn,

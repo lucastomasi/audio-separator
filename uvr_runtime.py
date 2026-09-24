@@ -70,7 +70,9 @@ UVR_MODELS = [
 ]
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 mdxnet_models_dir = os.path.join(BASE_DIR, "mdx_models")
-output_dir = os.path.join(BASE_DIR, "clean_song_output")
+output_dir = os.path.join(
+    __import__("app_env").data_dir(), "Trabajos", "Separar"
+)
 
 
 def _audio_path(value):

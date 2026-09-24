@@ -13,22 +13,31 @@ import time
 from pathlib import Path
 
 
-def library_root() -> Path:
+def voice_dir(exp_name: str) -> Path:
     from app_env import data_dir
 
-    root = Path(data_dir()) / "library"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    path = Path(data_dir()) / "Voces" / exp_name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def library_root() -> Path:
+    """Kept so old callers do not recreate Application Support/library."""
+    from app_env import data_dir
+
+    return Path(data_dir()) / "Voces"
 
 
 def runs_dir(exp_name: str) -> Path:
-    path = library_root() / "train_runs" / exp_name
+    path = voice_dir(exp_name) / "trabajo"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def train_data_dir(exp_name: str) -> Path:
-    return library_root() / "train_data" / exp_name
+    path = voice_dir(exp_name) / "entrada"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def ckpt_dir(exp_name: str) -> Path:

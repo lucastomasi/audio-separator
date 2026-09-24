@@ -60,7 +60,7 @@ class RvcTrainTests(unittest.TestCase):
         src = os.path.join(tmp.name, "a.wav")
         with open(src, "wb") as handle:
             handle.write(b"wav")
-        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+        with mock.patch("app_env.data_dir", return_value=tmp.name):
             out = rvc_train._prepare_dataset([src], "demo")
         self.assertTrue(out.is_dir())
         self.assertEqual(len(list(out.glob("sample_*"))), 1)
@@ -73,7 +73,7 @@ class RvcTrainTests(unittest.TestCase):
         for path in (src, extra):
             with open(path, "wb") as handle:
                 handle.write(b"wav")
-        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+        with mock.patch("app_env.data_dir", return_value=tmp.name):
             out = rvc_train._prepare_dataset(
                 [{"path": src, "orig_name": "a.wav"}, extra],
                 "demo",
@@ -93,7 +93,7 @@ class RvcTrainTests(unittest.TestCase):
                 handle.write(b"RIFF")
             return dest
 
-        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+        with mock.patch("app_env.data_dir", return_value=tmp.name):
             with mock.patch(
                 "youtube_lib.extract_audio_from_media", side_effect=fake_extract
             ):
@@ -105,7 +105,7 @@ class RvcTrainTests(unittest.TestCase):
     def test_prepare_dataset_rejects_empty_gradio_dicts(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        with mock.patch.object(rvc_train, "APP_ROOT", rvc_train.Path(tmp.name)):
+        with mock.patch("app_env.data_dir", return_value=tmp.name):
             with self.assertRaises(ValueError) as ctx:
                 rvc_train._prepare_dataset([{"orig_name": "a.wav"}], "demo")
         self.assertIn("al menos un audio", str(ctx.exception))
@@ -130,10 +130,10 @@ class RvcTrainTests(unittest.TestCase):
         src = logs / "G_2333333.pth"
         src.write_bytes(b"x" * 100)
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
-            with mock.patch.object(rvc_train, "APP_ROOT", root):
+            with mock.patch("app_env.data_dir", return_value=str(root)):
                 light = rvc_train.snapshot_checkpoints("demo", heavy=False)
                 copied = rvc_train.snapshot_checkpoints("demo", heavy=True)
-        dest = root / "library" / "train_runs" / "demo" / "ckpt" / "G_2333333.pth"
+        dest = root / "Voces" / "demo" / "trabajo" / "ckpt" / "G_2333333.pth"
         self.assertFalse(any(p.name == "G_2333333.pth" for p in light))
         self.assertTrue(dest.is_file())
         self.assertTrue(any(p.name == "G_2333333.pth" for p in copied))
@@ -163,7 +163,7 @@ class RvcTrainTests(unittest.TestCase):
             return {"path": str(dest)}
 
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
-            with mock.patch.object(rvc_train, "APP_ROOT", root):
+            with mock.patch("app_env.data_dir", return_value=str(root)):
                 with mock.patch("rvc_train.register", side_effect=fake_register):
                     rvc_train.snapshot_checkpoints("demo", heavy=False)
         self.assertTrue(registered)

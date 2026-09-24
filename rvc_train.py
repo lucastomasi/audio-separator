@@ -100,9 +100,7 @@ def _library_root() -> Path:
 
 
 def _ckpt_dir(exp_name: str) -> Path:
-    path = _library_root() / "train_runs" / exp_name / "ckpt"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return train_run.ckpt_dir(exp_name)
 
 
 def _needs_ckpt_copy(src: Path, dest: Path) -> bool:
@@ -370,7 +368,7 @@ def _src_path(value):
 
 
 def _prepare_dataset(dataset_files, exp_name):
-    dataset_dir = _library_root() / "train_data" / exp_name
+    dataset_dir = train_run.train_data_dir(exp_name)
     if dataset_dir.exists():
         shutil.rmtree(dataset_dir)
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -583,10 +581,16 @@ def _publish_voice_to_library(exp_name, pth: Path, index: Path | None, log_path:
     Convert / dropdown only read that folder so runtime assets/weights cannot
     drift from what the UI lists.
     """
-    dest_pth = register("rvc_voices", str(pth), f"{exp_name}.pth")
+    folder = train_run.voice_dir(exp_name)
+    canonical = folder / f"{exp_name}.pth"
+    if pth.resolve() != canonical.resolve():
+        shutil.copy2(pth, canonical)
+    if index is not None and index.is_file():
+        shutil.copy2(index, folder / f"{exp_name}.index")
+    dest_pth = register("rvc_voices", str(canonical), f"{exp_name}.pth")
     dest_index = None
     if index is not None and index.is_file():
-        dest_index = register("rvc_voices", str(index), f"{exp_name}.index")
+        dest_index = register("rvc_voices", str(folder / f"{exp_name}.index"), f"{exp_name}.index")
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(
             f"[library] pth -> {dest_pth['path']} "
@@ -651,7 +655,7 @@ def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n[index] omitido: {exc}\n")
     try:
-        snapshot_checkpoints(exp_name, heavy=True)
+        snapshot_checkpoints(exp_name, heavy=False)
     except Exception:
         pass
     return dest_pth, dest_index
@@ -706,7 +710,7 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
         raise ValueError("Poné un nombre para la voz.")
     total = _epochs(epochs)
 
-    run_dir = _library_root() / "train_runs" / exp_name
+    run_dir = train_run.runs_dir(exp_name)
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.log"
 

@@ -20,7 +20,7 @@ def data_home():
 
 def _apply_paths():
     global ROOT, PATHS, INDEX
-    ROOT = os.path.join(data_home(), "library")
+    ROOT = os.path.join(data_home(), "Voces")
     PATHS = {
         "uvr": os.path.join(ROOT, "models", "uvr"),
         "rvc": os.path.join(ROOT, "models", "rvc"),
@@ -39,7 +39,7 @@ def seed_support_weights():
     from app_env import data_dir, home
 
     src = os.path.join(home(), "library", "models", "rvc")
-    dst = os.path.join(data_dir(), "library", "models", "rvc")
+    dst = os.path.join(data_dir(), "Voces", "models", "rvc")
     src_mark = os.path.join(src, "hubert_base", "config.json")
     dst_mark = os.path.join(dst, "hubert_base", "config.json")
     if not os.path.isfile(src_mark):
@@ -174,9 +174,17 @@ def find_index_for_model(model_path):
 
 def list_rvc_voices():
     items = _scan_dir("rvc_voices", (".pth", ".pt", ".safetensors"))
-    for item in items:
+    by_name = {item["name"]: item for item in items}
+    voices = os.path.join(data_home(), "Voces")
+    if os.path.isdir(voices):
+        for name in sorted(os.listdir(voices)):
+            path = os.path.join(voices, name, f"{name}.pth")
+            if os.path.isfile(path):
+                by_name[name] = {"name": name, "path": path, "kind": "rvc_voices"}
+    found = [by_name[name] for name in sorted(by_name)]
+    for item in found:
         item["index"] = find_index_for_model(item["path"])
-    return items
+    return found
 
 
 def list_voices():

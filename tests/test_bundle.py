@@ -55,7 +55,7 @@ class SeedSupportTests(unittest.TestCase):
         }
         with mock.patch.dict(os.environ, env, clear=False):
             library.seed_support_weights()
-            dest = data / "library" / "models" / "rvc" / "hubert_base" / "config.json"
+            dest = data / "Voces" / "models" / "rvc" / "hubert_base" / "config.json"
             self.assertEqual(dest.read_text(encoding="utf-8"), "from-bundle")
             dest.write_text("keep", encoding="utf-8")
             library.seed_support_weights()

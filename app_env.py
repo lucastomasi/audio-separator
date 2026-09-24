@@ -21,21 +21,19 @@ def home() -> str:
 
 
 def data_dir() -> str:
+    """User data. Never the code tree, unless AUDIO_SEPARATOR_DATA overrides it."""
     value = os.environ.get("AUDIO_SEPARATOR_DATA")
     if value:
         path = os.path.abspath(value)
-        os.makedirs(path, exist_ok=True)
-        return path
-    if in_app_bundle():
+    else:
         path = os.path.join(
             os.path.expanduser("~"),
             "Library",
             "Application Support",
             "Audio Separator",
         )
-        os.makedirs(path, exist_ok=True)
-        return path
-    return package_dir()
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def host() -> str:

@@ -238,10 +238,12 @@ def get_gui():
                             label="Es un archivo de Entrenar",
                         )
                     rvc_pick = gr.Dropdown(
-                        label="Modelo en biblioteca",
+                        label="Buscar modelo",
                         choices=_rvc_choices,
                         value=_rvc_value,
-                        info="Si está vacío, entrená una voz o cargá un .pth.",
+                        info="Escribí para filtrar. Si está vacío, entrená o cargá un .pth.",
+                        elem_classes=["model-search"],
+                        filterable=True,
                     )
                     rvc_btn = gr.Button(
                         "Convertir voz",
@@ -437,10 +439,12 @@ def get_gui():
                             -12, 12, value=0, step=1, label="Tono"
                         )
                     tts_rvc_pick = gr.Dropdown(
-                        label="Modelo (biblioteca)",
+                        label="Buscar modelo",
                         choices=_rvc_choices,
                         value=_rvc_value,
-                        info="El mismo que en Voz.",
+                        info="El mismo que en Convertir.",
+                        elem_classes=["model-search"],
+                        filterable=True,
                     )
                     tts_btn = gr.Button(
                         "Generar voz",
