@@ -166,9 +166,10 @@ def detect_speakers(audio_path, out_dir=None):
     for label, snippet in zip(labels, snippets):
         grouped.setdefault(int(label), []).append(snippet)
 
-    out_dir = out_dir or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "diar_output"
-    )
+    if out_dir is None:
+        from app_env import data_dir
+
+        out_dir = os.path.join(data_dir(), "Trabajos", "Diarizar")
     os.makedirs(out_dir, exist_ok=True)
     paths = []
     for index, label in enumerate(sorted(grouped.keys()), start=1):

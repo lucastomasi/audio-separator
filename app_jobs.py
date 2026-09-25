@@ -156,10 +156,6 @@ def unlock_download_button():
 
 def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
     unlock = unlock_download_button()
-    try:
-        progress(0.1, desc="Descargando de YouTube…")
-    except Exception:
-        pass
     empty_video = None
     if IS_ZERO_GPU and url_media and "youtube.com" in url_media:
         gr.Info("Esta opción no está disponible en Hugging Face.")
@@ -170,9 +166,19 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
             _ok("YouTube no está disponible aquí."),
             unlock,
         )
-    from youtube_lib import download_media
+    from youtube_lib import download_media, identity_line, probe_youtube
 
     try:
+        ident = probe_youtube(url_media)
+        line = identity_line(ident["channel"], ident["title"], ident["id"])
+        try:
+            progress(0.05, desc=line)
+        except Exception:
+            pass
+        try:
+            progress(0.15, desc="Descargando de YouTube…")
+        except Exception:
+            pass
         path, video_path, reused, note = download_media(
             url_media, with_video=bool(with_video)
         )
@@ -194,6 +200,7 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
         status += " (sin video)"
     if note:
         status = f"{note} {status}"
+    status = f"{line}. {status}"
     try:
         import library
 
@@ -201,6 +208,9 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
             last_audio_path=path,
             last_video_path=video_path,
             last_youtube_url=url_media,
+            last_youtube_channel=ident["channel"],
+            last_youtube_title=ident["title"],
+            last_youtube_id=ident["id"],
         )
     except Exception:
         pass
@@ -362,6 +372,10 @@ def train_rvc_job(
         elif not isinstance(files, (list, tuple)):
             files = [files]
         files = [_gradio_path(item) or item for item in files]
+        from train_prep import assert_channel_matches, prepare_for_train
+
+        assert_channel_matches(exp_name, files)
+        files = prepare_for_train(files, progress=progress)
         if hire_gpu and runpod_key:
             from gpu_secrets import save as save_secrets
 

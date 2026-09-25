@@ -170,6 +170,40 @@ def ydl_options(directory):
     return ydl_audio_options(directory)
 
 
+def identity_line(channel, title, video_id):
+    return f"{channel} — {title} ({video_id})"
+
+
+def probe_youtube(url):
+    """Channel, title and id. Does not download."""
+    url = normalize_media_url(url)
+    if not extract_youtube_id(url):
+        raise ValueError("Pega un enlace de YouTube.")
+    import yt_dlp
+
+    opts = _ydl_runtime(
+        {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "skip_download": True,
+            "remote_components": ["ejs:github"],
+        }
+    )
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:
+        raise ValueError("No pude leer canal, título e id de YouTube.") from exc
+    info, note = _playlist_first(info)
+    channel = info.get("channel") or info.get("uploader") or info.get("uploader_id")
+    title = info.get("title")
+    video_id = info.get("id") or extract_youtube_id(url)
+    if not channel or not title or not video_id:
+        raise ValueError("YouTube no devolvió canal, título e id.")
+    return {"channel": channel, "title": title, "id": video_id, "note": note}
+
+
 def _playlist_first(info):
     if not info:
         raise ValueError("YouTube no devolvió información.")

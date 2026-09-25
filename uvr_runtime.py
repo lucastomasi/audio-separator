@@ -430,6 +430,24 @@ RUN_STATUS = RUN_SEPARATE
 DONE_STATUS = "Listo. Las pistas están en Descargas/Audio Separator."
 
 
+def _drop_separate_work(paths):
+    """Delete Trabajos/Separar/<song> after the stems were copied out."""
+    root = os.path.abspath(output_dir)
+    song_dirs = set()
+    for path in paths or []:
+        if not path:
+            continue
+        abs_path = os.path.abspath(path)
+        prefix = root + os.sep
+        if not abs_path.startswith(prefix):
+            continue
+        song = os.path.relpath(abs_path, root).split(os.sep)[0]
+        if song and song != ".":
+            song_dirs.add(os.path.join(root, song))
+    for song_dir in song_dirs:
+        shutil.rmtree(song_dir, ignore_errors=True)
+
+
 def _separate_error_message(error):
     return fail("uvr", error, MSG_SEPARATE)
 
@@ -611,6 +629,19 @@ def _sound_separate(
         labels.append("instrumental")
         export_paths.append(background_out)
     export_dir, copied = copy_to_downloads(export_paths, labels)
+    if copied:
+        if want_vocal:
+            vocal_out = copied[0]
+        if want_bg:
+            background_out = copied[-1] if want_vocal and len(copied) > 1 else copied[0]
+        _drop_separate_work(export_paths)
+    if vocal_out and os.path.isfile(vocal_out):
+        try:
+            import library
+
+            library.set_session_meta(last_vocal_path=os.path.abspath(vocal_out))
+        except Exception:
+            logger.exception("no guardé last_vocal_path")
     status = (
         f"Listo. Las pistas están en {export_dir}"
         if copied

@@ -18,6 +18,14 @@ SR_HZ = 40000
 VERSION = "v2"
 EPOCHS_DEFAULT = 10
 SAVE_EVERY_EPOCH = 1
+SAVE_EVERY_WEIGHTS = "0"
+_FEATURE_DIRS = (
+    "0_gt_wavs",
+    "1_16k_wavs",
+    "2a_f0",
+    "2b-f0nsf",
+    "3_feature768",
+)
 BATCH = 1
 WORKERS = 2
 
@@ -233,8 +241,6 @@ def _run(
     if code != 0:
         err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
-    if exp_name:
-        snapshot_checkpoints(exp_name, heavy=False)
     if desc and progress is not None:
         try:
             progress(frac if frac is not None else 0, desc=desc)
@@ -258,12 +264,6 @@ def _tail_train_log(log_path, offset, last, progress, frac, total_epochs, exp_na
             if match:
                 epoch = int(match.group(1))
                 frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
-                if exp_name:
-                    snapshot_checkpoints(exp_name, heavy=False)
-        if exp_name and last and (
-            "savee" in last.lower() or "checkpoint" in last.lower()
-        ):
-            snapshot_checkpoints(exp_name, heavy=False)
         if progress is not None and last:
             try:
                 progress(frac_now if frac_now is not None else 0, desc=last[:80])
@@ -290,6 +290,37 @@ def _replace_with_link(src: Path, dest: Path):
         shutil.copytree(src, dest)
     else:
         shutil.copy2(src, dest)
+
+
+def bind_outside(repo_path: Path, outside: Path) -> Path:
+    """Move a generated directory out of the repo and leave a symlink."""
+    outside.mkdir(parents=True, exist_ok=True)
+    if repo_path.is_symlink():
+        return repo_path.resolve()
+    if repo_path.is_dir():
+        for child in list(repo_path.iterdir()):
+            dest = outside / child.name
+            if dest.exists() or dest.is_symlink():
+                continue
+            shutil.move(str(child), str(dest))
+        leftover = list(repo_path.iterdir())
+        if leftover:
+            names = ", ".join(path.name for path in leftover[:5])
+            raise RuntimeError(f"Siguen archivos en el repo: {names}")
+        repo_path.rmdir()
+    elif repo_path.exists():
+        raise RuntimeError(f"{repo_path} no es una carpeta.")
+    repo_path.symlink_to(outside.resolve(), target_is_directory=True)
+    return outside.resolve()
+
+
+def ensure_rvc_outputs_outside() -> None:
+    from app_env import data_dir
+
+    base = Path(data_dir()) / "RVC"
+    bind_outside(RVC_ROOT / "logs", base / "logs")
+    bind_outside(RVC_ROOT / "assets" / "weights", base / "weights")
+    bind_outside(RVC_ROOT / "assets" / "indices", base / "indices")
 
 
 def _sync_assets(assets):
@@ -649,11 +680,40 @@ def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
     except Exception as exc:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n[index] omitido: {exc}\n")
-    try:
-        snapshot_checkpoints(exp_name, heavy=False)
-    except Exception:
-        pass
+    discard_run_scratch(exp_name)
     return dest_pth, dest_index
+
+
+def discard_run_scratch(exp_name: str) -> None:
+    """Drop this run's checkpoints and features. Keep Voces/<exp>/<exp>.pth."""
+    canonical = train_run.voice_dir(exp_name) / f"{exp_name}.pth"
+    if not canonical.is_file():
+        return
+    logs = RVC_ROOT / "logs" / exp_name
+    if logs.is_dir():
+        _clear_log_scratch(logs)
+    weights = RVC_ROOT / "assets" / "weights"
+    if weights.is_dir():
+        for path in weights.glob(f"{exp_name}_e*_s*.pth"):
+            if path.name == f"{exp_name}.pth":
+                continue
+            path.unlink()
+    entrada = train_run.voice_dir(exp_name) / "entrada"
+    if entrada.is_dir() and not entrada.is_symlink():
+        shutil.rmtree(entrada)
+
+
+def _clear_log_scratch(logs: Path) -> None:
+    for pattern in ("G_*.pth", "D_*.pth"):
+        for path in logs.glob(pattern):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    for name in _FEATURE_DIRS:
+        folder = logs / name
+        if folder.is_dir() and not folder.is_symlink():
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def train_voice(exp_name, dataset_files, epochs=None, progress=None):
@@ -709,11 +769,15 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.log"
 
+    ensure_rvc_outputs_outside()
     _sync_assets(assets)
     _ensure_savee_absolute()
     (RVC_ROOT / "assets" / "weights").mkdir(parents=True, exist_ok=True)
     (RVC_ROOT / "assets" / "indices").mkdir(parents=True, exist_ok=True)
     dataset_dir = _prepare_dataset(dataset_files, exp_name)
+    from train_prep import discard_prep_copies
+
+    discard_prep_copies()
     exp_dir = RVC_ROOT / "logs" / exp_name
     resume = _features_ready(exp_dir)
     py = sys.executable
@@ -802,7 +866,7 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
             "-c",
             "0",
             "-sw",
-            "1",
+            SAVE_EVERY_WEIGHTS,
             "-v",
             VERSION,
         ],

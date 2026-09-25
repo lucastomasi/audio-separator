@@ -64,21 +64,28 @@ class TrainRvcJobGpuTests(unittest.TestCase):
         rvc_upd = mock.Mock()
         tts_upd = mock.Mock()
         with mock.patch("rvc_train.train_voice", return_value=("/tmp/m.pth", None)):
-            with mock.patch(
-                "app_jobs.refresh_library_ui", return_value=(rvc_upd, tts_upd)
-            ):
-                with mock.patch("library.dropdown_choices", return_value=[]):
-                    with mock.patch("library.list_rvc_voices", return_value=[]):
-                        with mock.patch("gpu_secrets.save", saver):
-                            with mock.patch("runpod_train.start_train_pod", start):
-                                app_jobs.train_rvc_job(
-                                    "demo",
-                                    ["/tmp/a.wav"],
-                                    epochs=10,
-                                    hire_gpu=True,
-                                    runpod_key="rp-test",
-                                    progress=mock.Mock(),
-                                )
+            with mock.patch("train_prep.assert_channel_matches"):
+                with mock.patch(
+                    "train_prep.prepare_for_train",
+                    side_effect=lambda files, progress=None: files,
+                ):
+                    with mock.patch(
+                        "app_jobs.refresh_library_ui", return_value=(rvc_upd, tts_upd)
+                    ):
+                        with mock.patch("library.dropdown_choices", return_value=[]):
+                            with mock.patch("library.list_rvc_voices", return_value=[]):
+                                with mock.patch("gpu_secrets.save", saver):
+                                    with mock.patch(
+                                        "runpod_train.start_train_pod", start
+                                    ):
+                                        app_jobs.train_rvc_job(
+                                            "demo",
+                                            ["/tmp/a.wav"],
+                                            epochs=10,
+                                            hire_gpu=True,
+                                            runpod_key="rp-test",
+                                            progress=mock.Mock(),
+                                        )
         start.assert_not_called()
         saver.assert_called_with({"RUNPOD_API_KEY": "rp-test"})
 

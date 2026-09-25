@@ -224,6 +224,43 @@ class RvcTrainTests(unittest.TestCase):
     def test_save_every_epoch_is_one(self):
         self.assertEqual(rvc_train.SAVE_EVERY_EPOCH, 1)
 
+    def test_save_every_weights_is_off(self):
+        self.assertEqual(rvc_train.SAVE_EVERY_WEIGHTS, "0")
+
+    def test_discard_run_scratch_keeps_final_pth(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        logs = root / "logs" / "demo"
+        logs.mkdir(parents=True)
+        (logs / "G_2333333.pth").write_bytes(b"G")
+        (logs / "D_2333333.pth").write_bytes(b"D")
+        feats = logs / "0_gt_wavs"
+        feats.mkdir()
+        (feats / "a.wav").write_bytes(b"a")
+        weights = root / "assets" / "weights"
+        weights.mkdir(parents=True)
+        (weights / "demo.pth").write_bytes(b"final")
+        (weights / "demo_e1_s1.pth").write_bytes(b"epoch")
+        (weights / "other.pth").write_bytes(b"other")
+        voces = root / "Voces" / "demo"
+        voces.mkdir(parents=True)
+        (voces / "demo.pth").write_bytes(b"published")
+        entrada = voces / "entrada"
+        entrada.mkdir()
+        (entrada / "sample_0000.wav").write_bytes(b"x")
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch("app_env.data_dir", return_value=str(root)):
+                rvc_train.discard_run_scratch("demo")
+        self.assertEqual((voces / "demo.pth").read_bytes(), b"published")
+        self.assertTrue((weights / "demo.pth").is_file())
+        self.assertTrue((weights / "other.pth").is_file())
+        self.assertFalse((weights / "demo_e1_s1.pth").exists())
+        self.assertFalse((logs / "G_2333333.pth").exists())
+        self.assertFalse((logs / "D_2333333.pth").exists())
+        self.assertFalse(feats.exists())
+        self.assertFalse(entrada.exists())
+
     def test_epochs_default_is_ten(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RVC_TRAIN_EPOCHS", None)
@@ -407,6 +444,20 @@ class RvcTrainTests(unittest.TestCase):
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             found = rvc_train._find_index("gordopablo")
         self.assertEqual(found, own)
+
+    def test_bind_outside_moves_bytes_and_leaves_symlink(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        repo = root / "repo" / "weights"
+        repo.mkdir(parents=True)
+        (repo / "voz.pth").write_bytes(b"model")
+        outside = root / "data" / "weights"
+        rvc_train.bind_outside(repo, outside)
+        self.assertTrue(repo.is_symlink())
+        self.assertEqual((outside / "voz.pth").read_bytes(), b"model")
+        self.assertTrue((repo / "voz.pth").is_file())
+        self.assertEqual(repo.resolve(), outside.resolve())
 
 
 if __name__ == "__main__":

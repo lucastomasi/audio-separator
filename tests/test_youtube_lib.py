@@ -8,7 +8,9 @@ from youtube_lib import (
     download_audio,
     extract_audio_from_media,
     extract_youtube_id,
+    identity_line,
     parse_seconds,
+    probe_youtube,
     ydl_options,
 )
 
@@ -145,6 +147,39 @@ class DownloadAudioTests(unittest.TestCase):
         self.assertIsNone(note)
         self.assertTrue(path.endswith(".wav"))
         self.assertTrue(os.path.isfile(path))
+
+    def test_probe_does_not_download(self):
+        seen = {}
+
+        class FakeYDL:
+            def __init__(self, opts):
+                seen["opts"] = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                seen["download"] = download
+                seen["url"] = url
+                return {
+                    "id": "abcdefghijk",
+                    "channel": "DotDager",
+                    "title": "CFK ERA DE DERECHA",
+                }
+
+        with mock.patch("yt_dlp.YoutubeDL", FakeYDL):
+            ident = probe_youtube("https://youtu.be/abcdefghijk")
+        self.assertFalse(seen["download"])
+        self.assertEqual(ident["channel"], "DotDager")
+        self.assertEqual(ident["title"], "CFK ERA DE DERECHA")
+        self.assertEqual(ident["id"], "abcdefghijk")
+        self.assertEqual(
+            identity_line(ident["channel"], ident["title"], ident["id"]),
+            "DotDager — CFK ERA DE DERECHA (abcdefghijk)",
+        )
 
     def test_options_are_audio_only(self):
         opts = ydl_options(self.dir)

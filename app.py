@@ -316,7 +316,8 @@ def get_gui():
                     )
                     gr.Markdown(
                         "El entrenamiento es en este Mac. "
-                        "Si subís un video, se extrae el audio. "
+                        "Antes separa solo la voz, sin quitar reverb, y muestra la ETA en horas. "
+                        "Si el audio es largo, recorta la habla primero. "
                         "10 epochs de prueba: minutos u horas según el largo. "
                         "El modelo aparece en Convertir al terminar. "
                         "No lo compartas si la voz no es tuya.",
