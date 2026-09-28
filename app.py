@@ -100,6 +100,49 @@ def _convert_interactive():
     return gr.update(interactive=on), gr.update(interactive=on)
 
 
+def _use_recent(path):
+    import os
+
+    from ui_status import KIND_ERROR, KIND_OK, status_update
+
+    if not path or not os.path.isfile(str(path)):
+        return gr.update(), status_update(KIND_ERROR, "Ese archivo ya no está.")
+    return [path], status_update(
+        KIND_OK, f"Elegido: {os.path.basename(str(path))}"
+    )
+
+
+def _continue_last():
+    import os
+
+    from train_run import latest_job
+    from ui_status import KIND_ERROR, KIND_OK, status_update
+
+    job = latest_job()
+    if not job:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            status_update(KIND_ERROR, "No hay un entrenamiento anterior."),
+        )
+    files = [path for path in job.get("files") or [] if os.path.isfile(path)]
+    if not files:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            status_update(KIND_ERROR, "El último entrenamiento no tiene archivos."),
+        )
+    epochs = int(job.get("epochs") or 10)
+    return (
+        job["exp"],
+        files,
+        epochs,
+        status_update(KIND_OK, f"Último: {job['exp']}. Apretá Entrenar para seguir."),
+    )
+
+
 def _on_train(name, dataset, epochs, progress=gr.Progress()):
     rvc_upd, bar, tts_upd = train_rvc_job(
         name, dataset, epochs, False, None, progress
@@ -292,8 +335,21 @@ def get_gui():
                     train_name = gr.Textbox(
                         label="Nombre", placeholder="mi_voz"
                     )
+                    _recent_choices = _lib_ui.recent_media()
+                    train_recent = gr.Dropdown(
+                        label="Últimos en esta Mac",
+                        choices=_recent_choices,
+                        value=_recent_choices[0][1] if _recent_choices else None,
+                    )
+                    with gr.Row():
+                        use_recent_btn = gr.Button(
+                            "Elegir este", variant="secondary"
+                        )
+                        continue_btn = gr.Button(
+                            "Continuar el último", variant="secondary"
+                        )
                     train_dataset = gr.File(
-                        label="Audios o videos de la persona",
+                        label="Elegir archivo",
                         file_count="multiple",
                         file_types=[
                             ".wav",
@@ -319,7 +375,7 @@ def get_gui():
                         "Antes separa solo la voz, sin quitar reverb, y muestra la ETA en horas. "
                         "Si el audio es largo, recorta la habla primero. "
                         "10 epochs de prueba: minutos u horas según el largo. "
-                        "El modelo aparece en Convertir al terminar. "
+                        "Cerrar la ventana no corta el entrenamiento. Separar y Convertir sí. "
                         "No lo compartas si la voz no es tuya.",
                         elem_classes=["hint"],
                     )
@@ -368,10 +424,21 @@ def get_gui():
                     remix_file = out_file("Archivo unido")
                     with gr.Accordion("Video y portada", open=False):
                         with gr.Row():
-                            remux_video_in = gr.Video(
-                                label="Video original",
-                                sources=["upload"],
-                                buttons=[],
+                            remux_video_in = gr.File(
+                                label="Video o imagen",
+                                file_types=[
+                                    ".mp4",
+                                    ".mov",
+                                    ".mkv",
+                                    ".webm",
+                                    ".avi",
+                                    ".jpg",
+                                    ".jpeg",
+                                    ".png",
+                                    ".webp",
+                                    ".gif",
+                                    ".bmp",
+                                ],
                             )
                             remux_audio_in = gr.Audio(
                                 label="Audio nuevo",
@@ -380,7 +447,7 @@ def get_gui():
                                 buttons=[],
                             )
                         remux_btn = gr.Button(
-                            "Pegar audio al video", variant="secondary"
+                            "Pegar audio al video o a la imagen", variant="secondary"
                         )
                         remux_file = out_file("MP4 unido")
                         with gr.Row():
@@ -635,6 +702,15 @@ def get_gui():
             show_progress="minimal",
             concurrency_limit=1,
         )
+        use_recent_btn.click(
+            _use_recent,
+            inputs=[train_recent],
+            outputs=[train_dataset, status],
+        )
+        continue_btn.click(
+            _continue_last,
+            outputs=[train_name, train_dataset, train_epochs, status],
+        )
         train_btn.click(
             _on_train,
             inputs=[train_name, train_dataset, train_epochs],
@@ -660,8 +736,13 @@ def get_gui():
 
             occ = snapshot()
             rvc_on, tts_on = _convert_interactive()
+            from train_run import boot_status
+
+            persisted = boot_status()
             if occ is not None and occ.holder == HOLD_TRAIN:
-                status_txt = status_update(KIND_RUN, RUN_TRAIN)
+                status_txt = status_update(KIND_RUN, persisted or RUN_TRAIN)
+            elif persisted and persisted.startswith("Modelo listo:"):
+                status_txt = status_update(KIND_OK, persisted)
             elif song and song == demo_song_path() and not last_audio:
                 status_txt = status_update(KIND_OK, DEMO_STATUS)
             elif not song:

@@ -227,6 +227,59 @@ class RvcTrainTests(unittest.TestCase):
     def test_save_every_weights_is_off(self):
         self.assertEqual(rvc_train.SAVE_EVERY_WEIGHTS, "0")
 
+    def test_execute_train_prepares_and_logs_eta(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        src = root / "a.wav"
+        src.write_bytes(b"wav")
+        order = []
+
+        def prep(files, progress=None):
+            order.append("prep")
+            progress(0.02, desc="ETA estimada ~1.0 h. Separando solo voz, sin dereverb.")
+            return files
+
+        def dataset(files, name):
+            order.append("dataset")
+            path = root / "entrada"
+            path.mkdir()
+            return path
+
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            with mock.patch("app_env.data_dir", return_value=str(root)):
+                with mock.patch.object(rvc_train, "require_rvc_webui"):
+                    with mock.patch.object(rvc_train, "require_train_assets", return_value={}):
+                        with mock.patch.object(rvc_train, "ensure_rvc_outputs_outside"):
+                            with mock.patch.object(rvc_train, "_sync_assets"):
+                                with mock.patch.object(rvc_train, "_ensure_savee_absolute"):
+                                    with mock.patch.object(
+                                        rvc_train, "_features_ready", return_value=False
+                                    ):
+                                        with mock.patch(
+                                            "train_prep.prepare_for_train", side_effect=prep
+                                        ):
+                                            with mock.patch.object(
+                                                rvc_train,
+                                                "_prepare_dataset",
+                                                side_effect=dataset,
+                                            ):
+                                                with mock.patch.object(
+                                                    rvc_train, "_write_filelist_and_config"
+                                                ):
+                                                    with mock.patch.object(rvc_train, "_run"):
+                                                        with mock.patch.object(
+                                                            rvc_train,
+                                                            "finish_train_publish",
+                                                            return_value=("/tmp/x.pth", None),
+                                                        ):
+                                                            rvc_train.execute_train(
+                                                                "demo", [str(src)], epochs=1
+                                                            )
+        self.assertEqual(order, ["prep", "dataset"])
+        log = root / "Voces" / "demo" / "trabajo" / "train.log"
+        self.assertIn("ETA estimada", log.read_text(encoding="utf-8"))
+
     def test_discard_run_scratch_keeps_final_pth(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

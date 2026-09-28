@@ -140,14 +140,14 @@ class TrainJobGateTests(unittest.TestCase):
                     "last_audio_path": path,
                 },
             )
-        prep.assert_called_once()
+        prep.assert_not_called()
         train.assert_called_once()
 
-    def test_local_file_without_channel_still_preps(self):
+    def test_local_file_without_channel_still_trains(self):
         path = "/tmp/local.wav"
         with mock.patch("train_prep.os.path.isfile", return_value=True):
             _bar, prep, train = self._job("mi_voz", path, {})
-        prep.assert_called_once()
+        prep.assert_not_called()
         train.assert_called_once()
 
 

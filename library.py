@@ -250,6 +250,56 @@ def list_voices():
     return _scan_dir("voices", (".wav", ".mp3", ".flac", ".m4a"))
 
 
+_RECENT_EXTS = {
+    ".wav",
+    ".mp3",
+    ".flac",
+    ".m4a",
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".webm",
+    ".avi",
+}
+
+
+def recent_media(limit=12):
+    """Newest local audio/video the train tab can pick without a new upload."""
+    found = {}
+
+    def add(path, label=None):
+        if not path or not os.path.isfile(path):
+            return
+        if os.path.splitext(path)[1].lower() not in _RECENT_EXTS:
+            return
+        abspath = os.path.abspath(path)
+        try:
+            mtime = os.path.getmtime(abspath)
+        except OSError:
+            return
+        found[abspath] = (mtime, label or os.path.basename(abspath))
+
+    meta = get_session_meta()
+    for key, prefix in (
+        ("last_vocal_path", "Voz separada"),
+        ("last_audio_path", "Último audio"),
+        ("last_video_path", "Último video"),
+    ):
+        path = meta.get(key)
+        if path:
+            add(path, f"{prefix}: {os.path.basename(path)}")
+    downloads = os.path.join(data_home(), "downloads")
+    if os.path.isdir(downloads):
+        for name in os.listdir(downloads):
+            add(os.path.join(downloads, name))
+    voices = PATHS.get("voices")
+    if voices and os.path.isdir(voices):
+        for name in os.listdir(voices):
+            add(os.path.join(voices, name), f"Biblioteca: {name}")
+    ranked = sorted(found.items(), key=lambda item: item[1][0], reverse=True)
+    return [(label, path) for path, (_mtime, label) in ranked[:limit]]
+
+
 def dropdown_choices(items):
     labeled = []
     for item in items:

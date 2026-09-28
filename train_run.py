@@ -112,6 +112,32 @@ def write_published(
     return dest
 
 
+def latest_job() -> dict | None:
+    """Newest train job on disk: name, files, epochs."""
+    from app_env import data_dir
+
+    root = Path(data_dir()) / "Voces"
+    if not root.is_dir():
+        return None
+    best = None
+    best_mtime = -1.0
+    for child in root.iterdir():
+        path = child / "trabajo" / "job.json"
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            mtime = path.stat().st_mtime
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict) or not data.get("exp") or not data.get("files"):
+            continue
+        if mtime >= best_mtime:
+            best = data
+            best_mtime = mtime
+    return best
+
+
 def read_published(exp_name: str) -> dict | None:
     path = published_path(exp_name)
     if not path.is_file():
@@ -128,14 +154,27 @@ def spawn_supervisor(job: Path) -> subprocess.Popen:
     env["RVC_TRAIN_SUPERVISOR"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     root = Path(__file__).resolve().parent
-    return subprocess.Popen(
-        [sys.executable, "-m", "train_run", "supervise", str(job)],
-        cwd=str(root),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    exp = "run"
+    try:
+        payload = json.loads(Path(job).read_text(encoding="utf-8"))
+        if payload.get("exp"):
+            exp = str(payload["exp"])
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    supervisor_log = log_path(exp).with_name("supervisor.log")
+    supervisor_log.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(supervisor_log, "ab")
+    try:
+        return subprocess.Popen(
+            [sys.executable, "-m", "train_run", "supervise", str(job)],
+            cwd=str(root),
+            env=env,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        handle.close()
 
 
 def wait_supervisor(proc: subprocess.Popen, exp_name: str, progress=None, total_epochs=None):
@@ -212,6 +251,66 @@ def export_weight(exp_name: str, log: Path, epochs) -> str | None:
         err = (proc.stderr or proc.stdout or "").strip()[-1500:]
         raise RuntimeError(err or "No se pudo exportar el .pth de inferencia.")
     return path
+
+
+def _last_log_line(exp: str | None) -> str:
+    if not exp:
+        return ""
+    for name in ("train.log", "supervisor.log"):
+        path = log_path(exp).with_name(name)
+        if not path.is_file():
+            continue
+        try:
+            lines = [
+                line.strip()
+                for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+                if line.strip()
+            ]
+        except OSError:
+            continue
+        if lines:
+            return lines[-1][:180]
+    return ""
+
+
+def _newest_published() -> dict | None:
+    from app_env import data_dir
+
+    root = Path(data_dir()) / "Voces"
+    if not root.is_dir():
+        return None
+    best = None
+    best_mtime = -1.0
+    for child in root.iterdir():
+        path = child / "trabajo" / "published.json"
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            mtime = path.stat().st_mtime
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict) or not data.get("ok") or not data.get("pth"):
+            continue
+        if mtime >= best_mtime:
+            best = data
+            best_mtime = mtime
+    return best
+
+
+def boot_status() -> str | None:
+    """What to show when the app opens. Does not start a train."""
+    import occupancy
+
+    occ = occupancy.snapshot()
+    if occ is not None and occ.holder == occupancy.HOLD_TRAIN:
+        line = _last_log_line(occ.exp)
+        return line or "Entrenando… cerrar la ventana no lo corta. Separar y Convertir sí."
+    published = _newest_published()
+    if published:
+        name = Path(str(published["pth"])).name
+        return f"Modelo listo: {name}"
+    return None
 
 
 def supervise(job_file: str) -> int:

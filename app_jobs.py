@@ -372,10 +372,9 @@ def train_rvc_job(
         elif not isinstance(files, (list, tuple)):
             files = [files]
         files = [_gradio_path(item) or item for item in files]
-        from train_prep import assert_channel_matches, prepare_for_train
+        from train_prep import assert_channel_matches
 
         assert_channel_matches(exp_name, files)
-        files = prepare_for_train(files, progress=progress)
         if hire_gpu and runpod_key:
             from gpu_secrets import save as save_secrets
 
@@ -577,19 +576,30 @@ def remux_job(video_path, audio_path, progress=gr.Progress()):
     try:
         video_path = _gradio_path(video_path)
         audio_path = _gradio_path(audio_path)
-        from video_remux import remux_audio_onto_video
+        from app_env import data_dir
+        from video_remux import is_still_image, remux_audio
 
-        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
+        out_dir = os.path.join(data_dir(), "Trabajos", "Remux")
         os.makedirs(out_dir, exist_ok=True)
         raw = os.path.join(out_dir, "remux.mp4")
+        image = is_still_image(video_path)
         try:
-            progress(0.4, desc="Pegando audio al video (copy)…")
+            progress(0.4, desc="Pegando audio a la imagen…" if image else "Pegando audio al video…")
         except Exception:
             pass
-        remux_audio_onto_video(video_path, audio_path, raw, shortest=True)
+        remux_audio(video_path, audio_path, raw, shortest=True)
         _, copied = copy_to_downloads([raw], ["video_nuevo_audio"])
+        if copied and os.path.isfile(raw):
+            try:
+                os.remove(raw)
+            except OSError:
+                pass
         saved = copied[0] if copied else raw
-        return saved, _ok("Video + audio nuevo (AAC 320k, video copy).")
+        if image:
+            note = "Imagen + audio (AAC 320k)."
+        else:
+            note = "Video + audio nuevo (AAC 320k, video copy)."
+        return saved, _ok(note)
     except ValueError as error:
         return None, _err("remux_job", error, MSG_REMUX)
     except Exception as error:

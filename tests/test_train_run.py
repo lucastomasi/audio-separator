@@ -1,6 +1,7 @@
 import inspect
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,6 +43,9 @@ class TrainRunTests(unittest.TestCase):
         self.assertIs(proc, fake)
         kwargs = popen.call_args.kwargs
         self.assertTrue(kwargs.get("start_new_session"))
+        self.assertNotEqual(kwargs.get("stdout"), subprocess.DEVNULL)
+        self.assertNotEqual(kwargs.get("stderr"), subprocess.DEVNULL)
+        self.assertNotIn("DEVNULL", inspect.getsource(train_run.spawn_supervisor))
         cmd = popen.call_args.args[0]
         self.assertEqual(cmd[1:3], ["-m", "train_run"])
         self.assertEqual(cmd[3], "supervise")
@@ -56,3 +60,32 @@ class TrainRunTests(unittest.TestCase):
         src = inspect.getsource(rvc_train._run)
         self.assertNotIn("subprocess.PIPE", src)
         self.assertIn("stdout=log", src)
+
+    def test_latest_job_is_the_newest(self):
+        train_run.write_job("vieja", ["/tmp/a.wav"], 5)
+        train_run.write_job("nueva", ["/tmp/b.wav"], 12)
+        old = train_run.job_path("vieja")
+        new = train_run.job_path("nueva")
+        os.utime(old, (1_000, 1_000))
+        os.utime(new, (2_000, 2_000))
+        job = train_run.latest_job()
+        self.assertEqual(job["exp"], "nueva")
+        self.assertEqual(job["epochs"], 12)
+
+    def test_boot_status_names_published_without_training(self):
+        train_run.write_published("demo", ok=True, pth="/tmp/Voces/demo/demo.pth")
+        with mock.patch("occupancy.snapshot", return_value=None):
+            with mock.patch("rvc_train.train_voice") as train:
+                text = train_run.boot_status()
+        train.assert_not_called()
+        self.assertEqual(text, "Modelo listo: demo.pth")
+
+    def test_boot_status_shows_live_log_line(self):
+        import occupancy
+
+        log = train_run.log_path("demo")
+        log.write_text("Training epoch: 3\n", encoding="utf-8")
+        occ = occupancy.Occupancy(occupancy.HOLD_TRAIN, exp="demo")
+        with mock.patch("occupancy.snapshot", return_value=occ):
+            text = train_run.boot_status()
+        self.assertIn("Training epoch: 3", text)

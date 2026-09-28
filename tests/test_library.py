@@ -39,6 +39,21 @@ class LibraryTests(unittest.TestCase):
         names = [row["name"] for row in library.list_voices()]
         self.assertIn("clip", names)
 
+    def test_recent_media_lists_newest_download_first(self):
+        downloads = os.path.join(self.tmp.name, "downloads")
+        os.makedirs(downloads)
+        older = os.path.join(downloads, "viejo.wav")
+        newer = os.path.join(downloads, "nuevo.mp3")
+        for path in (older, newer):
+            with open(path, "wb") as handle:
+                handle.write(b"x")
+        os.utime(older, (1_000, 1_000))
+        os.utime(newer, (2_000, 2_000))
+        with mock.patch.object(library, "data_home", return_value=self.tmp.name):
+            choices = library.recent_media()
+        self.assertEqual(choices[0][1], os.path.abspath(newer))
+        self.assertIn(os.path.abspath(older), [path for _label, path in choices])
+
     def test_register_rvc(self):
         src = os.path.join(self.tmp.name, "voice.pth")
         with open(src, "wb") as handle:

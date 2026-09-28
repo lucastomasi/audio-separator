@@ -13,7 +13,7 @@ from utils import logger
 
 IDLE = "1 Canción → 2 Extraer → 3 Resultado → 4 Convertir → 5 Entrenar → 6 Unir → 7 Texto."
 RUN_SEPARATE = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
-RUN_TRAIN = "Entrenando… podés cerrar la ventana; Convertir queda bloqueado."
+RUN_TRAIN = "Entrenando… cerrar la ventana no lo corta. Separar y Convertir sí."
 READY = "Audio listo. Elegí qué extraer y pulsá Separar."
 
 KIND_IDLE = "idle"

@@ -755,6 +755,22 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
     return train_run.wait_supervisor(proc, exp_name, progress, total)
 
 
+def _log_progress(log_path: Path, progress):
+    def report(frac, desc=None):
+        line = (desc or "").strip()
+        if line:
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        if progress is None:
+            return
+        try:
+            progress(frac, desc=line)
+        except Exception:
+            pass
+
+    return report
+
+
 def execute_train(exp_name, dataset_files, epochs=None, progress=None):
     require_rvc_webui()
     assets = require_train_assets()
@@ -774,12 +790,19 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
     _ensure_savee_absolute()
     (RVC_ROOT / "assets" / "weights").mkdir(parents=True, exist_ok=True)
     (RVC_ROOT / "assets" / "indices").mkdir(parents=True, exist_ok=True)
+    exp_dir = RVC_ROOT / "logs" / exp_name
+    resume = _features_ready(exp_dir)
+    if not resume:
+        log_path.write_text("", encoding="utf-8")
+        from train_prep import prepare_for_train
+
+        dataset_files = prepare_for_train(
+            dataset_files, progress=_log_progress(log_path, progress)
+        )
     dataset_dir = _prepare_dataset(dataset_files, exp_name)
     from train_prep import discard_prep_copies
 
     discard_prep_copies()
-    exp_dir = RVC_ROOT / "logs" / exp_name
-    resume = _features_ready(exp_dir)
     py = sys.executable
     if resume:
         with open(log_path, "a", encoding="utf-8") as log:
@@ -788,8 +811,6 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
         if exp_dir.exists():
             shutil.rmtree(exp_dir)
         exp_dir.mkdir(parents=True, exist_ok=True)
-        if log_path.is_file():
-            log_path.write_text("", encoding="utf-8")
         _run(
             [
                 py,
