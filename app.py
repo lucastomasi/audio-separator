@@ -691,7 +691,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             instrumental = gr.Audio(label="Instrumental", type="filepath")
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
-            "Elegí un `.pth` de `rvc_models`. Para una conversión real también hacen falta `hubert_base` y `rmvpe.pt`."
+            "Elegí un `.pth` de `rvc_models`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
         )
         with gr.Row():
             model = gr.Dropdown(

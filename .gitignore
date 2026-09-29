@@ -4,8 +4,10 @@ __pycache__/
 clean_song_output/
 downloads/
 remix_output/
+rvc_output/
 rvc_models/*.pt
 rvc_models/*.pth
+rvc_models/*.index
 rvc_models/hubert_base/
 mdx_models/*.onnx
 .DS_Store
