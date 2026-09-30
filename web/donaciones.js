@@ -4,7 +4,9 @@ function params() {
   const data = new FormData($("filters"));
   const query = new URLSearchParams();
   for (const [key, value] of data.entries()) {
-    if (String(value).trim()) query.set(key, String(value).trim());
+    const text = String(value).trim();
+    if (!text || ((key === "min" || key === "max") && Number(text) === 0)) continue;
+    query.set(key, text);
   }
   query.set("top", "12");
   return query;

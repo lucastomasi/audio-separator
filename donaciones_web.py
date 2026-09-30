@@ -83,9 +83,12 @@ def parse_float(raw: str | None):
     if raw in (None, ""):
         return None
     try:
-        return float(raw)
+        number = float(raw)
     except ValueError:
         return None
+    if number == 0:
+        return None
+    return number
 
 
 def parse_int(raw: str | None, default: int) -> int:
@@ -243,6 +246,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _filtered(self, raw_query: str) -> tuple[list[dict], dict]:
         query = dict(urllib.parse.parse_qsl(raw_query, keep_blank_values=True))
         filtros = filters_from_query(query)
+        if STORE.snapshot()["cantidad"] == 0:
+            load_local_if_present()
         with STORE.lock:
             donations = list(STORE.donations)
         filtered = core.filter_donations(

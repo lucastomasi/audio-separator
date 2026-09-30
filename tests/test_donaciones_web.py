@@ -55,6 +55,10 @@ class ApiTests(unittest.TestCase):
         data = json.loads(body)
         self.assertEqual(data["cantidad"], 2)
         self.assertEqual(data["filtros"]["donante"], "ana")
+        status, body = self.get("/api/reporte?min=0&max=0")
+        data = json.loads(body)
+        self.assertEqual(data["cantidad"], 3)
+        self.assertEqual(data["filtros"], {})
 
     def test_complete_listado_keeps_every_row(self):
         status, body = self.get("/listado")
