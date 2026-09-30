@@ -13,3 +13,4 @@ mdx_models/*.onnx
 .DS_Store
 dist/
 donaciones.json
+donaciones.html

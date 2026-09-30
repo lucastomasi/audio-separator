@@ -9,7 +9,8 @@ Sin -n recorre todas las páginas (el listado público son unas decenas de miles
     python3 donaciones_ceneka.py --metricas --donante Disociandri --min 500
     python3 donaciones_ceneka.py --tabla --fecha hoy
     python3 donaciones_ceneka.py -n 20
-    python3 donaciones_ceneka.py --json --guardar donaciones.json
+    python3 donaciones_ceneka.py --html
+    python3 donaciones_ceneka.py --html --desde donaciones.json.gz
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from html import unescape
+from html import escape, unescape
+from pathlib import Path
 
 PAGE_URL = "https://ceneka.net/losherederosdealberdi"
 API_URL = "https://ceneka.net/mp/apis/listarDonaciones.php"
@@ -718,6 +720,83 @@ def render_text(donations: list[dict], user: str, todas: bool = False) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def default_snapshot() -> str | None:
+    for path in (
+        Path(__file__).resolve().parent / "donaciones.json.gz",
+        Path.cwd() / "donaciones.json.gz",
+        Path(__file__).resolve().parent / "donaciones.json",
+        Path.cwd() / "donaciones.json",
+    ):
+        if path.is_file() and path.stat().st_size > 0:
+            return str(path)
+    return None
+
+
+def write_html(path: str, donations: list[dict], user: str, filtros: str = "", top: int = METRICAS_TOP) -> None:
+    report = analyze(donations, top=top)
+    rows = []
+    for index, item in enumerate(donations, start=1):
+        rows.append(
+            "<tr>"
+            f"<td>{index}</td>"
+            f"<td>{escape(item['nombre'])}</td>"
+            f"<td>{escape(item['fecha'])}</td>"
+            f"<td>{escape(item['monto'])}</td>"
+            f"<td>{escape(item.get('mensaje') or '')}</td>"
+            "</tr>"
+        )
+    notes = "".join(f"<li>{escape(note)}</li>" for note in insights_list(report))
+    kpis = (
+        ("Donaciones", _fmt_n(report["cantidad"])),
+        ("Suma", format_amount(report["suma"])),
+        ("Mediana", format_amount(report["mediana"])),
+        ("Promedio", format_amount(report["promedio"])),
+        ("Donantes", _fmt_n(report["donantes"])),
+        ("Gini", f"{report['concentracion']['gini_donantes']:.3f}"),
+    )
+    kpi_html = "".join(
+        f"<div><span>{escape(label)}</span><strong>{escape(value)}</strong></div>"
+        for label, value in kpis
+    )
+    extra = f"<p>filtro: {escape(filtros)}</p>" if filtros else ""
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Donaciones · {escape(user)}</title>
+  <style>
+    body {{ font-family: Georgia, serif; margin: 32px; background: #f4efe4; color: #14110e; }}
+    h1 {{ margin-bottom: 8px; }}
+    .kpis {{ display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }}
+    .kpis div {{ background: #14110e; color: #f4efe4; padding: 12px 16px; min-width: 120px; }}
+    .kpis span {{ display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }}
+    table {{ border-collapse: collapse; width: 100%; font-size: 14px; }}
+    th, td {{ border-bottom: 1px solid #d7cbb6; text-align: left; padding: 6px 8px; vertical-align: top; }}
+    th {{ text-transform: uppercase; font-size: 11px; letter-spacing: .08em; }}
+  </style>
+</head>
+<body>
+  <p>Ceneka · listado estático</p>
+  <h1>{escape(user)}</h1>
+  <p>{_fmt_n(len(donations))} donaciones. Cada fila es una donación; no se junta ni se borra nada.</p>
+  {extra}
+  <div class="kpis">{kpi_html}</div>
+  <h2>Lectura</h2>
+  <ul>{notes or "<li>Sin notas.</li>"}</ul>
+  <pre>{escape(render_metricas(report, user, filtros))}</pre>
+  <h2>Listado completo</h2>
+  <table>
+    <thead><tr><th>#</th><th>Usuario</th><th>Fecha</th><th>Monto</th><th>Mensaje</th></tr></thead>
+    <tbody>
+      {''.join(rows)}
+    </tbody>
+  </table>
+</body>
+</html>
+"""
+    Path(path).write_text(html, encoding="utf-8")
+
+
 def describe_filters(args: argparse.Namespace) -> str:
     parts = []
     if args.donante:
@@ -798,6 +877,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="guardar el listado crudo en un JSON",
     )
     parser.add_argument(
+        "--html",
+        nargs="?",
+        const="donaciones.html",
+        default=None,
+        metavar="ARCHIVO",
+        help="escribir un HTML estático (default: donaciones.html). No levanta servidor.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="imprimir JSON en lugar de texto",
@@ -822,13 +909,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\rLeyendo donaciones… {total}", file=sys.stderr, end="", flush=True)
 
     try:
-        if args.desde:
-            donations = load_donations(args.desde)
+        snapshot = args.desde or default_snapshot()
+        if snapshot:
+            donations = load_donations(snapshot)
+            print(f"Leí {len(donations)} donaciones de {snapshot}", file=sys.stderr)
         else:
             donations = fetch_latest(args.usuario, args.cantidad, on_progress=on_progress)
             print(file=sys.stderr)
     except FileNotFoundError:
-        print(f"No está el archivo {args.desde}", file=sys.stderr)
+        print("No está el archivo de donaciones.", file=sys.stderr)
         return 1
     except urllib.error.URLError as error:
         print(file=sys.stderr)
@@ -851,6 +940,11 @@ def main(argv: list[str] | None = None) -> int:
         not args.json and not args.tabla and args.cantidad is None
     )
 
+    if args.html:
+        write_html(args.html, filtered, args.usuario, filtros, top=args.top)
+        print(f"HTML listo: {args.html} ({len(filtered)} donaciones)")
+        print("Abrilo con: open " + args.html)
+        return 0
     if args.json:
         payload = analyze(filtered, top=args.top) if (args.metricas or args.ciencia) else filtered
         json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)

@@ -107,6 +107,21 @@ class AnalyzeTests(unittest.TestCase):
         self.assertIn("Data science", text)
         self.assertIn("Lectura", text)
 
+    def test_writes_standalone_html(self):
+        import tempfile
+        from pathlib import Path
+
+        items = [
+            {"nombre": "Ana", "fecha": "Hace 2 horas", "valor": "100", "monto": "$ 100", "mensaje": "hola", "privada": False},
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "out.html"
+            donaciones.write_html(str(path), items, "losherederosdealberdi")
+            html = path.read_text(encoding="utf-8")
+        self.assertIn("Ana", html)
+        self.assertIn("$ 100", html)
+        self.assertIn("1 donaciones", html)
+
     def test_load_donations_reads_gzip(self):
         import gzip
         import json
