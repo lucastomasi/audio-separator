@@ -106,6 +106,20 @@ class AnalyzeTests(unittest.TestCase):
         self.assertIn("Data science", text)
         self.assertIn("Lectura", text)
 
+    def test_load_donations_reads_gzip(self):
+        import gzip
+        import json
+        import tempfile
+        from pathlib import Path
+
+        payload = [{"id": 9, "valor": "10", "nombre": "Ana", "fecha": "Hace 1 hora", "mensaje": "", "privado": 0}]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "donaciones.json.gz"
+            path.write_bytes(gzip.compress(json.dumps(payload).encode("utf-8")))
+            loaded = donaciones.load_donations(str(path))
+        self.assertEqual(loaded[0]["nombre"], "Ana")
+        self.assertEqual(loaded[0]["monto"], "$ 10")
+
 
 class RenderTests(unittest.TestCase):
     def test_text_includes_amount_name_and_message(self):

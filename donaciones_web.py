@@ -2,15 +2,16 @@
 """Interfaz web local para analizar las donaciones de Ceneka.
 
     python3 donaciones_web.py
-    python3 donaciones_web.py --desde donaciones.json
     python3 donaciones_web.py --puerto 8765
+
+El grupo completo (~40 mil) viene en donaciones.json.gz y se abre solo.
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
-import os
 import threading
 import urllib.parse
 from functools import partial
@@ -22,7 +23,9 @@ import donaciones_ceneka as core
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 DEFAULT_PORT = 8765
+BUNDLED = ROOT / "donaciones.json.gz"
 CACHE_CANDIDATES = (
+    BUNDLED,
     ROOT / "donaciones.json",
     Path("/tmp/donaciones-todas.json"),
 )
@@ -198,8 +201,8 @@ def fetch_remote(user: str) -> None:
     try:
         donations = core.fetch_latest(user, None, on_progress=on_progress)
         STORE.set_donations(donations, f"https://ceneka.net/{user}")
-        cache = ROOT / "donaciones.json"
-        cache.write_text(json.dumps(donations, ensure_ascii=False), encoding="utf-8")
+        packed = json.dumps(donations, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        BUNDLED.write_bytes(gzip.compress(packed, compresslevel=9))
     except Exception as error:  # noqa: BLE001 — shown in the UI
         STORE.fail(str(error))
 

@@ -12,3 +12,4 @@ rvc_models/hubert_base/
 mdx_models/*.onnx
 .DS_Store
 dist/
+donaciones.json

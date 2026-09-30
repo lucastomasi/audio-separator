@@ -67,7 +67,7 @@ async function load() {
   const est = data.estado || {};
   $("status").textContent = est.loading
     ? `Leyendo… ${est.progress || 0}`
-    : `${data.cantidad} donaciones${est.source ? " · " + est.source : ""}`;
+    : `${data.cantidad} donaciones precargadas`;
   $("reload").disabled = Boolean(est.loading);
 
   $("kpis").innerHTML = (data.kpis || []).map((kpi) =>

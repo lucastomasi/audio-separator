@@ -15,6 +15,7 @@ Sin -n recorre todas las páginas (el listado público son unas decenas de miles
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import re
@@ -299,7 +300,11 @@ def fetch_latest(user: str, count: int | None = None, fetcher=fetch_page, on_pro
 
 
 def load_donations(path: str) -> list[dict]:
-    with open(path, encoding="utf-8") as handle:
+    from pathlib import Path
+
+    target = Path(path)
+    opener = gzip.open if target.suffix == ".gz" else target.open
+    with opener(target, "rt", encoding="utf-8") as handle:
         payload = json.load(handle)
     if isinstance(payload, dict):
         payload = payload.get("donaciones") or payload.get("donations") or []
