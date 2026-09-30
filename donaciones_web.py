@@ -2,7 +2,7 @@
 """Interfaz web local para analizar las donaciones de Ceneka.
 
     python3 donaciones_web.py
-    python3 donaciones_web.py --puerto 8765
+    python3 donaciones_web.py --puerto 8766
 
 El grupo completo (~40 mil) viene en donaciones.json.gz y se abre solo.
 """
@@ -26,7 +26,7 @@ import donaciones_ceneka as core
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8766
 BUNDLED = ROOT / "donaciones.json.gz"
 CACHE_CANDIDATES = (
     BUNDLED,
