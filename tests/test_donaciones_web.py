@@ -33,11 +33,10 @@ class BindTests(unittest.TestCase):
 class PublicReportTests(unittest.TestCase):
     def test_kpis_and_table_slice(self):
         normalized = [web.core.normalize_donation(item) for item in SAMPLE]
-        report = web.public_report(normalized, top=5, offset=1, limit=1)
+        report = web.public_report(normalized, top=5)
         self.assertEqual(report["cantidad"], 3)
         self.assertEqual(len(report["kpis"]), 6)
         self.assertEqual(report["tabla"]["total"], 3)
-        self.assertEqual(len(report["tabla"]["items"]), 1)
         self.assertTrue(report["insights"])
 
 

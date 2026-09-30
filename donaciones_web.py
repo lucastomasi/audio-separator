@@ -124,11 +124,10 @@ def chart_rows(items: list[dict], label_key: str, count_key: str, sum_key: str) 
     return rows
 
 
-def public_report(donations: list[dict], top: int, offset: int, limit: int) -> dict:
+def public_report(donations: list[dict], top: int) -> dict:
     report = core.analyze(donations, top=top)
     science = report.get("ciencia") or {}
     conc = report.get("concentracion") or {}
-    page = donations[offset:offset + limit]
     return {
         "cantidad": report["cantidad"],
         "kpis": [
@@ -176,16 +175,6 @@ def public_report(donations: list[dict], top: int, offset: int, limit: int) -> d
         ],
         "tabla": {
             "total": len(donations),
-            "offset": offset,
-            "items": [
-                {
-                    "nombre": item["nombre"],
-                    "fecha": item["fecha"],
-                    "monto": item["monto"],
-                    "mensaje": item.get("mensaje") or "",
-                }
-                for item in page
-            ],
         },
     }
 
@@ -264,7 +253,7 @@ class Handler(SimpleHTTPRequestHandler):
         query = dict(urllib.parse.parse_qsl(raw_query, keep_blank_values=True))
         filtered, filtros = self._filtered(raw_query)
         top = max(1, parse_int(query.get("top"), 12))
-        payload = public_report(filtered, top=top, offset=0, limit=0)
+        payload = public_report(filtered, top=top)
         payload["estado"] = STORE.snapshot()
         payload["filtros"] = {key: value for key, value in filtros.items() if value is not None}
         payload["usuario"] = self.page_user
