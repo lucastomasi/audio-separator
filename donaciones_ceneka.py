@@ -5,7 +5,7 @@ Usa solo la biblioteca estándar, así corre en la terminal de Mac con python3.
 Sin -n recorre todas las páginas (el listado público son unas decenas de miles):
 
     python3 donaciones_ceneka.py --metricas
-    python3 donaciones_ceneka.py --metricas --desde donaciones.json
+    python3 donaciones_ceneka.py --ciencia --desde donaciones.json
     python3 donaciones_ceneka.py --metricas --donante Disociandri --min 500
     python3 donaciones_ceneka.py --tabla --fecha hoy
     python3 donaciones_ceneka.py -n 20
@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
+import statistics
 import sys
 import time
 import urllib.error
@@ -65,6 +67,14 @@ _RANGOS_MONTO = (
     (50000, None, "$ 50 000 o más"),
 )
 _BUCKET_ORDEN = ("Hoy", "Esta semana", "Este mes", "Este año", "Años anteriores")
+_FREQ_DONANTE = (
+    (1, 1, "1 donación"),
+    (2, 4, "2 – 4"),
+    (5, 19, "5 – 19"),
+    (20, 99, "20 – 99"),
+    (100, None, "100 o más"),
+)
+_PERCENTILES = (10, 25, 50, 75, 90, 95, 99)
 
 
 def format_amount(valor) -> str:
@@ -89,13 +99,81 @@ def donation_value(donation: dict) -> float:
 
 
 def median(values: list[float]) -> float:
+    return percentile(values, 50)
+
+
+def percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2:
-        return float(ordered[mid])
-    return (ordered[mid - 1] + ordered[mid]) / 2
+    if len(ordered) == 1:
+        return float(ordered[0])
+    rank = (len(ordered) - 1) * (p / 100.0)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    frac = rank - low
+    return ordered[low] + (ordered[high] - ordered[low]) * frac
+
+
+def gini_coefficient(values: list[float]) -> float:
+    ordered = sorted(v for v in values if v >= 0)
+    if not ordered:
+        return 0.0
+    total = sum(ordered)
+    if total == 0:
+        return 0.0
+    n = len(ordered)
+    weighted = sum(index * value for index, value in enumerate(ordered, start=1))
+    return (2 * weighted) / (n * total) - (n + 1) / n
+
+
+def pearson(xs: list[float], ys: list[float]) -> float:
+    if len(xs) < 2 or len(xs) != len(ys):
+        return 0.0
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    num = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    den_x = math.sqrt(sum((x - mean_x) ** 2 for x in xs))
+    den_y = math.sqrt(sum((y - mean_y) ** 2 for y in ys))
+    if den_x == 0 or den_y == 0:
+        return 0.0
+    return num / (den_x * den_y)
+
+
+def moment_skewness(values: list[float]) -> float:
+    if len(values) < 3:
+        return 0.0
+    mean = sum(values) / len(values)
+    second = sum((value - mean) ** 2 for value in values) / len(values)
+    third = sum((value - mean) ** 3 for value in values) / len(values)
+    if second == 0:
+        return 0.0
+    return third / (second ** 1.5)
+
+
+def pareto_cutoff(values: list[float], target: float = 0.8) -> dict:
+    if not values:
+        return {"items": 0, "porcentaje_items": 0.0, "alcanzado": 0.0}
+    ordered = sorted(values, reverse=True)
+    total = sum(ordered)
+    if total <= 0:
+        return {"items": 0, "porcentaje_items": 0.0, "alcanzado": 0.0}
+    acc = 0.0
+    for index, value in enumerate(ordered, start=1):
+        acc += value
+        if acc / total >= target:
+            return {
+                "items": index,
+                "porcentaje_items": index / len(ordered) * 100,
+                "alcanzado": acc / total * 100,
+            }
+    return {"items": len(ordered), "porcentaje_items": 100.0, "alcanzado": 100.0}
+
+
+def ascii_bar(value: float, peak: float, width: int = 28) -> str:
+    if peak <= 0 or value <= 0:
+        return ""
+    return "█" * max(1, round(value / peak * width))
 
 
 def fecha_age_seconds(fecha: str) -> int | None:
@@ -300,6 +378,26 @@ def analyze(donations: list[dict], top: int = METRICAS_TOP) -> dict:
         return sum(ordered_values[:count]) / total * 100 if total else 0.0
 
     top_n = max(1, top)
+    q1 = percentile(values, 25)
+    q3 = percentile(values, 75)
+    iqr = q3 - q1
+    fence = q3 + 1.5 * iqr
+    outliers = [value for value in values if value > fence]
+    user_sums = [item["suma"] for item in users]
+    user_counts = [item["cantidad"] for item in users]
+    msg_lens = [len(item.get("mensaje") or "") for item in donations]
+    freq = []
+    for low, high, label in _FREQ_DONANTE:
+        selected = [
+            item for item in users
+            if item["cantidad"] >= low and (high is None or item["cantidad"] <= high)
+        ]
+        freq.append({
+            "etiqueta": label,
+            "donantes": len(selected),
+            "donaciones": sum(item["cantidad"] for item in selected),
+            "suma": sum(item["suma"] for item in selected),
+        })
     return {
         "cantidad": len(donations),
         "suma": total,
@@ -307,6 +405,7 @@ def analyze(donations: list[dict], top: int = METRICAS_TOP) -> dict:
         "mediana": median(values),
         "minimo": min(values) if values else 0.0,
         "maximo": max(values) if values else 0.0,
+        "desvio": statistics.pstdev(values) if len(values) > 1 else 0.0,
         "donantes": len(users),
         "recurrentes": len(recurrentes),
         "una_vez": una_vez,
@@ -320,6 +419,25 @@ def analyze(donations: list[dict], top: int = METRICAS_TOP) -> dict:
             "top_1": share(max(1, len(ordered_values) // 100)),
             "top_10": share(max(1, len(ordered_values) // 10)),
             "top_10_donantes": share_from_users(users, 10, total),
+            "gini_donaciones": gini_coefficient(values),
+            "gini_donantes": gini_coefficient(user_sums),
+            "pareto_80_donaciones": pareto_cutoff(values, 0.8),
+            "pareto_80_donantes": pareto_cutoff(user_sums, 0.8),
+        },
+        "ciencia": {
+            "percentiles": {f"p{p}": percentile(values, p) for p in _PERCENTILES},
+            "q1": q1,
+            "q3": q3,
+            "iqr": iqr,
+            "asimetria": moment_skewness(values),
+            "outliers_iqr": len(outliers),
+            "outliers_suma": sum(outliers),
+            "cerca_monto_mensaje": pearson(values, [float(length) for length in msg_lens]),
+            "cerca_frecuencia_monto": pearson(
+                [float(count) for count in user_counts],
+                user_sums,
+            ),
+            "frecuencia_donante": freq,
         },
         "por_usuario_monto": sorted(users, key=lambda item: (-item["suma"], -item["cantidad"], item["nombre"]))[:top_n],
         "por_usuario_cantidad": sorted(users, key=lambda item: (-item["cantidad"], -item["suma"], item["nombre"]))[:top_n],
@@ -343,6 +461,101 @@ def share_from_users(users: list[dict], count: int, total: float) -> float:
 
 def _row(label: str, value: str) -> str:
     return f"  {label:<28} {value}"
+
+
+def _fmt_n(number: float) -> str:
+    if float(number).is_integer():
+        return f"{int(number):,}".replace(",", ".")
+    return f"{number:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _pareto_line(cut: dict, unidad: str) -> str:
+    items = _fmt_n(cut.get("items") or 0)
+    pct = cut.get("porcentaje_items") or 0
+    return f"{items} {unidad} ({pct:.1f}%) concentran el 80%"
+
+
+def render_ciencia(report: dict) -> list[str]:
+    science = report.get("ciencia") or {}
+    if not science:
+        return []
+    percentiles = science.get("percentiles") or {}
+    lines = [
+        "Data science",
+        _row("P10 / P25 / P50", "  ".join(format_amount(percentiles.get(key, 0)) for key in ("p10", "p25", "p50"))),
+        _row("P75 / P90 / P99", "  ".join(format_amount(percentiles.get(key, 0)) for key in ("p75", "p90", "p99"))),
+        _row("IQR (P75 − P25)", format_amount(science.get("iqr", 0))),
+        _row("Asimetría", f"{science.get('asimetria', 0):.2f}"),
+        _row("Outliers (IQR × 1.5)", f"{_fmt_n(science.get('outliers_iqr', 0))} · {format_amount(science.get('outliers_suma', 0))}"),
+        _row("r monto ↔ mensaje", f"{science.get('cerca_monto_mensaje', 0):.3f}"),
+        _row("r freq ↔ monto donante", f"{science.get('cerca_frecuencia_monto', 0):.3f}"),
+        "",
+    ]
+    lines.extend(render_insights(report))
+    freq = science.get("frecuencia_donante") or []
+    peak = max((item["donantes"] for item in freq), default=0)
+    lines.extend(
+        render_ranking(
+            "Frecuencia por donante",
+            [
+                (
+                    f"{item['etiqueta']}  {ascii_bar(item['donantes'], peak)}",
+                    f"{item['donantes']} pers.",
+                    format_amount(item["suma"]),
+                )
+                for item in freq
+                if item["donantes"]
+            ],
+        )
+    )
+    peak_rango = max((item["cantidad"] for item in report.get("por_rango") or []), default=0)
+    lines.extend(
+        render_ranking(
+            "Histograma de montos",
+            [
+                (
+                    f"{item['etiqueta']}  {ascii_bar(item['cantidad'], peak_rango)}",
+                    f"{item['cantidad']} don.",
+                    format_amount(item["suma"]),
+                )
+                for item in report.get("por_rango") or []
+                if item["cantidad"]
+            ],
+        )
+    )
+    return lines
+
+
+def render_insights(report: dict) -> list[str]:
+    science = report.get("ciencia") or {}
+    conc = report.get("concentracion") or {}
+    lines = ["Lectura"]
+    mean = report.get("promedio") or 0
+    med = report.get("mediana") or 0
+    if mean > med * 1.5:
+        lines.append(f"  La media ({format_amount(mean)}) está muy por encima de la mediana ({format_amount(med)}): pocos montos altos tiran el promedio.")
+    gini_users = conc.get("gini_donantes") or 0
+    if gini_users >= 0.7:
+        lines.append(f"  Gini de donantes {gini_users:.3f}: el dinero está muy concentrado en un grupo chico.")
+    elif gini_users >= 0.4:
+        lines.append(f"  Gini de donantes {gini_users:.3f}: hay desigualdad, pero no extrema.")
+    pareto = conc.get("pareto_80_donantes") or {}
+    if pareto.get("porcentaje_items"):
+        lines.append(f"  El 80% del monto lo aportan {_fmt_n(pareto['items'])} donantes ({pareto['porcentaje_items']:.1f}% del grupo).")
+    outliers = science.get("outliers_iqr") or 0
+    if outliers:
+        share = (science.get("outliers_suma") or 0) / report["suma"] * 100 if report.get("suma") else 0
+        lines.append(f"  Hay {_fmt_n(outliers)} outliers de monto; suman {format_amount(science.get('outliers_suma', 0))} ({share:.1f}% del total).")
+    r_freq = science.get("cerca_frecuencia_monto") or 0
+    if r_freq >= 0.4:
+        lines.append(f"  Quienes donan más veces también aportan más plata (r={r_freq:.2f}).")
+    elif abs(r_freq) < 0.2:
+        lines.append(f"  Donar muchas veces no implica aportar más plata (r={r_freq:.2f}).")
+    if report.get("recurrentes") and report.get("donantes"):
+        pct = report["recurrentes"] / report["donantes"] * 100
+        lines.append(f"  El {pct:.1f}% de los donantes volvió al menos una vez.")
+    lines.append("")
+    return lines
 
 
 def render_ranking(title: str, rows: list[tuple[str, str, str]]) -> list[str]:
@@ -372,6 +585,7 @@ def render_metricas(report: dict, user: str, filtros: str = "") -> str:
         _row("Suma", format_amount(report["suma"])),
         _row("Promedio", format_amount(report["promedio"])),
         _row("Mediana", format_amount(report["mediana"])),
+        _row("Desvío", format_amount(report.get("desvio", 0))),
         _row("Mínimo", format_amount(report["minimo"])),
         _row("Máximo", format_amount(report["maximo"])),
         "",
@@ -392,8 +606,13 @@ def render_metricas(report: dict, user: str, filtros: str = "") -> str:
         _row("Top 1% donaciones", f"{report['concentracion']['top_1']:.1f}% del total"),
         _row("Top 10% donaciones", f"{report['concentracion']['top_10']:.1f}% del total"),
         _row("Top 10 donantes", f"{report['concentracion']['top_10_donantes']:.1f}% del total"),
+        _row("Gini (donaciones)", f"{report['concentracion']['gini_donaciones']:.3f}"),
+        _row("Gini (donantes)", f"{report['concentracion']['gini_donantes']:.3f}"),
+        _row("Pareto 80% monto", _pareto_line(report["concentracion"]["pareto_80_donaciones"], "donaciones")),
+        _row("Pareto 80% donantes", _pareto_line(report["concentracion"]["pareto_80_donantes"], "donantes")),
         "",
     ])
+    lines.extend(render_ciencia(report))
     lines.extend(
         render_ranking(
             "Top donantes por monto",
@@ -551,6 +770,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="mostrar el análisis (totales, donantes, fechas, rangos)",
     )
     parser.add_argument(
+        "--ciencia",
+        action="store_true",
+        help="igual que --metricas: análisis estadístico del grupo",
+    )
+    parser.add_argument(
         "--tabla",
         action="store_true",
         help="listar usuario, fecha y monto en columnas",
@@ -619,12 +843,12 @@ def main(argv: list[str] | None = None) -> int:
 
     filtered = filter_donations(donations, args.donante, args.fecha, args.minimo, args.maximo)
     filtros = describe_filters(args)
-    use_metricas = args.metricas or (
+    use_metricas = args.metricas or args.ciencia or (
         not args.json and not args.tabla and args.cantidad is None
     )
 
     if args.json:
-        payload = analyze(filtered, top=args.top) if args.metricas else filtered
+        payload = analyze(filtered, top=args.top) if (args.metricas or args.ciencia) else filtered
         json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
         sys.stdout.write("\n")
     elif use_metricas:

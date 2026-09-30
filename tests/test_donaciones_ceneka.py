@@ -96,10 +96,15 @@ class AnalyzeTests(unittest.TestCase):
         self.assertEqual(report["con_link"], 1)
         self.assertEqual(report["por_usuario_monto"][0]["nombre"], "Bruno")
         self.assertEqual(report["por_usuario_cantidad"][0]["nombre"], "Ana")
+        self.assertAlmostEqual(donaciones.gini_coefficient([1, 1, 1, 1]), 0.0)
+        self.assertGreater(report["concentracion"]["gini_donantes"], 0)
+        self.assertIn("p50", report["ciencia"]["percentiles"])
         text = donaciones.render_metricas(report, "losherederosdealberdi", "usuario=Ana")
         self.assertIn("Análisis de donaciones", text)
         self.assertIn("Top donantes por monto", text)
         self.assertIn("filtro: usuario=Ana", text)
+        self.assertIn("Data science", text)
+        self.assertIn("Lectura", text)
 
 
 class RenderTests(unittest.TestCase):
