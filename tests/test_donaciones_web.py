@@ -15,6 +15,20 @@ SAMPLE = [
 ]
 
 
+class BindTests(unittest.TestCase):
+    def test_skips_a_busy_port(self):
+        blocker = web.ReuseServer(("127.0.0.1", 0), web.Handler)
+        busy = blocker.server_address[1]
+        try:
+            server = web.bind_server("127.0.0.1", busy, web.Handler)
+            try:
+                self.assertNotEqual(server.server_address[1], busy)
+            finally:
+                server.server_close()
+        finally:
+            blocker.server_close()
+
+
 class PublicReportTests(unittest.TestCase):
     def test_kpis_and_table_slice(self):
         normalized = [web.core.normalize_donation(item) for item in SAMPLE]

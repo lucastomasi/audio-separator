@@ -353,8 +353,23 @@ def parse_args(argv=None):
     parser.add_argument("--puerto", type=int, default=DEFAULT_PORT)
     parser.add_argument("--desde", help="JSON local para precargar")
     parser.add_argument("-u", "--usuario", default=core.DEFAULT_USER)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="0.0.0.0", help="0.0.0.0 deja entrar desde la Mac y la red local")
     return parser.parse_args(argv)
+
+
+class ReuseServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+def bind_server(host: str, port: int, handler) -> ThreadingHTTPServer:
+    last_error = None
+    for candidate in range(port, port + 20):
+        try:
+            return ReuseServer((host, candidate), handler)
+        except OSError as error:
+            last_error = error
+            continue
+    raise OSError(f"No pude abrir el puerto {port}: {last_error}")
 
 
 def main(argv=None) -> int:
@@ -364,8 +379,10 @@ def main(argv=None) -> int:
     else:
         load_local_if_present()
     handler = partial(Handler, page_user=args.usuario.strip() or core.DEFAULT_USER)
-    server = ThreadingHTTPServer((args.host, args.puerto), handler)
-    print(f"Abrí http://{args.host}:{args.puerto}", flush=True)
+    server = bind_server(args.host, args.puerto, handler)
+    bound_port = server.server_address[1]
+    print(f"Abrí http://127.0.0.1:{bound_port}", flush=True)
+    print(f"Red local: http://{args.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
