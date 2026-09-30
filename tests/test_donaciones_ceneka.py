@@ -40,6 +40,21 @@ class FetchLatestTests(unittest.TestCase):
         self.assertEqual(result[0]["mensaje"], "hola & chau")
         self.assertTrue(result[0]["privada"])
 
+    def test_none_count_walks_every_page_until_the_list_ends(self):
+        calls = []
+
+        def fetcher(user, page, limit):
+            calls.append((page, limit))
+            if page == 0:
+                return [{"id": i, "valor": "10", "nombre": "n", "mensaje": "", "fecha": "", "privado": 0} for i in range(50)]
+            if page == 1:
+                return [{"id": 50, "valor": "10", "nombre": "ultima", "mensaje": "", "fecha": "", "privado": 0}, {"id": 1, "valor": "10", "nombre": "repetida", "mensaje": "", "fecha": "", "privado": 0}]
+            return [{"id": 999, "valor": "1", "nombre": "no", "mensaje": "", "fecha": "", "privado": 0}]
+
+        result = donaciones.fetch_latest("losherederosdealberdi", None, fetcher=fetcher)
+        self.assertEqual(calls, [(0, 50), (1, 50)])
+        self.assertEqual([item["id"] for item in result], list(range(50)) + [50])
+
 
 class RenderTests(unittest.TestCase):
     def test_text_includes_amount_name_and_message(self):
@@ -56,6 +71,12 @@ class RenderTests(unittest.TestCase):
             "losherederosdealberdi",
         )
         self.assertIn("Últimas 1 donaciones", text)
+        todas = donaciones.render_text(
+            [{"monto": "$ 1", "nombre": "Ana", "fecha": "", "mensaje": "", "privada": False}],
+            "losherederosdealberdi",
+            todas=True,
+        )
+        self.assertIn("Todas las donaciones (1)", todas)
         self.assertIn("https://ceneka.net/losherederosdealberdi", text)
         self.assertIn("$ 500", text)
         self.assertIn("Disociandri", text)
