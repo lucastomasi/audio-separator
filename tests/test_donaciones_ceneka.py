@@ -56,6 +56,52 @@ class FetchLatestTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result], list(range(50)) + [50])
 
 
+class FilterAndFechaTests(unittest.TestCase):
+    def test_parses_relative_dates(self):
+        self.assertEqual(donaciones.fecha_age_seconds("Hace 7 horas"), 7 * 3600)
+        self.assertEqual(donaciones.fecha_age_seconds("Hace 1 día"), 86400)
+        self.assertEqual(donaciones.fecha_bucket("Hace 3 horas"), "Hoy")
+        self.assertEqual(donaciones.fecha_bucket("Hace 2 semanas"), "Este mes")
+        self.assertTrue(donaciones.matches_fecha("Hace 3 horas", "hoy"))
+        self.assertFalse(donaciones.matches_fecha("Hace 2 meses", "semana"))
+        self.assertTrue(donaciones.matches_fecha("Hace 7 horas", "7 horas"))
+
+    def test_filters_by_user_date_and_amount(self):
+        items = [
+            {"nombre": "Ana", "fecha": "Hace 2 horas", "valor": "100", "monto": "$ 100", "mensaje": "", "privada": False},
+            {"nombre": "Bruno", "fecha": "Hace 2 meses", "valor": "8000", "monto": "$ 8 000", "mensaje": "hola", "privada": False},
+            {"nombre": "AnaPlus", "fecha": "Hace 1 día", "valor": "500", "monto": "$ 500", "mensaje": "x", "privada": True},
+        ]
+        only_ana = donaciones.filter_donations(items, donante="ana")
+        self.assertEqual([item["nombre"] for item in only_ana], ["Ana", "AnaPlus"])
+        this_week = donaciones.filter_donations(items, fecha="semana")
+        self.assertEqual([item["nombre"] for item in this_week], ["Ana", "AnaPlus"])
+        big = donaciones.filter_donations(items, minimo=500, maximo=1000)
+        self.assertEqual([item["nombre"] for item in big], ["AnaPlus"])
+
+
+class AnalyzeTests(unittest.TestCase):
+    def test_totals_and_rankings(self):
+        items = [
+            {"nombre": "Ana", "fecha": "Hace 2 horas", "valor": "100", "monto": "$ 100", "mensaje": "https://x.com/a", "privada": False},
+            {"nombre": "Ana", "fecha": "Hace 3 horas", "valor": "300", "monto": "$ 300", "mensaje": "", "privada": False},
+            {"nombre": "Bruno", "fecha": "Hace 2 meses", "valor": "1000", "monto": "$ 1 000", "mensaje": "hola", "privada": True},
+        ]
+        report = donaciones.analyze(items, top=5)
+        self.assertEqual(report["cantidad"], 3)
+        self.assertEqual(report["suma"], 1400)
+        self.assertEqual(report["donantes"], 2)
+        self.assertEqual(report["recurrentes"], 1)
+        self.assertEqual(report["privadas"], 1)
+        self.assertEqual(report["con_link"], 1)
+        self.assertEqual(report["por_usuario_monto"][0]["nombre"], "Bruno")
+        self.assertEqual(report["por_usuario_cantidad"][0]["nombre"], "Ana")
+        text = donaciones.render_metricas(report, "losherederosdealberdi", "usuario=Ana")
+        self.assertIn("Análisis de donaciones", text)
+        self.assertIn("Top donantes por monto", text)
+        self.assertIn("filtro: usuario=Ana", text)
+
+
 class RenderTests(unittest.TestCase):
     def test_text_includes_amount_name_and_message(self):
         text = donaciones.render_text(
