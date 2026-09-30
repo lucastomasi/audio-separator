@@ -273,7 +273,6 @@ def fetch_latest(user: str, count: int | None = None, fetcher=fetch_page, on_pro
         return []
     page_size = PAGE_SIZE_MAX if count is None else min(PAGE_SIZE_MAX, count)
     collected: list[dict] = []
-    seen: set = set()
     page = 0
     while count is None or len(collected) < count:
         if page >= MAX_PAGES:
@@ -281,19 +280,13 @@ def fetch_latest(user: str, count: int | None = None, fetcher=fetch_page, on_pro
         chunk = fetcher(user, page, page_size)
         if not chunk:
             break
-        added = 0
         for item in chunk:
-            donation_id = item.get("id")
-            if donation_id in seen:
-                continue
-            seen.add(donation_id)
             collected.append(normalize_donation(item))
-            added += 1
             if count is not None and len(collected) >= count:
                 break
         if on_progress is not None:
             on_progress(len(collected))
-        if added == 0 or len(chunk) < page_size:
+        if len(chunk) < page_size:
             break
         page += 1
     return collected

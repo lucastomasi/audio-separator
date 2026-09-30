@@ -53,7 +53,8 @@ class FetchLatestTests(unittest.TestCase):
 
         result = donaciones.fetch_latest("losherederosdealberdi", None, fetcher=fetcher)
         self.assertEqual(calls, [(0, 50), (1, 50)])
-        self.assertEqual([item["id"] for item in result], list(range(50)) + [50])
+        self.assertEqual([item["id"] for item in result], list(range(50)) + [50, 1])
+        self.assertEqual(result[-1]["nombre"], "repetida")
 
 
 class FilterAndFechaTests(unittest.TestCase):
