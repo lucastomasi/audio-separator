@@ -28,11 +28,17 @@ ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 DEFAULT_PORT = 8766
 BUNDLED = ROOT / "donaciones.json.gz"
-CACHE_CANDIDATES = (
-    BUNDLED,
-    ROOT / "donaciones.json",
-    Path("/tmp/donaciones-todas.json"),
-)
+
+
+def snapshot_paths() -> tuple[Path, ...]:
+    here = Path.cwd()
+    return (
+        BUNDLED,
+        here / "donaciones.json.gz",
+        ROOT / "donaciones.json",
+        here / "donaciones.json",
+        Path("/tmp/donaciones-todas.json"),
+    )
 
 
 class Store:
@@ -179,11 +185,25 @@ def public_report(donations: list[dict], top: int) -> dict:
     }
 
 
-def load_local_if_present() -> None:
-    for path in CACHE_CANDIDATES:
-        if path.is_file():
-            STORE.set_donations(core.load_donations(str(path)), str(path))
-            return
+def load_local_if_present() -> bool:
+    for path in snapshot_paths():
+        if not path.is_file() or path.stat().st_size == 0:
+            continue
+        head = path.read_bytes()[:24]
+        if head.startswith(b"version https://git-lfs"):
+            print(f"{path} es un puntero de Git LFS. Corré: git lfs pull", flush=True)
+            continue
+        try:
+            donations = core.load_donations(str(path))
+        except (OSError, json.JSONDecodeError, RuntimeError, UnicodeError) as error:
+            print(f"No pude leer {path}: {error}", flush=True)
+            continue
+        if not donations:
+            continue
+        STORE.set_donations(donations, str(path))
+        print(f"Cargué {len(donations)} donaciones de {path}", flush=True)
+        return True
+    return False
 
 
 def fetch_remote(user: str) -> None:
@@ -385,11 +405,14 @@ def bind_server(host: str, port: int, handler) -> ThreadingHTTPServer:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    page_user = args.usuario.strip() or core.DEFAULT_USER
     if args.desde:
         STORE.set_donations(core.load_donations(args.desde), args.desde)
-    else:
-        load_local_if_present()
-    handler = partial(Handler, page_user=args.usuario.strip() or core.DEFAULT_USER)
+        print(f"Cargué {STORE.snapshot()['cantidad']} donaciones de {args.desde}", flush=True)
+    elif not load_local_if_present():
+        print("No está donaciones.json.gz. Bajo el listado de Ceneka…", flush=True)
+        threading.Thread(target=fetch_remote, args=(page_user,), daemon=True).start()
+    handler = partial(Handler, page_user=page_user)
     wanted = args.puerto
     server = bind_server(args.host, wanted, handler)
     bound_port = server.server_address[1]

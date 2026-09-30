@@ -59,13 +59,26 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+let askedFetch = false;
+
 async function load() {
   const res = await fetch(`/api/reporte?${params()}`);
   const data = await res.json();
   const est = data.estado || {};
+  if (!data.cantidad && !est.loading && !askedFetch) {
+    askedFetch = true;
+    $("status").textContent = "Sin datos locales. Bajando de Ceneka…";
+    await fetch("/api/cargar", { method: "POST" });
+    setTimeout(load, 800);
+    return;
+  }
   $("status").textContent = est.loading
     ? `Leyendo… ${est.progress || 0}`
-    : `${data.cantidad} donaciones precargadas`;
+    : est.error
+      ? `Error: ${est.error}`
+      : data.cantidad
+        ? `${data.cantidad} donaciones precargadas`
+        : "0 donaciones. Tocá Actualizar o hacé git pull para traer donaciones.json.gz";
   $("reload").disabled = Boolean(est.loading);
 
   $("kpis").innerHTML = (data.kpis || []).map((kpi) =>
