@@ -14,6 +14,7 @@ import csv
 import gzip
 import io
 import json
+import socket
 import threading
 import urllib.parse
 from functools import partial
@@ -357,19 +358,40 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-class ReuseServer(ThreadingHTTPServer):
-    allow_reuse_address = True
+class OpenServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+
+def port_is_free(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def choose_port(host: str, preferred: int) -> int:
+    if preferred == 0:
+        return 0
+    if port_is_free(host, preferred):
+        return preferred
+    for candidate in range(preferred + 1, preferred + 40):
+        if port_is_free(host, candidate):
+            return candidate
+    return 0
 
 
 def bind_server(host: str, port: int, handler) -> ThreadingHTTPServer:
     last_error = None
-    for candidate in range(port, port + 20):
+    for candidate in (choose_port(host, port), 0):
         try:
-            return ReuseServer((host, candidate), handler)
+            return OpenServer((host, candidate), handler)
         except OSError as error:
             last_error = error
             continue
-    raise OSError(f"No pude abrir el puerto {port}: {last_error}")
+    raise OSError(f"No pude abrir un puerto libre: {last_error}")
 
 
 def main(argv=None) -> int:
@@ -379,10 +401,12 @@ def main(argv=None) -> int:
     else:
         load_local_if_present()
     handler = partial(Handler, page_user=args.usuario.strip() or core.DEFAULT_USER)
-    server = bind_server(args.host, args.puerto, handler)
+    wanted = args.puerto
+    server = bind_server(args.host, wanted, handler)
     bound_port = server.server_address[1]
+    if wanted and bound_port != wanted:
+        print(f"El puerto {wanted} estaba ocupado.", flush=True)
     print(f"Abrí http://127.0.0.1:{bound_port}", flush=True)
-    print(f"Red local: http://{args.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

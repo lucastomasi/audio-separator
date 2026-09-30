@@ -17,9 +17,10 @@ SAMPLE = [
 
 class BindTests(unittest.TestCase):
     def test_skips_a_busy_port(self):
-        blocker = web.ReuseServer(("127.0.0.1", 0), web.Handler)
+        blocker = web.OpenServer(("127.0.0.1", 0), web.Handler)
         busy = blocker.server_address[1]
         try:
+            self.assertFalse(web.port_is_free("127.0.0.1", busy))
             server = web.bind_server("127.0.0.1", busy, web.Handler)
             try:
                 self.assertNotEqual(server.server_address[1], busy)
