@@ -84,14 +84,14 @@
 
   <section class="panel">
     <div class="table-head">
-      <h2>Listado</h2>
+      <h2>Listado completo</h2>
       <div class="pager">
-        <button type="button" id="prev" class="ghost">Anterior</button>
         <span id="pageinfo"></span>
-        <button type="button" id="next" class="ghost">Siguiente</button>
+        <a id="open-listado" class="button" href="/listado">Ver las 39.758</a>
+        <a id="csv" class="button ghost" href="/api/listado.csv">Descargar CSV</a>
       </div>
     </div>
-    <div id="tabla" class="table-wrap"></div>
+    <p>Cada fila es una donación. Si aparece dos veces, se donó dos veces: no se junta ni se borra nada.</p>
   </section>
 
   <script src="/donaciones.js"></script>

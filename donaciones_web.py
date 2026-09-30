@@ -10,11 +10,14 @@ El grupo completo (~40 mil) viene en donaciones.json.gz y se abre solo.
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
+import io
 import json
 import threading
 import urllib.parse
 from functools import partial
+from html import escape
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -224,6 +227,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json(STORE.snapshot())
         if parsed.path == "/api/reporte":
             return self._send_json(self._reporte(parsed.query))
+        if parsed.path == "/listado":
+            return self._send_bytes(self._listado_html(parsed.query), "text/html; charset=utf-8")
+        if parsed.path == "/api/listado.csv":
+            return self._send_bytes(self._listado_csv(parsed.query), "text/csv; charset=utf-8", "listado-donaciones.csv")
         return super().do_GET()
 
     def do_POST(self):
@@ -233,10 +240,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json({"ok": True, **STORE.snapshot()})
         self.send_error(404)
 
-    def _reporte(self, raw_query: str) -> dict:
+    def _filtered(self, raw_query: str) -> tuple[list[dict], dict]:
         query = dict(urllib.parse.parse_qsl(raw_query, keep_blank_values=True))
         filtros = filters_from_query(query)
-        meta = STORE.snapshot()
         with STORE.lock:
             donations = list(STORE.donations)
         filtered = core.filter_donations(
@@ -246,21 +252,84 @@ class Handler(SimpleHTTPRequestHandler):
             minimo=filtros["minimo"],
             maximo=filtros["maximo"],
         )
+        return filtered, filtros
+
+    def _reporte(self, raw_query: str) -> dict:
+        query = dict(urllib.parse.parse_qsl(raw_query, keep_blank_values=True))
+        filtered, filtros = self._filtered(raw_query)
         top = max(1, parse_int(query.get("top"), 12))
-        offset = max(0, parse_int(query.get("offset"), 0))
-        limit = min(100, max(1, parse_int(query.get("limit"), 40)))
-        payload = public_report(filtered, top=top, offset=offset, limit=limit)
-        payload["estado"] = meta
+        payload = public_report(filtered, top=top, offset=0, limit=0)
+        payload["estado"] = STORE.snapshot()
         payload["filtros"] = {key: value for key, value in filtros.items() if value is not None}
         payload["usuario"] = self.page_user
         return payload
 
+    def _listado_html(self, raw_query: str) -> bytes:
+        filtered, _ = self._filtered(raw_query)
+        rows = []
+        for index, item in enumerate(filtered, start=1):
+            rows.append(
+                "<tr>"
+                f"<td>{index}</td>"
+                f"<td>{escape(item['nombre'])}</td>"
+                f"<td>{escape(item['fecha'])}</td>"
+                f"<td class=\"monto\">{escape(item['monto'])}</td>"
+                f"<td class=\"msg\">{escape(item.get('mensaje') or '')}</td>"
+                "</tr>"
+            )
+        html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Listado completo · {escape(self.page_user)}</title>
+  <link rel="stylesheet" href="/donaciones.css">
+</head>
+<body>
+  <p class="eyebrow"><a href="/">← Análisis</a></p>
+  <h1>Listado completo</h1>
+  <p class="status">{len(filtered)} donaciones. Cada fila es una donación; no se junta ni se borra nada.</p>
+  <p><a href="/api/listado.csv?{escape(raw_query, quote=True)}">Descargar CSV</a></p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Usuario</th><th>Fecha</th><th>Monto</th><th>Mensaje</th></tr></thead>
+      <tbody>
+        {''.join(rows)}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
+"""
+        return html.encode("utf-8")
+
+    def _listado_csv(self, raw_query: str) -> bytes:
+        filtered, _ = self._filtered(raw_query)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["n", "id", "usuario", "fecha", "monto", "valor", "mensaje"])
+        for index, item in enumerate(filtered, start=1):
+            writer.writerow([
+                index,
+                item.get("id"),
+                item.get("nombre"),
+                item.get("fecha"),
+                item.get("monto"),
+                item.get("valor"),
+                item.get("mensaje") or "",
+            ])
+        return buffer.getvalue().encode("utf-8")
+
     def _send_file(self, path: Path, content_type: str) -> None:
-        data = path.read_bytes()
+        self._send_bytes(path.read_bytes(), content_type)
+
+    def _send_bytes(self, data: bytes, content_type: str, download: str | None = None) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        if download:
+            self.send_header("Content-Disposition", f'attachment; filename="{download}"')
         self.end_headers()
         self.wfile.write(data)
 

@@ -56,6 +56,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(data["cantidad"], 2)
         self.assertEqual(data["filtros"]["donante"], "ana")
 
+    def test_complete_listado_keeps_every_row(self):
+        status, body = self.get("/listado")
+        self.assertEqual(status, 200)
+        self.assertIn(b"3 donaciones", body)
+        self.assertIn(b"Ana</td>", body)
+        self.assertIn(b"Bruno</td>", body)
+        self.assertIn(b"AnaPlus</td>", body)
+        status, body = self.get("/api/listado.csv")
+        self.assertEqual(status, 200)
+        lines = body.decode("utf-8").strip().splitlines()
+        self.assertEqual(len(lines), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

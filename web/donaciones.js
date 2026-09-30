@@ -1,5 +1,3 @@
-const state = { offset: 0, limit: 40 };
-
 const $ = (id) => document.getElementById(id);
 
 function params() {
@@ -8,8 +6,6 @@ function params() {
   for (const [key, value] of data.entries()) {
     if (String(value).trim()) query.set(key, String(value).trim());
   }
-  query.set("offset", String(state.offset));
-  query.set("limit", String(state.limit));
   query.set("top", "12");
   return query;
 }
@@ -98,32 +94,21 @@ async function load() {
   ranks("top-monto", data.top_monto);
   ranks("top-cantidad", data.top_cantidad);
   table("mayores", data.mayores);
-  table("tabla", data.tabla?.items);
-  const total = data.tabla?.total || 0;
-  $("pageinfo").textContent = total
-    ? `${state.offset + 1}–${Math.min(state.offset + state.limit, total)} de ${total}`
-    : "0";
-  $("prev").disabled = state.offset <= 0;
-  $("next").disabled = state.offset + state.limit >= total;
+  const total = data.tabla?.total || data.cantidad || 0;
+  $("pageinfo").textContent = total ? `${total} filas` : "0";
+  const query = params().toString();
+  $("open-listado").href = `/listado?${query}`;
+  $("open-listado").textContent = total ? `Ver las ${total}` : "Ver listado";
+  $("csv").href = `/api/listado.csv?${query}`;
   if (est.loading) setTimeout(load, 1200);
 }
 
 $("filters").addEventListener("submit", (event) => {
   event.preventDefault();
-  state.offset = 0;
   load();
 });
 $("clear").addEventListener("click", () => {
   $("filters").reset();
-  state.offset = 0;
-  load();
-});
-$("prev").addEventListener("click", () => {
-  state.offset = Math.max(0, state.offset - state.limit);
-  load();
-});
-$("next").addEventListener("click", () => {
-  state.offset += state.limit;
   load();
 });
 $("reload").addEventListener("click", async () => {
