@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Donaciones · LosHerederosDeAlberdi</title>
+  <link rel="stylesheet" href="/donaciones.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Ceneka · grupo completo</p>
+      <h1>LosHerederosDeAlberdi</h1>
+    </div>
+    <div class="top-actions">
+      <p id="status" class="status">Cargando…</p>
+      <button id="reload" type="button">Traer de Ceneka</button>
+    </div>
+  </header>
+
+  <form id="filters" class="filters">
+    <label>Donante
+      <input name="donante" placeholder="nombre o parte" autocomplete="off">
+    </label>
+    <label>Fecha
+      <select name="fecha">
+        <option value="">Todas</option>
+        <option value="hoy">Hoy</option>
+        <option value="semana">Esta semana</option>
+        <option value="mes">Este mes</option>
+        <option value="año">Este año</option>
+      </select>
+    </label>
+    <label>Mínimo
+      <input name="min" type="number" min="0" step="1" placeholder="0">
+    </label>
+    <label>Máximo
+      <input name="max" type="number" min="0" step="1" placeholder="sin techo">
+    </label>
+    <button type="submit">Filtrar</button>
+    <button type="button" id="clear" class="ghost">Limpiar</button>
+  </form>
+
+  <section id="kpis" class="kpis"></section>
+  <section class="panel">
+    <h2>Lectura</h2>
+    <ul id="insights" class="insights"></ul>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <h2>Montos</h2>
+      <div id="rangos" class="bars"></div>
+    </article>
+    <article class="panel">
+      <h2>Tiempo</h2>
+      <div id="periodos" class="bars"></div>
+    </article>
+    <article class="panel">
+      <h2>Frecuencia</h2>
+      <div id="frecuencia" class="bars"></div>
+    </article>
+    <article class="panel">
+      <h2>Detalle estadístico</h2>
+      <dl id="detalle" class="detalle"></dl>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="panel">
+      <h2>Top por monto</h2>
+      <ol id="top-monto" class="rank"></ol>
+    </article>
+    <article class="panel">
+      <h2>Top por cantidad</h2>
+      <ol id="top-cantidad" class="rank"></ol>
+    </article>
+  </section>
+
+  <section class="panel">
+    <h2>Mayores donaciones</h2>
+    <div id="mayores" class="table-wrap"></div>
+  </section>
+
+  <section class="panel">
+    <div class="table-head">
+      <h2>Listado</h2>
+      <div class="pager">
+        <button type="button" id="prev" class="ghost">Anterior</button>
+        <span id="pageinfo"></span>
+        <button type="button" id="next" class="ghost">Siguiente</button>
+      </div>
+    </div>
+    <div id="tabla" class="table-wrap"></div>
+  </section>
+
+  <script src="/donaciones.js"></script>
+</body>
+</html>

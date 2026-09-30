@@ -526,34 +526,40 @@ def render_ciencia(report: dict) -> list[str]:
     return lines
 
 
-def render_insights(report: dict) -> list[str]:
+def insights_list(report: dict) -> list[str]:
     science = report.get("ciencia") or {}
     conc = report.get("concentracion") or {}
-    lines = ["Lectura"]
+    notes = []
     mean = report.get("promedio") or 0
     med = report.get("mediana") or 0
     if mean > med * 1.5:
-        lines.append(f"  La media ({format_amount(mean)}) está muy por encima de la mediana ({format_amount(med)}): pocos montos altos tiran el promedio.")
+        notes.append(f"La media ({format_amount(mean)}) está muy por encima de la mediana ({format_amount(med)}): pocos montos altos tiran el promedio.")
     gini_users = conc.get("gini_donantes") or 0
     if gini_users >= 0.7:
-        lines.append(f"  Gini de donantes {gini_users:.3f}: el dinero está muy concentrado en un grupo chico.")
+        notes.append(f"Gini de donantes {gini_users:.3f}: el dinero está muy concentrado en un grupo chico.")
     elif gini_users >= 0.4:
-        lines.append(f"  Gini de donantes {gini_users:.3f}: hay desigualdad, pero no extrema.")
+        notes.append(f"Gini de donantes {gini_users:.3f}: hay desigualdad, pero no extrema.")
     pareto = conc.get("pareto_80_donantes") or {}
     if pareto.get("porcentaje_items"):
-        lines.append(f"  El 80% del monto lo aportan {_fmt_n(pareto['items'])} donantes ({pareto['porcentaje_items']:.1f}% del grupo).")
+        notes.append(f"El 80% del monto lo aportan {_fmt_n(pareto['items'])} donantes ({pareto['porcentaje_items']:.1f}% del grupo).")
     outliers = science.get("outliers_iqr") or 0
     if outliers:
         share = (science.get("outliers_suma") or 0) / report["suma"] * 100 if report.get("suma") else 0
-        lines.append(f"  Hay {_fmt_n(outliers)} outliers de monto; suman {format_amount(science.get('outliers_suma', 0))} ({share:.1f}% del total).")
+        notes.append(f"Hay {_fmt_n(outliers)} outliers de monto; suman {format_amount(science.get('outliers_suma', 0))} ({share:.1f}% del total).")
     r_freq = science.get("cerca_frecuencia_monto") or 0
     if r_freq >= 0.4:
-        lines.append(f"  Quienes donan más veces también aportan más plata (r={r_freq:.2f}).")
+        notes.append(f"Quienes donan más veces también aportan más plata (r={r_freq:.2f}).")
     elif abs(r_freq) < 0.2:
-        lines.append(f"  Donar muchas veces no implica aportar más plata (r={r_freq:.2f}).")
+        notes.append(f"Donar muchas veces no implica aportar más plata (r={r_freq:.2f}).")
     if report.get("recurrentes") and report.get("donantes"):
         pct = report["recurrentes"] / report["donantes"] * 100
-        lines.append(f"  El {pct:.1f}% de los donantes volvió al menos una vez.")
+        notes.append(f"El {pct:.1f}% de los donantes volvió al menos una vez.")
+    return notes
+
+
+def render_insights(report: dict) -> list[str]:
+    lines = ["Lectura"]
+    lines.extend(f"  {note}" for note in insights_list(report))
     lines.append("")
     return lines
 
