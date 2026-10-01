@@ -45,9 +45,7 @@ for name in \
 do
   cp "$ROOT/$name" "$APP/Contents/Resources/app/$name"
 done
-cp "$ROOT/macos/requirements-bundle.txt" "$APP/Contents/Resources/requirements-bundle.txt"
 cp "$ROOT/macos/LEEME.txt" "$APP/Contents/Resources/LEEME.txt"
-cp "$ROOT/macos/launcher.c" "$APP/Contents/Resources/launcher.c"
 
 if [[ "$LAYOUT_ONLY" -eq 1 ]]; then
   echo "Estructura lista, sin Python ni el ejecutable Mach-O: $APP"
