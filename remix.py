@@ -5,10 +5,11 @@ import numpy as np
 import soundfile as sf
 from pedalboard import Gain, Pedalboard
 
+from app_paths import data_dir
 from audio_io import load
 
 SAMPLE_RATE = 44100
-REMIX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
+REMIX_DIR = os.path.join(data_dir(), "remix_output")
 
 
 def as_stereo(wave):

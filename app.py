@@ -12,6 +12,7 @@ import soundfile as sf
 from scipy.ndimage import uniform_filter
 from scipy.signal import istft, stft
 
+from app_paths import data_dir, source_dir
 from audio_io import get_duration, load
 from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
 from exports import copy_to_downloads, exports_dir, open_exports_dir
@@ -19,9 +20,9 @@ from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from rvc_engine import RVC_DIR, convert_voice
 from youtube_lib import download_audio
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-CLEAN_DIR = os.path.join(ROOT, "clean_song_output")
-MDX_DIR = os.path.join(ROOT, "mdx_models")
+ROOT = source_dir()
+CLEAN_DIR = os.path.join(data_dir(), "clean_song_output")
+MDX_DIR = os.path.join(data_dir(), "mdx_models")
 HOST = "127.0.0.1"
 PORT = 7860
 CSS_PATH = os.path.join(ROOT, "ui.css")
@@ -60,9 +61,10 @@ def launch_kwargs(**overrides):
 def _allowed_paths():
     paths = [
         ROOT,
+        data_dir(),
         CLEAN_DIR,
         REMIX_DIR,
-        os.path.join(ROOT, "downloads"),
+        os.path.join(data_dir(), "downloads"),
         exports_dir(),
         tempfile.gettempdir(),
     ]
@@ -496,7 +498,7 @@ def separate_to_files(src_path, mdx_choice=""):
         if model_path is None:
             note = (
                 "Usé la separación local (canal central). "
-                "Si tenés un .onnx, dejalo en mdx_models."
+                f"Si tenés un .onnx, dejalo en {MDX_DIR}."
             )
     stem = _safe_stem(src_path)
     vocal_path = _write_audio(CLEAN_DIR, stem, "voz", vocals, sample_rate)
@@ -564,7 +566,7 @@ def on_refresh():
     note = (
         "Actualicé la lista de modelos."
         if models
-        else "No hay modelos .pth en rvc_models. Copiá el modelo ahí y actualizá de nuevo."
+        else f"No hay modelos .pth en {RVC_DIR}. Copiá el modelo ahí y actualizá de nuevo."
     )
     return (*model_updates(), note)
 
@@ -652,9 +654,9 @@ def build_server():
     indexes = rvc_index_choices()
     with gr.Blocks(title="Audio Separator", analytics_enabled=False) as demo:
         gr.Markdown(
-            """
+            f"""
 # Audio Separator
-Separá la voz del instrumental, convertí la voz con un modelo RVC de `rvc_models` y volvé a unir las pistas.
+Separá la voz del instrumental, convertí la voz con un modelo RVC de `{RVC_DIR}` y volvé a unir las pistas.
 
 Corre en tu Mac. No usa el Space de Hugging Face.
             """.strip()
@@ -683,7 +685,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
                 choices=separation,
                 value=_choice_value(separation, prefer_first_real=True),
                 label="Modelo de separación",
-                info="Si no hay un .onnx en mdx_models, queda la separación local.",
+                info=f"Si no hay un .onnx en {MDX_DIR}, queda la separación local.",
             )
         separate_btn = gr.Button("Separá", variant="primary")
         with gr.Row():
@@ -691,7 +693,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             instrumental = gr.Audio(label="Instrumental", type="filepath")
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
-            "Elegí un `.pth` de `rvc_models`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
+            f"Elegí un `.pth` de `{RVC_DIR}`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
         )
         with gr.Row():
             model = gr.Dropdown(
