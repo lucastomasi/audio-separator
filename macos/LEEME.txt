@@ -1,0 +1,37 @@
+Audio Separator
+
+1. Arrastrá "Audio Separator" a la carpeta Aplicaciones.
+2. Cerrá esta ventana. No abras la app desde adentro del disco.
+3. En Aplicaciones, Control-clic (clic derecho) sobre Audio Separator → Abrir → Abrir.
+
+macOS puede decir que no puede verificar al desarrollador. La app no está
+firmada. Abrirla con Control-clic es el paso normal.
+
+Si sigue sin abrir, pegá esto en Terminal y volvé a hacer Control-clic → Abrir:
+
+    xattr -dr com.apple.quarantine "/Applications/Audio Separator.app"
+
+La primera ventana puede tardar uno o dos minutos.
+
+Modelos
+La separación local (canal central) funciona sin bajar nada. Es más simple
+que un modelo dedicado.
+
+Estos archivos son grandes y no vienen en el disco. La app no los descarga.
+Copialos en:
+
+    ~/Library/Application Support/Audio Separator/mdx_models/
+        un .onnx si querés una separación mejor
+
+    ~/Library/Application Support/Audio Separator/rvc_models/
+        hubert_base/   (carpeta con config.json y los pesos)
+        rmvpe.pt
+        tu-voz.pth
+        tu-voz.index   (opcional)
+
+No hace falta una GPU NVIDIA. La separación corre en el procesador.
+La conversión de voz puede usar el chip de Apple si PyTorch lo detecta;
+si no, usa CPU y tarda más.
+
+YouTube necesita ffmpeg. El .app trae uno. Si una descarga falla, instalá
+ffmpeg (por ejemplo con Homebrew: brew install ffmpeg) y volvé a abrir la app.
