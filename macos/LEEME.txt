@@ -1,7 +1,9 @@
 Audio Separator
 
-1. Arrastrá "Audio Separator" a la carpeta Aplicaciones.
-2. Cerrá esta ventana. No abras la app desde adentro del disco.
+En esta ventana la app está a la izquierda y Aplicaciones a la derecha.
+
+1. Arrastrá Audio Separator sobre Aplicaciones.
+2. Cerrá este disco. No abras la app desde acá.
 3. En Aplicaciones, Control-clic (clic derecho) sobre Audio Separator → Abrir → Abrir.
 
 macOS puede decir que no puede verificar al desarrollador. La app no está

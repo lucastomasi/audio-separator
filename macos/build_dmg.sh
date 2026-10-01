@@ -1,15 +1,16 @@
 #!/bin/bash
-# Wrap dist/Audio Separator.app in an unsigned disk image.
-# Requires macOS (hdiutil). Does not sign or notarize.
+# Disk image: app on the left, Applications on the right, arrow in the middle.
+# Unsigned. No Apple certificate and no notarization.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Audio Separator"
 APP="$ROOT/dist/$APP_NAME.app"
 DMG="$ROOT/dist/$APP_NAME.dmg"
+PLAIN="$ROOT/dist/Audio-Separator-arm64.dmg"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "El DMG se arma en macOS con hdiutil."
+  echo "El DMG se arma en macOS."
   echo "En GitHub Actions lo genera el workflow macOS app."
   exit 1
 fi
@@ -22,19 +23,22 @@ if ! file "$APP/Contents/MacOS/audio-separator" | grep -q "Mach-O"; then
   echo "El .app no tiene un ejecutable Mach-O. No voy a empaquetar un script."
   exit 1
 fi
+if [[ ! -f "$APP/Contents/Resources/AppIcon.icns" ]]; then
+  echo "Falta el ícono del .app."
+  exit 1
+fi
 
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
-cp -R "$APP" "$STAGE/$APP_NAME.app"
-cp "$ROOT/macos/LEEME.txt" "$STAGE/LEEME.txt"
-ln -s /Applications "$STAGE/Applications"
-
-rm -f "$DMG"
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$STAGE" \
-  -ov \
-  -format UDZO \
+VENV="$(mktemp -d)"
+trap 'rm -rf "$VENV"' EXIT
+python3 -m venv "$VENV"
+"$VENV/bin/python" -m pip install --disable-pip-version-check --quiet "dmgbuild==1.6.7"
+rm -f "$DMG" "$PLAIN"
+"$VENV/bin/dmgbuild" \
+  -s "$ROOT/macos/dmg_settings.py" \
+  -D "app=$APP" \
+  -D "leeme=$ROOT/macos/LEEME.txt" \
+  "$APP_NAME" \
   "$DMG"
-
+cp "$DMG" "$PLAIN"
 echo "DMG listo: $DMG"
+echo "DMG listo: $PLAIN"
