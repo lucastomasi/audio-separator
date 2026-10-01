@@ -1,0 +1,4 @@
+{
+  "name": "Audio Separator",
+  "install": "bash .cursor/install.sh"
+}
