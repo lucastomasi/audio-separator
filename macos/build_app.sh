@@ -38,6 +38,7 @@ for name in \
   audio_text.py \
   desktop.py \
   exports.py \
+  model_fetch.py \
   remix.py \
   rvc_engine.py \
   youtube_lib.py \
@@ -141,12 +142,14 @@ mkdir -p "$SMOKE_HOME"
   AUDIO_SEPARATOR_HOME="$SMOKE_HOME" "$PY" - << 'PY'
 import app
 import gradio
+import model_fetch
 import numpy
 import soundfile
 import torch
 import webview
 from transformers import HubertModel
 app.build_server()
+assert model_fetch.VOCAL_ONNX_NAME.endswith(".onnx")
 print("torch", torch.__version__)
 print("gradio", gradio.__version__)
 print("hubert", HubertModel.__name__)

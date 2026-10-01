@@ -58,31 +58,14 @@ static void tell_user_failed(void) {
     );
 }
 
-static void write_models_note(const char *data) {
+/* Older builds dropped a note that told people to copy models by hand. */
+static void remove_models_note(const char *data) {
     char path[PATH_MAX];
-    FILE *handle;
 
     if (snprintf(path, sizeof path, "%s/DONDE-VAN-LOS-MODELOS.txt", data) >= (int)sizeof path) {
         return;
     }
-    if (access(path, F_OK) == 0) {
-        return;
-    }
-    handle = fopen(path, "w");
-    if (handle == NULL) {
-        return;
-    }
-    fprintf(handle, "Los modelos grandes no vienen con Audio Separator. La app no los descarga.\n\n");
-    fprintf(handle, "Separación local: funciona sin archivos extra (canal central).\n\n");
-    fprintf(handle, "Separación mejor, un archivo .onnx:\n%s/mdx_models\n\n", data);
-    fprintf(handle, "Voz RVC:\n");
-    fprintf(handle, "%s/rvc_models/hubert_base/   (config.json y los pesos)\n", data);
-    fprintf(handle, "%s/rvc_models/rmvpe.pt\n", data);
-    fprintf(handle, "%s/rvc_models/tu-voz.pth\n", data);
-    fprintf(handle, "%s/rvc_models/tu-voz.index   (opcional)\n\n", data);
-    fprintf(handle, "No hace falta una GPU NVIDIA. La separación corre en CPU.\n");
-    fprintf(handle, "La conversión de voz usa el chip de Apple si PyTorch lo detecta; si no, CPU.\n");
-    fclose(handle);
+    unlink(path);
 }
 
 static int open_log(const char *log_dir) {
@@ -162,7 +145,7 @@ int main(void) {
     mkdir_p(child);
     snprintf(child, sizeof child, "%s/rvc_output", data);
     mkdir_p(child);
-    write_models_note(data);
+    remove_models_note(data);
 
     if (access(py, X_OK) != 0 || access(script, R_OK) != 0) {
         tell_user_failed();
