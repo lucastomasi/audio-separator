@@ -18,6 +18,10 @@ if [[ ! -d "$APP" ]]; then
   echo "No está el .app. Primero: bash macos/build_app.sh"
   exit 1
 fi
+if ! file "$APP/Contents/MacOS/audio-separator" | grep -q "Mach-O"; then
+  echo "El .app no tiene un ejecutable Mach-O. No voy a empaquetar un script."
+  exit 1
+fi
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

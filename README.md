@@ -50,9 +50,13 @@ En una Mac, desde el repo:
 bash macos/build_release.sh
 ```
 
-Eso deja `dist/Audio Separator.app` y `dist/Audio Separator.dmg`. El script baja un CPython 3.12 relocatable, instala las dependencias dentro del bundle y arma el disco con `hdiutil`. No firma ni notariza.
+Eso deja `dist/Audio Separator.app` y `dist/Audio Separator.dmg`. El script baja un CPython 3.12 relocatable, instala las dependencias dentro del bundle, compila `macos/launcher.c` como ejecutable Mach-O de la app y arma el disco con `hdiutil`.
 
-`bash macos/build_app.sh --layout-only` solo crea la carpeta del `.app`, sin Python. Sirve para revisar la estructura en cualquier sistema.
+El ejecutable no es un script. Un `.app` cuyo programa principal es un shell, macOS lo trata como dañado y la ventana no queda como la app que abriste. `clang` genera el binario en la Mac que arma el disco. Esa misma Mac le pone una firma ad-hoc (`codesign -s -`) al ejecutable y a ffmpeg, sin certificado de desarrollador y sin notarización. Gatekeeper igual pide Control-clic → Abrir.
+
+El artifact del workflow es un zip. Adentro está `Audio Separator.dmg`.
+
+`bash macos/build_app.sh --layout-only` solo crea la carpeta del `.app`, sin Python y sin el binario. Sirve para revisar la estructura en cualquier sistema.
 
 ## Desarrollo
 

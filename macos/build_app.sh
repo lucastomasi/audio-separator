@@ -47,80 +47,11 @@ do
 done
 cp "$ROOT/macos/requirements-bundle.txt" "$APP/Contents/Resources/requirements-bundle.txt"
 cp "$ROOT/macos/LEEME.txt" "$APP/Contents/Resources/LEEME.txt"
-
-cat > "$APP/Contents/MacOS/audio-separator" << 'EOF'
-#!/bin/bash
-# Launcher for Audio Separator.app. Paths are relative to this bundle.
-set -euo pipefail
-
-MACOS_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONTENTS="$(cd "$MACOS_DIR/.." && pwd)"
-RESOURCES="$CONTENTS/Resources"
-APP_DIR="$RESOURCES/app"
-PY="$RESOURCES/python/bin/python3"
-HOME_DIR="$HOME/Library/Application Support/Audio Separator"
-LOG_DIR="$HOME/Library/Logs/Audio Separator"
-LOG="$LOG_DIR/launch.log"
-
-mkdir -p "$LOG_DIR" \
-  "$HOME_DIR/mdx_models" \
-  "$HOME_DIR/rvc_models" \
-  "$HOME_DIR/downloads" \
-  "$HOME_DIR/clean_song_output" \
-  "$HOME_DIR/remix_output" \
-  "$HOME_DIR/rvc_output"
-
-NOTE="$HOME_DIR/DONDE-VAN-LOS-MODELOS.txt"
-if [[ ! -f "$NOTE" ]]; then
-  cat > "$NOTE" << NOTE_EOF
-Los modelos grandes no vienen con Audio Separator. La app no los descarga.
-
-Separación local: funciona sin archivos extra (canal central).
-
-Separación mejor, un archivo .onnx:
-$HOME_DIR/mdx_models
-
-Voz RVC:
-$HOME_DIR/rvc_models/hubert_base/   (config.json y los pesos)
-$HOME_DIR/rvc_models/rmvpe.pt
-$HOME_DIR/rvc_models/tu-voz.pth
-$HOME_DIR/rvc_models/tu-voz.index   (opcional)
-
-No hace falta una GPU NVIDIA. La separación corre en CPU.
-La conversión de voz usa el chip de Apple si PyTorch lo detecta; si no, CPU.
-NOTE_EOF
-fi
-
-tell_user() {
-  local message="$1"
-  printf '%s\n' "$message" >> "$LOG"
-  if command -v osascript >/dev/null 2>&1; then
-    osascript -e "display dialog \"${message}\" buttons {\"OK\"} default button 1 with title \"Audio Separator\"" >/dev/null 2>&1 || true
-  fi
-}
-
-if [[ ! -x "$PY" ]]; then
-  tell_user "Falta el Python de la app. Volvé a armarla con macos/build_release.sh en una Mac."
-  exit 1
-fi
-
-export PATH="$RESOURCES/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-export AUDIO_SEPARATOR_HOME="$HOME_DIR"
-export PYTHONNOUSERSITE=1
-export PYTHONDONTWRITEBYTECODE=1
-
-{
-  printf '\n---- %s ----\n' "$(date)"
-  "$PY" "$APP_DIR/desktop.py"
-} >> "$LOG" 2>&1 || {
-  tell_user "Audio Separator no pudo abrir. El detalle está en ~/Library/Logs/Audio Separator/launch.log"
-  exit 1
-}
-EOF
-chmod +x "$APP/Contents/MacOS/audio-separator"
+cp "$ROOT/macos/launcher.c" "$APP/Contents/Resources/launcher.c"
 
 if [[ "$LAYOUT_ONLY" -eq 1 ]]; then
-  echo "Estructura lista (sin Python ni dependencias): $APP"
+  echo "Estructura lista, sin Python ni el ejecutable Mach-O: $APP"
+  echo "El armado completo (en macOS) compila macos/launcher.c dentro del .app."
   exit 0
 fi
 
@@ -168,18 +99,61 @@ if ! "$PY" -m pip install --no-cache-dir torchcrepe; then
   echo "torchcrepe no se instaló. La conversión usa rmvpe y no lo necesita."
 fi
 
-echo "Comprobando imports..."
-"$PY" - << 'PY'
+if [[ -f "$ROOT/macos/AppIcon.png" ]]; then
+  ICONSET="$TMP/AppIcon.iconset"
+  mkdir -p "$ICONSET"
+  for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" "$ROOT/macos/AppIcon.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    double=$((size * 2))
+    sips -z "$double" "$double" "$ROOT/macos/AppIcon.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+fi
+
+echo "Compilando el ejecutable de la app..."
+clang -Os -mmacosx-version-min=12.0 \
+  -o "$APP/Contents/MacOS/audio-separator" \
+  "$ROOT/macos/launcher.c"
+# Firma ad-hoc local, sin certificado de Apple y sin notarización.
+# En Apple Silicon un Mach-O sin ninguna firma muere al ejecutarse.
+codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/audio-separator"
+codesign --force --sign - --timestamp=none "$APP/Contents/Resources/bin/ffmpeg"
+codesign --force --sign - --timestamp=none "$APP/Contents/Resources/bin/ffprobe"
+
+if ! file "$APP/Contents/MacOS/audio-separator" | grep -q "Mach-O"; then
+  echo "El ejecutable no quedó como binario Mach-O."
+  exit 1
+fi
+
+echo "Revisando que el Python embebido no tenga rutas absolutas de otra máquina..."
+if ! otool -L "$PY" > "$TMP/python-libs.txt"; then
+  echo "No pude leer las librerías de Python."
+  exit 1
+fi
+if awk 'NR>1 { print }' "$TMP/python-libs.txt" | grep -E '/Users/|/opt/homebrew/|/usr/local/'; then
+  echo "Python no es relocatable. El .app se rompería al moverlo a Aplicaciones."
+  exit 1
+fi
+
+echo "Comprobando que la app empaquetada importa y arma la interfaz..."
+SMOKE_HOME="$TMP/support"
+mkdir -p "$SMOKE_HOME"
+(
+  cd "$APP/Contents/Resources/app"
+  AUDIO_SEPARATOR_HOME="$SMOKE_HOME" "$PY" - << 'PY'
+import app
 import gradio
 import numpy
 import soundfile
 import torch
 import webview
 from transformers import HubertModel
+app.build_server()
 print("torch", torch.__version__)
 print("gradio", gradio.__version__)
 print("hubert", HubertModel.__name__)
-print("imports ok")
+print("ui ok")
 PY
+)
 
 echo "App lista: $APP"

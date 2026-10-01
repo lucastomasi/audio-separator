@@ -8,6 +8,8 @@
   <string>Audio Separator</string>
   <key>CFBundleExecutable</key>
   <string>audio-separator</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>com.lucastomasi.audio-separator</string>
   <key>CFBundleInfoDictionaryVersion</key>
