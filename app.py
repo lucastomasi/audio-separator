@@ -818,8 +818,15 @@ def main(argv=None):
         type=int,
         default=int(os.environ.get("AUDIO_SEPARATOR_PORT", str(PORT))),
     )
+    parser.add_argument(
+        "--share",
+        action="store_true",
+        help="Publicá un enlace https temporal para abrir la app fuera de tu Wi-Fi.",
+    )
     args = parser.parse_args(argv)
-    launch_server(server_name=args.host, server_port=args.port)
+    if args.share:
+        print("* Creando el enlace público. Puede tardar un momento.")
+    launch_server(server_name=args.host, server_port=args.port, share=args.share)
 
 
 if __name__ == "__main__":

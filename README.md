@@ -22,11 +22,19 @@ La terminal imprime una dirección `http://192.168.x.x:7860`. Abrila en Safari e
 
 En Safari: Compartir → Agregar a pantalla de inicio. El ícono abre la interfaz sin la barra del navegador.
 
+Para un enlace público, fuera de tu Wi-Fi:
+
+```bash
+.venv/bin/python app.py --share
+```
+
+Gradio imprime un `https://….gradio.live`. Ese es el enlace. Abrilo en Safari y agregalo a la pantalla de inicio. Sigue vivo mientras el servidor está prendido (el túnel dura como máximo una semana). Quien tenga el enlace puede usar la app.
+
 Límites:
 
 - Si apagás la computadora o cerrás el servidor, el ícono del iPhone no tiene a quién pedirle el audio.
 - Los modelos ONNX y RVC no corren en el teléfono.
-- Fuera de tu red no entra, salvo que publiques el servidor por tu cuenta. Esta app no trae hosting.
+- Fuera de tu red, usá `--share`. No es un hosting permanente: si cerrás el servidor, el enlace deja de andar.
 - En `http://` de la red local, Safari deja agregar a inicio. Un service worker de instalación offline pide HTTPS o localhost. Acá no hace falta para la pantalla de inicio, y el audio igual depende del servidor.
 - Exportar a Descargas y Abrí la carpeta escriben en la computadora del servidor. Para guardar en el iPhone, usá la descarga del reproductor en Safari.
 

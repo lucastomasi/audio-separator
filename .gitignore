@@ -1,4 +1,5 @@
 .venv/
+.gradio/
 __pycache__/
 *.pyc
 clean_song_output/
