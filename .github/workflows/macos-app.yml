@@ -1,0 +1,32 @@
+name: macOS app
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "*.py"
+      - "**/*.py"
+      - "ui.css"
+      - "macos/**"
+      - "requirements-macos.txt"
+      - ".github/workflows/macos-app.yml"
+
+jobs:
+  dmg:
+    name: Unsigned .app and .dmg
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app and disk image
+        run: bash macos/build_release.sh
+
+      - name: Show artifact size
+        run: du -sh dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Audio-Separator-macos-arm64
+          path: dist/Audio Separator.dmg
+          if-no-files-found: error
