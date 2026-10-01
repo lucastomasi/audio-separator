@@ -3,6 +3,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 
@@ -16,6 +18,7 @@ from app_paths import data_dir, source_dir
 from audio_io import get_duration, load
 from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
 from exports import copy_to_downloads, exports_dir, open_exports_dir
+import model_fetch
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from rvc_engine import RVC_DIR, convert_voice
 from youtube_lib import download_audio
@@ -496,10 +499,7 @@ def separate_to_files(src_path, mdx_choice=""):
     if vocals is None:
         vocals, instrumental = separate_center(stereo, sample_rate)
         if model_path is None:
-            note = (
-                "Usé la separación local (canal central). "
-                f"Si tenés un .onnx, dejalo en {MDX_DIR}."
-            )
+            note = "Usé la separación local (canal central)."
     stem = _safe_stem(src_path)
     vocal_path = _write_audio(CLEAN_DIR, stem, "voz", vocals, sample_rate)
     instrumental_path = _write_audio(
@@ -531,27 +531,62 @@ def on_download(url):
     return path, None, None, None, None, message
 
 
-def on_separate(audio, url, _stem, mdx_choice):
+def _bridge(progress):
+    def report(frac, message):
+        if progress is None:
+            return
+        progress(frac, desc=message)
+
+    return report
+
+
+def prepare_separation(mdx_choice, on_progress=None):
+    """Use the chosen ONNX, or download the vocal model when none is installed.
+
+    An explicit local choice stays local once any .onnx is already there.
+    Returns (choice, dropdown_update). An empty choice is the center split.
+    """
+    if mdx_choice and mdx_choice != LOCAL_SEPARATION:
+        return mdx_choice, gr.update()
+    if _list_files(MDX_DIR, ".onnx"):
+        return "", gr.update()
+    path, _downloaded = model_fetch.ensure_vocal_model(MDX_DIR, on_progress=on_progress)
+    return path, gr.update(choices=separation_choices(), value=path)
+
+
+def on_separate(audio, url, _stem, mdx_choice, progress=gr.Progress()):
     source = _audio_path(audio)
+    mdx_update = gr.update()
     try:
         if source is None and (url or "").strip():
             source, _cached, _ignored = download_audio(url)
         if source is None:
             raise ValueError("Subí un audio o pegá un enlace de YouTube.")
-        vocal_path, instrumental_path, note = separate_to_files(source, mdx_choice)
+        choice = mdx_choice
+        try:
+            choice, mdx_update = prepare_separation(mdx_choice, _bridge(progress))
+        except model_fetch.DownloadError as exc:
+            vocal_path, instrumental_path, _note = separate_to_files(source, "")
+            message = (
+                f"Listo. Separé la voz y el instrumental{_duration_note(source)}. "
+                f"{exc} Seguí con la separación local."
+            )
+            return source, vocal_path, instrumental_path, None, None, message, mdx_update
+        vocal_path, instrumental_path, note = separate_to_files(source, choice)
     except Exception as exc:
         _ui_error(exc)
     message = f"Listo. Separé la voz y el instrumental{_duration_note(source)}. {note}"
-    return source, vocal_path, instrumental_path, None, None, message
+    return source, vocal_path, instrumental_path, None, None, message, mdx_update
 
 
-def on_convert(vocal, model, index):
+def on_convert(vocal, model, index, progress=gr.Progress()):
     vocal_path = _audio_path(vocal)
     try:
         if vocal_path is None:
             raise ValueError("Primero separá el audio para tener la voz.")
         model_path = _resolve_rvc_model(model)
         index_path = _resolve_index(index)
+        model_fetch.ensure_rvc_support(RVC_DIR, on_progress=_bridge(progress))
         converted = convert_voice(vocal_path, model_path, index_path)
         if not converted or not os.path.isfile(converted):
             raise ValueError("La conversión no devolvió un audio.")
@@ -566,9 +601,39 @@ def on_refresh():
     note = (
         "Actualicé la lista de modelos."
         if models
-        else f"No hay modelos .pth en {RVC_DIR}. Copiá el modelo ahí y actualizá de nuevo."
+        else "No hay un archivo de voz (.pth). Abrí la carpeta de voces, dejá el tuyo y actualizá de nuevo."
     )
     return (*model_updates(), note)
+
+
+def on_fetch_models(progress=gr.Progress()):
+    try:
+        downloaded = model_fetch.ensure_standard_models(
+            MDX_DIR,
+            RVC_DIR,
+            on_progress=_bridge(progress),
+        )
+    except Exception as exc:
+        _ui_error(exc)
+    return (*model_updates(), model_fetch.fetch_status(downloaded))
+
+
+def _open_directory(directory):
+    os.makedirs(directory, exist_ok=True)
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", directory])
+    elif sys.platform == "win32":
+        os.startfile(directory)  # noqa: NT001 - Windows only
+    else:
+        subprocess.Popen(["xdg-open", directory])
+
+
+def on_open_voices():
+    try:
+        _open_directory(RVC_DIR)
+    except OSError:
+        return "No pude abrir la carpeta de voces."
+    return "Abrí la carpeta de voces. Dejá ahí tu archivo .pth y tocá Actualizá los modelos."
 
 
 def _vocal_for_remix(vocal, converted, use_converted):
@@ -654,11 +719,11 @@ def build_server():
     indexes = rvc_index_choices()
     with gr.Blocks(title="Audio Separator", analytics_enabled=False) as demo:
         gr.Markdown(
-            f"""
+            """
 # Audio Separator
-Separá la voz del instrumental, convertí la voz con un modelo RVC de `{RVC_DIR}` y volvé a unir las pistas.
+Separá la voz del instrumental, convertí la voz y volvé a unir las pistas.
 
-Corre en tu Mac. No usa el Space de Hugging Face.
+Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pth tuyo.
             """.strip()
         )
         status = gr.Markdown("Subí un audio o pegá un enlace de YouTube.")
@@ -685,7 +750,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
                 choices=separation,
                 value=_choice_value(separation, prefer_first_real=True),
                 label="Modelo de separación",
-                info=f"Si no hay un .onnx en {MDX_DIR}, queda la separación local.",
+                info="La app baja un modelo de voz. Separación local queda como alternativa.",
             )
         separate_btn = gr.Button("Separá", variant="primary")
         with gr.Row():
@@ -693,7 +758,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             instrumental = gr.Audio(label="Instrumental", type="filepath")
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
-            f"Elegí un `.pth` de `{RVC_DIR}`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
+            "Tu voz es un archivo .pth tuyo. Abrí la carpeta de voces, dejalo ahí y tocá Actualizá los modelos. HuBERT y el pitch los baja la app."
         )
         with gr.Row():
             model = gr.Dropdown(
@@ -708,6 +773,8 @@ Corre en tu Mac. No usa el Space de Hugging Face.
                 info="Opcional. Si no tenés un .index, dejá Sin índice.",
             )
         with gr.Row():
+            fetch_btn = gr.Button("Bajá los modelos")
+            voices_btn = gr.Button("Abrí la carpeta de voces")
             refresh_btn = gr.Button("Actualizá los modelos")
             convert_btn = gr.Button("Convertí la voz", variant="primary")
         converted = gr.Audio(label="Voz convertida", type="filepath")
@@ -743,7 +810,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
         separate_btn.click(
             on_separate,
             inputs=[audio_in, url, stem, mdx],
-            outputs=[audio_in, vocal, instrumental, converted, remix, status],
+            outputs=[audio_in, vocal, instrumental, converted, remix, status, mdx],
             api_name="separar",
         )
         convert_btn.click(
@@ -752,6 +819,12 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             outputs=[converted, remix, status],
             api_name="convertir",
         )
+        fetch_btn.click(
+            on_fetch_models,
+            outputs=[model, index, mdx, status],
+            api_name="bajar_modelos",
+        )
+        voices_btn.click(on_open_voices, outputs=[status], api_name="abrir_voces")
         refresh_btn.click(
             on_refresh,
             outputs=[model, index, mdx, status],

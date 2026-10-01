@@ -26,16 +26,9 @@ Volvé a abrirla con Control-clic → Abrir. La primera ventana puede tardar uno
 
 ### Modelos y procesador
 
-La separación local (canal central) funciona sin bajar nada. Es más simple que un modelo de separación.
+La primera vez que separás, la app baja el modelo de separación. La primera vez que convertís, baja HuBERT y el estimador de pitch. Esos archivos no van en el disco: la app los baja sola.
 
-Estos archivos son grandes y no van en el DMG. La app no los descarga:
-
-- Un `.onnx` para separar mejor, en `~/Library/Application Support/Audio Separator/mdx_models/`.
-- Para convertir la voz, en `~/Library/Application Support/Audio Separator/rvc_models/`:
-  - `hubert_base/` — carpeta con `config.json` y los pesos (`model.safetensors` o `pytorch_model.bin`). Un `hubert_base.pt` suelto no alcanza.
-  - `rmvpe.pt`
-  - `tu-voz.pth`
-  - `tu-voz.index` — opcional.
+Tu voz es un archivo `.pth` tuyo. En la app: **Abrí la carpeta de voces**, dejá el `.pth` ahí y tocá **Actualizá los modelos**.
 
 No hace falta una GPU NVIDIA. La separación ONNX corre en CPU. La conversión de voz puede usar el chip de Apple si PyTorch lo detecta; si no, usa CPU y tarda más.
 
@@ -65,13 +58,8 @@ En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace 
 
 ## Modelos RVC
 
-Copiá estos archivos a `rvc_models/` antes de convertir. La app no los descarga. Si la corrés desde el repo, esa carpeta está al lado del código. Si abrís el `.app`, es `~/Library/Application Support/Audio Separator/rvc_models/`.
+La app baja HuBERT y `rmvpe.pt` la primera vez que convertís. El `.pth` de la voz es tuyo: dejalo en `rvc_models/`.
 
-- `hubert_base/` — carpeta del modelo HuBERT, con `config.json` y los pesos (`model.safetensors` o `pytorch_model.bin`). Un `hubert_base.pt` suelto no alcanza.
-- `rmvpe.pt` — el estimador de pitch.
-- `tu-voz.pth` — el modelo de voz.
-- `tu-voz.index` — opcional, el índice de esa voz.
-
-Esos binarios quedan fuera de git. En la app: Actualizá los modelos y después Convertí la voz. El pitch es rmvpe; no hace falta pyworld.
+Esos binarios quedan fuera de git. El pitch es rmvpe; no hace falta pyworld.
 
 `infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si `pip install -r requirements-macos.txt` se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.

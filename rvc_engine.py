@@ -1,4 +1,8 @@
-"""Local RVC conversion. No Hugging Face download, no extra UI options."""
+"""Local RVC conversion.
+
+model_fetch downloads HuBERT and rmvpe before this runs. Conversion stays
+offline so those files are not pulled again. The voice .pth is the user's.
+"""
 import os
 import sys
 import time
@@ -87,7 +91,7 @@ def _validate_hubert(path):
             return path
         raise ValueError(
             "rvc_models/hubert_base no tiene config.json. "
-            "Copiá la carpeta completa del modelo HuBERT, con config.json y los pesos."
+            "La descarga quedó incompleta. Volvé a bajar los modelos."
         )
     raise ValueError(
         "El motor RVC necesita la carpeta rvc_models/hubert_base "
