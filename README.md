@@ -8,6 +8,28 @@ No usa el Space de Hugging Face.
 .venv/bin/python desktop.py
 ```
 
+## iPhone: agregarla a la pantalla de inicio
+
+No es una app de la App Store ni un IPA. El teléfono es la pantalla. La separación y RVC corren en la computadora que tiene los modelos.
+
+En esa computadora, en la misma Wi-Fi que el iPhone:
+
+```bash
+.venv/bin/python app.py --host 0.0.0.0
+```
+
+La terminal imprime una dirección `http://192.168.x.x:7860`. Abrila en Safari en el iPhone. `127.0.0.1` en el teléfono es el teléfono, no la computadora. `desktop.py` escucha solo en esta máquina y no alcanza para el iPhone.
+
+En Safari: Compartir → Agregar a pantalla de inicio. El ícono abre la interfaz sin la barra del navegador.
+
+Límites:
+
+- Si apagás la computadora o cerrás el servidor, el ícono del iPhone no tiene a quién pedirle el audio.
+- Los modelos ONNX y RVC no corren en el teléfono.
+- Fuera de tu red no entra, salvo que publiques el servidor por tu cuenta. Esta app no trae hosting.
+- En `http://` de la red local, Safari deja agregar a inicio. Un service worker de instalación offline pide HTTPS o localhost. Acá no hace falta para la pantalla de inicio, y el audio igual depende del servidor.
+- Exportar a Descargas y Abrí la carpeta escriben en la computadora del servidor. Para guardar en el iPhone, usá la descarga del reproductor en Safari.
+
 ## Modelos RVC
 
 Copiá estos archivos a `rvc_models/` antes de convertir. La app no los descarga.

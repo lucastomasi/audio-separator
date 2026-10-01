@@ -39,9 +39,9 @@ def port_open():
 
 
 def start_server():
-    from app import build_server, launch_kwargs
-    demo = build_server()
-    demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+    from app import launch_server
+
+    launch_server(prevent_thread_lock=True, inbrowser=False)
 
 
 def wait_until_ready(timeout=300):

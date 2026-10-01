@@ -1,4 +1,5 @@
-"""Gradio UI for the local Mac app. Launch with desktop.py."""
+"""Gradio UI for the local Mac app. Launch with desktop.py or app.py."""
+import argparse
 import json
 import os
 import re
@@ -18,6 +19,8 @@ from exports import copy_to_downloads, exports_dir, open_exports_dir
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from rvc_engine import RVC_DIR, convert_voice
 from youtube_lib import download_audio
+
+import pwa_web
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CLEAN_DIR = os.path.join(ROOT, "clean_song_output")
@@ -52,6 +55,8 @@ def launch_kwargs(**overrides):
         "theme": gr.themes.Soft(),
         "allowed_paths": _allowed_paths(),
         "footer_links": [],
+        "pwa": True,
+        "favicon_path": os.path.join(pwa_web.PWA_DIR, "favicon.ico"),
     }
     kwargs.update(overrides)
     return kwargs
@@ -656,7 +661,7 @@ def build_server():
 # Audio Separator
 Separá la voz del instrumental, convertí la voz con un modelo RVC de `rvc_models` y volvé a unir las pistas.
 
-Corre en tu Mac. No usa el Space de Hugging Face.
+La cuenta la hace la computadora donde corre el servidor. Desde el iPhone abrila en Safari y agregala a la pantalla de inicio. No es una app de la App Store.
             """.strip()
         )
         status = gr.Markdown("Subí un audio o pegá un enlace de YouTube.")
@@ -776,5 +781,46 @@ Corre en tu Mac. No usa el Space de Hugging Face.
     return demo
 
 
+def launch_server(**overrides):
+    """Start Gradio with the iPhone home-screen tags installed before it listens."""
+    from gradio.routes import App
+
+    original = App.__dict__["create_app"]
+
+    def create_app(*args, **kwargs):
+        app = original.__func__(*args, **kwargs)
+        pwa_web.install_pwa(app)
+        return app
+
+    App.create_app = staticmethod(create_app)
+    try:
+        kwargs = launch_kwargs(**overrides)
+        pwa_web.print_phone_url(kwargs.get("server_name"), kwargs.get("server_port"))
+        return build_server().launch(**kwargs)
+    finally:
+        App.create_app = original
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Servidor web de Audio Separator. "
+            "En el iPhone se abre con Safari y se agrega a la pantalla de inicio."
+        )
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("AUDIO_SEPARATOR_HOST", HOST),
+        help="Usá 0.0.0.0 para entrar desde el iPhone en la misma Wi-Fi.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("AUDIO_SEPARATOR_PORT", str(PORT))),
+    )
+    args = parser.parse_args(argv)
+    launch_server(server_name=args.host, server_port=args.port)
+
+
 if __name__ == "__main__":
-    build_server().launch(**launch_kwargs())
+    main()
