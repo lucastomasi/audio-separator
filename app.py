@@ -11,10 +11,12 @@ import numpy as np
 import soundfile as sf
 from scipy.ndimage import uniform_filter
 from scipy.signal import istft, stft
+from starlette.middleware import Middleware
 
 from audio_io import get_duration, load
 from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
 from exports import copy_to_downloads, exports_dir, open_exports_dir
+from pwa import PWAMiddleware, favicon_path
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from rvc_engine import RVC_DIR, convert_voice
 from youtube_lib import download_audio
@@ -35,7 +37,11 @@ LOCAL_SEPARATION = "Separación local"
 
 
 def launch_kwargs(**overrides):
-    """Arguments for demo.launch(). desktop.py passes prevent_thread_lock and inbrowser."""
+    """Arguments for demo.launch(). desktop.py passes prevent_thread_lock and inbrowser.
+
+    The home-screen manifest and Apple tags are installed for every launch.
+    desktop.py still binds to 127.0.0.1; `python app.py` is what the iPhone reaches.
+    """
     try:
         with open(CSS_PATH, encoding="utf-8") as handle:
             css = handle.read()
@@ -48,13 +54,82 @@ def launch_kwargs(**overrides):
         "share": False,
         "show_error": True,
         "ssr_mode": False,
+        "pwa": True,
+        "favicon_path": favicon_path(),
         "css": css,
         "theme": gr.themes.Soft(),
         "allowed_paths": _allowed_paths(),
         "footer_links": [],
     }
     kwargs.update(overrides)
+    app_kwargs = dict(kwargs.get("app_kwargs") or {})
+    middleware = list(app_kwargs.get("middleware") or [])
+    if not any(getattr(item, "cls", None) is PWAMiddleware for item in middleware):
+        middleware.append(Middleware(PWAMiddleware))
+    app_kwargs["middleware"] = middleware
+    kwargs["app_kwargs"] = app_kwargs
+    kwargs["pwa"] = True
+    if not kwargs.get("favicon_path"):
+        kwargs["favicon_path"] = favicon_path()
     return kwargs
+
+
+def local_http_urls(port):
+    """LAN addresses an iPhone on the same Wi-Fi can open. Loopback is omitted."""
+    import socket
+
+    found = []
+
+    def add(ip):
+        if not ip or ip.startswith("127.") or ":" in ip:
+            return
+        url = f"http://{ip}:{port}"
+        if url not in found:
+            found.append(url)
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.4)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            add(sock.getsockname()[0])
+        finally:
+            sock.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            add(info[4][0])
+    except OSError:
+        pass
+    return found
+
+
+def phone_hint(host, port):
+    """Short terminal note. The phone is a Safari client, not an App Store app."""
+    if host in ("0.0.0.0", "::"):
+        urls = local_http_urls(port)
+        lines = [
+            "Servidor web para el iPhone (no es una app de la App Store).",
+            "Misma Wi-Fi. En Safari: Compartir → Agregar a pantalla de inicio.",
+        ]
+        if urls:
+            lines.append("Abrí esta dirección:")
+            lines.extend(urls)
+        else:
+            lines.append(
+                f"No pude leer la IP local. El puerto es {port}; usá la IP de esta máquina."
+            )
+        lines.append(
+            "El teléfono es la pantalla. RVC y los modelos de separación corren en esta computadora."
+        )
+        return "\n".join(lines)
+    return "\n".join(
+        [
+            f"Servidor solo en esta máquina: http://{host}:{port}",
+            "Para el iPhone, en la misma Wi-Fi: python app.py --host 0.0.0.0",
+        ]
+    )
 
 
 def _allowed_paths():
@@ -656,7 +731,7 @@ def build_server():
 # Audio Separator
 Separá la voz del instrumental, convertí la voz con un modelo RVC de `rvc_models` y volvé a unir las pistas.
 
-Corre en tu Mac. No usa el Space de Hugging Face.
+Corre en tu computadora. No usa el Space de Hugging Face. En el iPhone, abrila en Safari y agregala a la pantalla de inicio: el teléfono es la pantalla, no procesa los modelos.
             """.strip()
         )
         status = gr.Markdown("Subí un audio o pegá un enlace de YouTube.")
@@ -776,5 +851,28 @@ Corre en tu Mac. No usa el Space de Hugging Face.
     return demo
 
 
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Servidor web de Audio Separator. En el iPhone se agrega desde Safari; no es una app de la App Store."
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("AUDIO_SEPARATOR_HOST", "0.0.0.0"),
+        help="0.0.0.0 para la Wi-Fi local. 127.0.0.1 lo deja solo en esta máquina.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("AUDIO_SEPARATOR_PORT", str(PORT))),
+    )
+    args = parser.parse_args(argv)
+    print(phone_hint(args.host, args.port), flush=True)
+    build_server().launch(
+        **launch_kwargs(server_name=args.host, server_port=args.port)
+    )
+
+
 if __name__ == "__main__":
-    build_server().launch(**launch_kwargs())
+    main()
