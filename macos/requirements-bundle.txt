@@ -1,0 +1,32 @@
+# Dependencies installed inside Audio Separator.app.
+#
+# requirements-macos.txt cannot be installed as one set: gradio==6.20.0 needs
+# huggingface-hub>=1.2 and transformers==4.46.3 needs huggingface-hub<1.
+# transformers 5.0 still exposes HubertModel, which infer-rvc-python imports.
+#
+# infer-rvc-python is installed by macos/build_app.sh with --no-deps.
+# pyworld==0.3.4 has no Python 3.12 wheel; the app stubs it and uses rmvpe.
+# torchcrepe is optional for the same reason and is not required here.
+numpy<2
+torch==2.2.2
+torchaudio==2.2.2
+onnxruntime
+soundfile
+pedalboard
+yt-dlp
+tqdm
+gradio==6.20.0
+ffmpeg-python
+scipy
+requests
+urllib3
+pywebview
+picklescan
+transformers==5.0.0
+faiss-cpu
+praat-parselmouth
+resampy
+librosa>=0.10,<0.11
+numba>=0.60
+llvmlite>=0.43
+safetensors

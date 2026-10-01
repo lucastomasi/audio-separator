@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Native window for Audio Separator. Closing the window stops the app."""
+import os
 import socket
+import subprocess
 import sys
 import threading
 import time
-
-import webview
+import traceback
 
 URL = "http://127.0.0.1:7860"
 HOST = "127.0.0.1"
@@ -60,7 +61,30 @@ def attach_when_ready(window):
     window.load_url(URL)
 
 
+def _report_launch_failure():
+    log_dir = os.path.expanduser("~/Library/Logs/Audio Separator")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "launch.log"), "a", encoding="utf-8") as handle:
+            handle.write("\n")
+            handle.write(traceback.format_exc())
+    except OSError:
+        pass
+    if sys.platform != "darwin":
+        return
+    subprocess.run(
+        [
+            "osascript",
+            "-e",
+            'display dialog "Audio Separator no pudo abrir. El detalle está en ~/Library/Logs/Audio Separator/launch.log" buttons {"OK"} default button 1 with title "Audio Separator"',
+        ],
+        check=False,
+    )
+
+
 def main():
+    import webview
+
     already = port_open()
     if not already:
         threading.Thread(target=start_server, daemon=True).start()
@@ -77,4 +101,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        _report_launch_failure()
+        raise SystemExit(1)

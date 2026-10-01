@@ -8,8 +8,10 @@ import numpy as np
 import soundfile as sf
 from picklescan.scanner import scan_file_path
 
-RVC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models")
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_output")
+from app_paths import data_dir
+
+RVC_DIR = os.path.join(data_dir(), "rvc_models")
+OUTPUT_DIR = os.path.join(data_dir(), "rvc_output")
 
 _converter = None
 _converter_key = None

@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 
+from app_paths import data_dir
 from audio_text import normalize_media_url
 
 AUDIO_EXTS = ("mp3", "m4a", "wav", "webm", "opus", "ogg")
@@ -12,7 +13,7 @@ YOUTUBE_ID_RE = re.compile(
 
 
 def downloads_dir():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+    path = os.path.join(data_dir(), "downloads")
     os.makedirs(path, exist_ok=True)
     return path
 
