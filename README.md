@@ -6,14 +6,13 @@ No usa el Space de Hugging Face.
 
 ## Instalar en Mac
 
-La descarga es un disco `Audio Separator.dmg`. Adentro está `Audio Separator.app`, con Python y las librerías ya instalados. No hace falta instalar Python ni armar un entorno a mano.
+Para Apple Silicon, bajá el disco (trae Python y las librerías; no hace falta instalar nada más):
 
-El DMG lo arma el workflow de GitHub Actions **macOS app** (corre en cada pull request y también a mano). Entrá al workflow, abrí el run verde y bajá el artifact `Audio-Separator-macos-arm64`. Ese disco es para Mac con Apple Silicon. En una Mac Intel, el mismo script (`bash macos/build_release.sh`) genera el disco para esa máquina.
+https://github.com/lucastomasi/audio-separator/releases/download/macos-arm64/Audio-Separator-arm64.dmg
 
-1. Abrí el DMG.
-2. Arrastrá **Audio Separator** a la carpeta **Aplicaciones**. Leé `LEEME.txt` si está al lado.
-3. Cerrá el DMG. No abras la app desde adentro del disco.
-4. En Aplicaciones, **Control-clic** (clic derecho) sobre Audio Separator → **Abrir** → **Abrir**.
+Abrilo. La app está a la izquierda y Aplicaciones a la derecha. Arrastrá **Audio Separator** a **Aplicaciones**, cerrá el disco y no la abras desde adentro. `LEEME.txt` está en el mismo disco.
+
+En Aplicaciones, **Control-clic** (clic derecho) sobre Audio Separator → **Abrir** → **Abrir**.
 
 macOS puede decir que no puede verificar al desarrollador. La app no está firmada. Ese Control-clic → Abrir es el paso normal.
 
@@ -50,13 +49,13 @@ En una Mac, desde el repo:
 bash macos/build_release.sh
 ```
 
-Eso deja `dist/Audio Separator.app` y `dist/Audio Separator.dmg`. El script baja un CPython 3.12 relocatable, instala las dependencias dentro del bundle, compila `macos/launcher.c` como ejecutable Mach-O de la app y arma el disco con `hdiutil`.
+Eso deja `dist/Audio Separator.app` y `dist/Audio-Separator-arm64.dmg`. El script embebe un CPython 3.12, compila `macos/launcher.c` como ejecutable Mach-O y arma el disco con la app a la izquierda y Aplicaciones a la derecha.
 
-El ejecutable no es un script. Un `.app` cuyo programa principal es un shell, macOS lo trata como dañado y la ventana no queda como la app que abriste. `clang` genera el binario en la Mac que arma el disco. Esa misma Mac le pone una firma ad-hoc (`codesign -s -`) al ejecutable y a ffmpeg, sin certificado de desarrollador y sin notarización. Gatekeeper igual pide Control-clic → Abrir.
+El ejecutable no es un script. `clang` lo genera en la Mac del armado y le pone una firma ad-hoc, sin certificado de desarrollador y sin notarización. Gatekeeper igual pide Control-clic → Abrir.
 
-El artifact del workflow es un zip. Adentro está `Audio Separator.dmg`.
+En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace de arriba es solo Apple Silicon.
 
-`bash macos/build_app.sh --layout-only` solo crea la carpeta del `.app`, sin Python y sin el binario. Sirve para revisar la estructura en cualquier sistema.
+`bash macos/build_app.sh --layout-only` crea la carpeta del `.app` sin Python y sin el binario.
 
 ## Desarrollo
 
