@@ -1,0 +1,34 @@
+# Audio Separator, Python 3.12.
+# One list. On Linux, .cursor/install.sh installs the CPU wheels of torch first.
+
+# Interfaz
+fastapi
+gradio==6.29.0
+pillow
+pywebview
+
+# Audio
+numpy<2
+onnxruntime
+pedalboard
+scipy
+soundfile
+yt-dlp
+
+# Conversión RVC. Estos dos no entran en la lista:
+#   pyworld==0.3.4 no tiene wheel para Python 3.12.
+#   torchcrepe==0.0.20 exige librosa==0.9.1, que choca con el resto.
+# La app los reemplaza por un stub. El pitch que usa es rmvpe.
+# Después de este archivo:
+#   pip install infer-rvc-python==1.3.1 --no-deps
+faiss-cpu==1.10.0
+ffmpeg-python
+librosa>=0.10,<0.11
+picklescan
+praat-parselmouth>=0.4.2
+safetensors
+soxr==1.1.0
+torch==2.2.2
+torchaudio==2.2.2
+transformers==5.0.0
+typeguard==4.2.0

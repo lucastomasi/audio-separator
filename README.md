@@ -4,6 +4,18 @@ App local para Mac: separar voz e instrumental, bajar audio de YouTube, converti
 
 No usa el Space de Hugging Face.
 
+## Instalación
+
+Python 3.12.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install infer-rvc-python==1.3.1 --no-deps
+```
+
+La segunda línea es el motor RVC. Va con `--no-deps` porque `pyworld` no tiene wheel para Python 3.12 y `torchcrepe` pide un librosa viejo. La app no los llama: el pitch es rmvpe.
+
 ```bash
 .venv/bin/python desktop.py
 ```
@@ -47,6 +59,4 @@ Copiá estos archivos a `rvc_models/` antes de convertir. La app no los descarga
 - `tu-voz.pth` — el modelo de voz.
 - `tu-voz.index` — opcional, el índice de esa voz.
 
-Esos binarios quedan fuera de git. En la app: Actualizá los modelos y después Convertí la voz. El pitch es rmvpe; no hace falta pyworld.
-
-`infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si `pip install -r requirements-macos.txt` se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.
+Esos binarios quedan fuera de git. En la app: Actualizá los modelos y después Convertí la voz. El pitch es rmvpe.

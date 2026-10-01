@@ -28,7 +28,9 @@ fi
   --index-url https://download.pytorch.org/whl/cpu \
   torch==2.2.2 torchaudio==2.2.2
 
-# Remaining coherent dependency set.
-.venv/bin/python -m pip install -r .cursor/requirements-cloud.txt
+# The rest of requirements.txt. Torch is already the CPU build, so pip
+# leaves those two wheels in place.
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install infer-rvc-python==1.3.1 --no-deps
 
 echo "Audio Separator cloud environment ready."
