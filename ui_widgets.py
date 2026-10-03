@@ -58,7 +58,7 @@ def stem_conf():
             ("Solo instrumental", STEM_SOLO_INST),
             ("Las dos", STEM_AMBAS),
         ],
-        value=STEM_SOLO_VOZ,
+        value=STEM_AMBAS,
         label="Qué extraer",
     )
 
@@ -92,7 +92,7 @@ def background_effects_conf():
     return gr.Checkbox(
         False,
         label="Efectos de instrumental",
-        visible=False,
+        visible=True,
     )
 
 
