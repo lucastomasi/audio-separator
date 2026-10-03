@@ -439,7 +439,7 @@ def rvc_job(
         return None, None, status_update(
             KIND_ERROR,
             "Ese archivo está en Entrenar. Marcá "
-            "«Convertir este mismo archivo» si es a propósito.",
+            "«Este archivo está en Entrenar» si es a propósito.",
         )
 
     model_path = library_model
@@ -452,7 +452,7 @@ def rvc_job(
         stem = os.path.splitext(os.path.basename(model_path))[0]
         model_path = library.place_voice_file(model_path, stem)
     if not model_path:
-        msg = "Elegí un modelo en la biblioteca (Voz)."
+        msg = "Elegí un modelo en Convertir."
         return None, None, status_update(KIND_ERROR, msg)
     index_path = library.find_index_for_model(model_path) if model_path else None
     if index_file:

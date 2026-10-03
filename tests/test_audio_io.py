@@ -51,6 +51,18 @@ class AudioIoTests(unittest.TestCase):
         self.assertEqual(wave.shape[0], 2)
         self.assertEqual(wave.dtype, np.float32)
 
+    def test_load_accepts_gradio_dict(self):
+        wav = self.dir / "stereo.wav"
+        write_wav(wav, channels=2)
+        payload = {
+            "path": str(wav),
+            "orig_name": "stereo.wav",
+            "meta": {"_type": "gradio.FileData"},
+        }
+        wave, sr = audio_io.load(payload, mono=False, sr=44100)
+        self.assertEqual(sr, 44100)
+        self.assertEqual(wave.shape[0], 2)
+
     def test_load_mono_file_is_1d(self):
         wav = self.dir / "mono.wav"
         write_wav(wav, channels=1)

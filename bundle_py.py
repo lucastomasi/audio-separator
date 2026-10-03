@@ -28,6 +28,7 @@ BUNDLE_PY = (
     "video_remux.py",
     "occupancy.py",
     "train_run.py",
+    "train_prep.py",
     "gpu_secrets.py",
     "runpod_train.py",
     "eleven_tts.py",

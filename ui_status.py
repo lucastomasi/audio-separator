@@ -6,6 +6,7 @@ Jobs never interpolate exception text into the UI. Tracebacks go to
 from __future__ import annotations
 
 import os
+import re
 import traceback
 from datetime import datetime
 
@@ -64,6 +65,8 @@ def _usable_valueerror(exc: BaseException) -> str | None:
     if "ffmpeg" in msg:
         return None
     if msg.startswith("/") or msg.startswith("~/"):
+        return None
+    if re.search(r"(?:^|\s)/[^\s]+", msg):
         return None
     return msg
 

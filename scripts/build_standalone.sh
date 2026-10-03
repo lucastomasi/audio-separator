@@ -10,13 +10,59 @@ VENV="$RES/venv"
 SRC_VENV="$ROOT/.venv"
 
 echo "==> Root: $ROOT"
-if [[ ! -d "$APP/Contents/MacOS" ]]; then
-  echo "ERROR: falta el esqueleto $APP (Info.plist + MacOS launcher)."
-  exit 1
-fi
 if [[ ! -x "$SRC_VENV/bin/python" ]]; then
   echo "ERROR: falta $SRC_VENV (creá el venv de desarrollo primero)."
   exit 1
+fi
+
+echo "==> App skeleton"
+mkdir -p "$APP/Contents/MacOS" "$RES/bin" "$RES/app"
+cat > "$APP/Contents/PkgInfo" <<'EOF'
+APPL????
+EOF
+cat > "$APP/Contents/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Audio Separator</string>
+	<key>CFBundleExecutable</key>
+	<string>Audio Separator</string>
+	<key>CFBundleIconFile</key>
+	<string>Audio Separator.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.lucastomasi.audioseparator</string>
+	<key>CFBundleName</key>
+	<string>Audio Separator</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
+EOF
+
+echo "==> Bundle CPython 3.12 (uv/python-build-standalone)"
+SRC_PY="$("$SRC_VENV/bin/python" -c "import os, sys; print(os.path.realpath(sys.executable))")"
+UV_ROOT="$(cd "$(dirname "$SRC_PY")/.." && pwd)"
+if [[ ! -x "$UV_ROOT/bin/python3.12" ]]; then
+  echo "ERROR: no encuentro CPython relocatable en $UV_ROOT"
+  exit 1
+fi
+mkdir -p "$RES/python"
+rsync -a --delete \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  "$UV_ROOT/" "$RES/python/"
+if [[ ! -x "$VENV/bin/python" ]]; then
+  "$RES/python/bin/python3.12" -m venv "$VENV"
 fi
 if [[ ! -d "$ROOT/third_party/RVC-WebUI/train" ]]; then
   echo "ERROR: falta third_party/RVC-WebUI"
@@ -52,6 +98,7 @@ mkdir -p "$APPDIR/library/voices"
 # Support weights (full standalone)
 rsync -a --delete \
   --exclude '*.bak' \
+  --exclude '*WRONG*' \
   --exclude 'pytorch_model.bin' \
   "$ROOT/library/models/rvc/" "$APPDIR/library/models/rvc/"
 # Keep empty voice dir (user trains inside the app)
@@ -129,11 +176,23 @@ rsync -a --delete \
   --exclude 'distutils-precedence.pth' \
   "$SRC_SP/" "$DST_SP/"
 # Ensure critical binaries exist in bundle venv
-for bin in python python3 pip; do
+for bin in python python3 pip yt-dlp; do
   if [[ -e "$SRC_VENV/bin/$bin" && ! -e "$VENV/bin/$bin" ]]; then
     cp -f "$SRC_VENV/bin/$bin" "$VENV/bin/$bin" 2>/dev/null || true
   fi
 done
+
+echo "==> Bundle ffmpeg/ffprobe (no Homebrew on dest Mac)"
+FFMPEG_SRC="$(command -v ffmpeg || true)"
+FFPROBE_SRC="$(command -v ffprobe || true)"
+if [[ -z "$FFMPEG_SRC" || -z "$FFPROBE_SRC" ]]; then
+  echo "ERROR: falta ffmpeg/ffprobe en este Mac para copiarlos al bundle"
+  exit 1
+fi
+cp -f "$FFMPEG_SRC" "$RES/bin/ffmpeg"
+cp -f "$FFPROBE_SRC" "$RES/bin/ffprobe"
+chmod +x "$RES/bin/ffmpeg" "$RES/bin/ffprobe"
+
 "$VENV/bin/python" -c "import av, gradio, torch; print('venv ok', av.__version__, torch.__version__)"
 bash "$ROOT/scripts/relocate_venv.sh" "$VENV"
 
@@ -184,8 +243,20 @@ rm -f "$ZIP"
   ditto -c -k --sequesterRsrc --keepParent "Audio Separator.app" "Audio-Separator-macOS-Intel.zip"
 )
 
+echo "==> DMG"
+STAGE="$ROOT/dist/dmg-root"
+DMG="$ROOT/dist/Audio-Separator-macOS-Intel.dmg"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+ditto "$APP" "$STAGE/Audio Separator.app"
+ln -s /Applications "$STAGE/Applications"
+rm -f "$DMG"
+hdiutil create -volname "Audio Separator" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
+
 echo "==> Done"
-du -sh "$APP" "$ZIP"
+du -sh "$APP" "$ZIP" "$DMG"
 echo "Abrí: $APP"
-echo "Release asset: $ZIP"
+echo "Zip: $ZIP"
+echo "DMG: $DMG"
 echo "Primera vez: clic derecho → Abrir"
