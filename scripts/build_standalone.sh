@@ -163,6 +163,18 @@ cp -f "$ROOT/scripts/macos_launcher.sh" "$APP/Contents/MacOS/Audio Separator"
 chmod +x "$APP/Contents/MacOS/Audio Separator"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.lucastomasi.audioseparator" \
   "$APP/Contents/Info.plist" 2>/dev/null || true
+# Product icon: keep the checked-in ICNS in every standalone bundle.
+ICON_SRC="$ROOT/assets/app_icon.icns"
+if [[ -f "$ICON_SRC" ]]; then
+  echo "==> App icon"
+  mkdir -p "$APP/Contents/Resources"
+  cp -f "$ICON_SRC" "$APP/Contents/Resources/Audio Separator.icns"
+  if ! /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Audio Separator.icns" \
+      "$APP/Contents/Info.plist" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string Audio Separator.icns" \
+      "$APP/Contents/Info.plist"
+  fi
+fi
 
 echo "==> Zip"
 ZIP="$ROOT/dist/Audio-Separator-macOS-Intel.zip"

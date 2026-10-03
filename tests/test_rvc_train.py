@@ -221,11 +221,9 @@ class RvcTrainTests(unittest.TestCase):
             self.assertIn("PELA1", rvc_train.train_running("PELA1") or "")
             self.assertIsNone(rvc_train.train_running("nope"))
 
-    def test_save_every_epoch_is_one(self):
-        self.assertEqual(rvc_train.SAVE_EVERY_EPOCH, 1)
-
-    def test_save_every_weights_is_off(self):
-        self.assertEqual(rvc_train.SAVE_EVERY_WEIGHTS, "0")
+    def test_save_policy_exports_inference_weights_every_five_epochs(self):
+        self.assertEqual(rvc_train.SAVE_EVERY_EPOCH, 5)
+        self.assertEqual(rvc_train.SAVE_EVERY_WEIGHTS, "1")
 
     def test_execute_train_prepares_and_logs_eta(self):
         tmp = tempfile.TemporaryDirectory()
@@ -299,20 +297,28 @@ class RvcTrainTests(unittest.TestCase):
         voces = root / "Voces" / "demo"
         voces.mkdir(parents=True)
         (voces / "demo.pth").write_bytes(b"published")
+        (voces / "demo.index").write_bytes(b"index")
+        snapshots = voces / "trabajo" / "ckpt"
+        snapshots.mkdir(parents=True)
+        (snapshots / "G_2333333.pth").write_bytes(b"snapshot")
         entrada = voces / "entrada"
         entrada.mkdir()
         (entrada / "sample_0000.wav").write_bytes(b"x")
         with mock.patch.object(rvc_train, "RVC_ROOT", root):
             with mock.patch("app_env.data_dir", return_value=str(root)):
-                rvc_train.discard_run_scratch("demo")
+                removed = rvc_train.discard_run_scratch("demo")
         self.assertEqual((voces / "demo.pth").read_bytes(), b"published")
+        self.assertEqual((voces / "demo.index").read_bytes(), b"index")
         self.assertTrue((weights / "demo.pth").is_file())
         self.assertTrue((weights / "other.pth").is_file())
         self.assertFalse((weights / "demo_e1_s1.pth").exists())
-        self.assertFalse((logs / "G_2333333.pth").exists())
-        self.assertFalse((logs / "D_2333333.pth").exists())
+        self.assertFalse(logs.exists())
         self.assertFalse(feats.exists())
         self.assertFalse(entrada.exists())
+        self.assertFalse(snapshots.exists())
+        self.assertEqual(
+            removed, {"weights": 1, "logs": 1, "entrada": 1, "snapshots": 1}
+        )
 
     def test_epochs_default_is_ten(self):
         with mock.patch.dict(os.environ, {}, clear=False):

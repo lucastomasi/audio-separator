@@ -16,9 +16,11 @@ RVC_ROOT = APP_ROOT / "third_party" / "RVC-WebUI"
 SR = "40k"
 SR_HZ = 40000
 VERSION = "v2"
+# Ten epochs is a deliberately small CPU-Mac default; checkpoints and infer weights
+# are emitted every five epochs to avoid a large stream of multi-file dumps.
 EPOCHS_DEFAULT = 10
-SAVE_EVERY_EPOCH = 1
-SAVE_EVERY_WEIGHTS = "0"
+SAVE_EVERY_EPOCH = 5
+SAVE_EVERY_WEIGHTS = "1"
 _FEATURE_DIRS = (
     "0_gt_wavs",
     "1_16k_wavs",
@@ -684,36 +686,76 @@ def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
     return dest_pth, dest_index
 
 
-def discard_run_scratch(exp_name: str) -> None:
-    """Drop this run's checkpoints and features. Keep Voces/<exp>/<exp>.pth."""
-    canonical = train_run.voice_dir(exp_name) / f"{exp_name}.pth"
+def garbage_collect_train_artifacts(exp_name: str) -> dict[str, int]:
+    """Remove published-run scratch without touching the canonical voice files.
+
+    The final ``Voces/<exp>/<exp>.pth`` is the guard: until it exists, no cleanup
+    runs.  This removes all periodic inference exports, large G_/D_ checkpoints,
+    extracted feature logs, copied input audio, and local checkpoint snapshots.
+    The optional ``.index`` beside the canonical model is never targeted.
+    """
+    voice = train_run.voice_dir(exp_name)
+    canonical = voice / f"{exp_name}.pth"
+    removed = {"weights": 0, "logs": 0, "entrada": 0, "snapshots": 0}
     if not canonical.is_file():
-        return
-    logs = RVC_ROOT / "logs" / exp_name
-    if logs.is_dir():
-        _clear_log_scratch(logs)
+        return removed
+
     weights = RVC_ROOT / "assets" / "weights"
     if weights.is_dir():
         for path in weights.glob(f"{exp_name}_e*_s*.pth"):
-            if path.name == f"{exp_name}.pth":
-                continue
-            path.unlink()
-    entrada = train_run.voice_dir(exp_name) / "entrada"
+            if path.is_file() and not path.is_symlink():
+                try:
+                    path.unlink()
+                    removed["weights"] += 1
+                except OSError:
+                    pass
+
+    # RVC logs contain only this experiment's G_/D_ files, features and config.
+    # Remove the whole experiment directory after publication, but never follow
+    # an unexpected symlink supplied by a malformed experiment directory.
+    logs = RVC_ROOT / "logs" / exp_name
+    if logs.is_dir() and not logs.is_symlink():
+        try:
+            shutil.rmtree(logs)
+            removed["logs"] = 1
+        except OSError:
+            pass
+
+    entrada = voice / "entrada"
     if entrada.is_dir() and not entrada.is_symlink():
-        shutil.rmtree(entrada)
+        try:
+            shutil.rmtree(entrada)
+            removed["entrada"] = 1
+        except OSError:
+            pass
+
+    # snapshot_checkpoints() stores optional heavy/infer copies under trabajo.
+    snapshots = voice / "trabajo" / "ckpt"
+    if snapshots.is_dir() and not snapshots.is_symlink():
+        try:
+            shutil.rmtree(snapshots)
+            removed["snapshots"] = 1
+        except OSError:
+            pass
+    return removed
+
+
+def discard_run_scratch(exp_name: str) -> dict[str, int]:
+    """Compatibility wrapper for the post-publish train-artifact GC."""
+    return garbage_collect_train_artifacts(exp_name)
 
 
 def _clear_log_scratch(logs: Path) -> None:
-    for pattern in ("G_*.pth", "D_*.pth"):
-        for path in logs.glob(pattern):
+    """Legacy helper retained for callers that want non-directory cleanup."""
+    if logs.is_dir() and not logs.is_symlink():
+        for path in logs.iterdir():
             try:
-                path.unlink()
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path)
+                elif path.is_file() or path.is_symlink():
+                    path.unlink()
             except OSError:
                 pass
-    for name in _FEATURE_DIRS:
-        folder = logs / name
-        if folder.is_dir() and not folder.is_symlink():
-            shutil.rmtree(folder, ignore_errors=True)
 
 
 def train_voice(exp_name, dataset_files, epochs=None, progress=None):

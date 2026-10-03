@@ -144,8 +144,27 @@ def _continue_last():
 
 
 def _on_train(name, dataset, epochs, progress=gr.Progress()):
+    name_s = (name or "").strip()
+    if isinstance(dataset, (list, tuple)):
+        files = [item for item in dataset if item]
+    elif dataset:
+        files = [dataset]
+    else:
+        files = []
+    if not name_s or not files:
+        from ui_status import KIND_ERROR, status_update
+
+        if not name_s and not files:
+            text = "Poné un nombre y subí al menos un audio de la voz."
+        elif not name_s:
+            text = "Poné un nombre para la voz."
+        else:
+            text = "Subí al menos un audio de la voz a entrenar."
+        rvc_upd, tts_upd = refresh_library_ui()
+        btn_a, btn_b = _convert_interactive()
+        return rvc_upd, status_update(KIND_ERROR, text), tts_upd, btn_a, btn_b
     rvc_upd, bar, tts_upd = train_rvc_job(
-        name, dataset, epochs, False, None, progress
+        name_s, files, epochs, False, None, progress
     )
     btn_a, btn_b = _convert_interactive()
     return rvc_upd, bar, tts_upd, btn_a, btn_b
@@ -375,6 +394,7 @@ def get_gui():
                         "Antes separa solo la voz, sin quitar reverb, y muestra la ETA en horas. "
                         "Si el audio es largo, recorta la habla primero. "
                         "10 epochs de prueba: minutos u horas según el largo. "
+                        "Guarda un .pth de inferencia y el checkpoint cada 5 epochs. "
                         "Cerrar la ventana no corta el entrenamiento. Separar y Convertir sí. "
                         "No lo compartas si la voz no es tuya.",
                         elem_classes=["hint"],
@@ -411,10 +431,6 @@ def get_gui():
                             step=1,
                             label="Volumen instrumental (dB)",
                         )
-                    gr.Markdown(
-                        "Alinea sola un desfase de hasta 2 s. No estira el tiempo.",
-                        elem_classes=["hint"],
-                    )
                     remix_btn = gr.Button(
                         "Unir",
                         variant="primary",
@@ -715,7 +731,7 @@ def get_gui():
             _on_train,
             inputs=[train_name, train_dataset, train_epochs],
             outputs=[rvc_pick, status, tts_rvc_pick, rvc_btn, tts_btn],
-            show_progress="minimal",
+            show_progress="full",
             concurrency_limit=1,
         )
         def _boot_ui():

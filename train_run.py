@@ -38,7 +38,8 @@ def _cache_has_files(path: Path) -> bool:
 def runs_dir(exp_name: str) -> Path:
     """RVC experiment dir. Bytes live in Cache; Voces/<name>/trabajo is a link.
 
-    Deleting Cache drops features and G_/D_. The .pth, .index and entrada stay.
+    Post-publish garbage collection drops features, G_/D_, checkpoints and entrada;
+    the canonical .pth/.index in Voces remain available for inference.
     """
     from app_env import data_dir
 

@@ -53,12 +53,17 @@ def _usable_valueerror(exc: BaseException) -> str | None:
     if not isinstance(exc, ValueError):
         return None
     msg = str(exc).strip()
-    if not msg or len(msg) > 220:
+    if not msg or len(msg) > 280:
         return None
     lowered = msg.lower()
     if "traceback" in lowered or "is not defined" in lowered:
         return None
-    if any(tok in msg for tok in ("/", "File ", "ffmpeg", ".py")):
+    # Block stack/path leaks, not Spanish product messages that mention hubert_base/.
+    if 'File "' in msg or "File '" in msg or ".py:" in msg:
+        return None
+    if "ffmpeg" in msg:
+        return None
+    if msg.startswith("/") or msg.startswith("~/"):
         return None
     return msg
 
