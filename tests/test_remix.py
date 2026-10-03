@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import soundfile as sf
 
-from remix import align_lag_ms, delay_ms, mix_tracks, remix_to_wav, stretch_to_length, to_stereo
+from remix import delay_ms, mix_tracks, remix_to_wav, stretch_to_length, to_stereo
 
 
 class RemixTests(unittest.TestCase):
@@ -13,15 +13,6 @@ class RemixTests(unittest.TestCase):
         mono = np.ones(8, dtype=np.float32)
         stereo = to_stereo(mono)
         self.assertEqual(stereo.shape, (2, 8))
-
-    def test_align_finds_late_voice(self):
-        sr = 1000
-        inst = np.zeros((2, 400), dtype=np.float32)
-        inst[:, 50:80] = 1
-        voice = np.zeros((2, 400), dtype=np.float32)
-        voice[:, 150:180] = 1
-        lag = align_lag_ms(voice, inst, sr, max_ms=500)
-        self.assertAlmostEqual(lag, -100, delta=15)
 
     def test_delay_positive_pads(self):
         wave = np.ones((2, 10), dtype=np.float32)

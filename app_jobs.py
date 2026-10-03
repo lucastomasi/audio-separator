@@ -541,12 +541,14 @@ def remix_job(
             progress(0.3, desc="Uniendo pistas…")
         except Exception:
             pass
+        voice_path = _gradio_path(voice_path)
+        instrumental_path = _gradio_path(instrumental_path)
         out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         wav_path = os.path.join(out_dir, "remix.wav")
         from remix import remix_to_wav
 
-        _path, aligned_ms = remix_to_wav(
+        remix_to_wav(
             voice_path,
             instrumental_path,
             wav_path,
@@ -554,18 +556,13 @@ def remix_job(
             match_duration=bool(match_duration),
             voice_db=voice_db or 0,
             instrumental_db=instrumental_db or 0,
-            auto_align=True,
         )
         files = convert_format([wav_path], out_dir, target_format or "WAV")
         final = files[0]
         export_dir, copied = copy_to_downloads([final], ["remix"])
         saved = copied[0] if copied else final
         fmt = (target_format or "WAV").upper()
-        lag = int(round(aligned_ms))
-        lag_note = f" Alineé la voz {lag} ms." if lag else ""
-        return saved, saved, _ok(
-            f"Pistas unidas ({fmt}).{lag_note} Archivo en {export_dir}"
-        )
+        return saved, saved, _ok(f"Pistas unidas ({fmt}). Archivo en {export_dir}")
     except ValueError as error:
         return None, None, _err("remix_job", error, MSG_REMIX)
     except Exception as error:
