@@ -41,6 +41,7 @@ for name in \
   model_fetch.py \
   remix.py \
   rvc_engine.py \
+  rvc_train.py \
   youtube_lib.py \
   ui.css
 do

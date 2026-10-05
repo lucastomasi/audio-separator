@@ -21,6 +21,7 @@ import model_fetch
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from exports import copy_to_downloads, exports_dir, open_exports_dir, unique_path
 from rvc_engine import RVC_DIR, convert_voice, match_index, song_stem
+from rvc_train import train_voice
 from youtube_lib import download_audio
 
 ROOT = source_dir()
@@ -624,6 +625,45 @@ def rvc_engine_note():
     return last_note or ""
 
 
+def _file_paths(files):
+    if not files:
+        return []
+    if isinstance(files, (str, os.PathLike)):
+        files = [files]
+    paths = []
+    for item in files:
+        if isinstance(item, (str, os.PathLike)):
+            path = str(item)
+        elif isinstance(item, dict):
+            path = item.get("path") or item.get("name")
+        else:
+            path = getattr(item, "name", None)
+        if path and os.path.isfile(path):
+            paths.append(path)
+    return paths
+
+
+def on_train(name, files, vocal, use_vocal, epochs, progress=gr.Progress()):
+    paths = _file_paths(files)
+    if use_vocal:
+        vocal_path = _audio_path(vocal)
+        if vocal_path:
+            paths.append(vocal_path)
+    try:
+        dest, note = train_voice(paths, name, epochs=epochs, on_progress=_bridge(progress))
+        if not dest or not os.path.isfile(dest):
+            raise ValueError("El entrenamiento no dejó un modelo.")
+    except Exception as exc:
+        _ui_error(exc)
+    models = rvc_model_choices()
+    indexes = rvc_index_choices()
+    return (
+        gr.update(choices=models, value=dest),
+        gr.update(choices=indexes, value=match_index(dest, _index_paths())),
+        f"Listo. Entrené la voz. {note}",
+    )
+
+
 def on_refresh():
     models = rvc_model_choices()
     note = (
@@ -819,6 +859,30 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             refresh_btn = gr.Button("Actualizá los modelos")
             convert_btn = gr.Button("Convertí la voz", variant="primary")
         converted = gr.Audio(label="Voz convertida", **_PLAYER)
+        gr.Markdown("### Entrenar una voz")
+        gr.Markdown(
+            "Subí tomas de esa persona, solas, sin música. "
+            "La app parte de un modelo base y deja el .pth listo para convertir. "
+            "El hablante queda en 0."
+        )
+        with gr.Row():
+            train_name = gr.Textbox(label="Nombre de la voz", placeholder="mi-voz")
+            train_epochs = gr.Slider(
+                minimum=1,
+                maximum=200,
+                value=20,
+                step=1,
+                label="Vueltas",
+                info="Cada vuelta recorre todas las tomas. En el chip tarda.",
+            )
+        train_files = gr.File(
+            label="Tomas",
+            file_count="multiple",
+            file_types=["audio"],
+            type="filepath",
+        )
+        train_use_vocal = gr.Checkbox(label="Sumar la voz separada", value=False)
+        train_btn = gr.Button("Entrená la voz", variant="primary")
         gr.Markdown("### Unir")
         use_converted = gr.Checkbox(label="Usar la voz convertida", value=True)
         with gr.Row():
@@ -861,6 +925,12 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             api_name="convertir",
         )
         model.change(on_model_change, inputs=[model], outputs=[index])
+        train_btn.click(
+            on_train,
+            inputs=[train_name, train_files, vocal, train_use_vocal, train_epochs],
+            outputs=[model, index, status],
+            api_name="entrenar",
+        )
         fetch_btn.click(
             on_fetch_models,
             outputs=[model, index, mdx, status],

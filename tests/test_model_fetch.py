@@ -287,6 +287,7 @@ class UiCopyTests(unittest.TestCase):
         self.assertIn("Abrí la carpeta de voces", joined)
         self.assertIn("Semitonos", joined)
         self.assertIn("Influencia del índice", joined)
+        self.assertIn("Entrená la voz", joined)
         players = [block for block in demo.blocks.values() if isinstance(block, app.gr.Audio)]
         self.assertEqual(len(players), 5)
         for player in players:

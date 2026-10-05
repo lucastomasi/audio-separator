@@ -6,6 +6,7 @@ downloads/
 remix_output/
 rvc_output/
 rvc_prepared/
+rvc_train/
 rvc_models/*.pt
 rvc_models/*.pth
 rvc_models/*.index

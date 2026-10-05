@@ -40,6 +40,21 @@ RMVPE_NAME = "rmvpe.pt"
 RMVPE_URL = "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt"
 RMVPE_MIN_BYTES = 150_000_000
 
+# Fine-tuning starts from these. A voice trained from scratch does not clone.
+PRETRAIN_DIR_NAME = "pretrained_v2"
+PRETRAIN_G_NAME = "f0G40k.pth"
+PRETRAIN_D_NAME = "f0D40k.pth"
+PRETRAIN_G_URL = (
+    "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/"
+    "pretrained_v2/f0G40k.pth"
+)
+PRETRAIN_D_URL = (
+    "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/"
+    "pretrained_v2/f0D40k.pth"
+)
+PRETRAIN_G_MIN_BYTES = 60_000_000
+PRETRAIN_D_MIN_BYTES = 120_000_000
+
 _LOCK = threading.RLock()
 _CHUNK = 256 * 1024
 
@@ -226,6 +241,38 @@ def ensure_rvc_support(rvc_dir, on_progress=None):
             )
             downloaded = True
         return downloaded
+
+
+def ensure_training_bases(rvc_dir, on_progress=None):
+    """Download the pretrained generator and discriminator.
+
+    Return (downloaded, generator_path, discriminator_path).
+    """
+    with _LOCK:
+        folder = os.path.join(rvc_dir, PRETRAIN_DIR_NAME)
+        os.makedirs(folder, exist_ok=True)
+        generator = os.path.join(folder, PRETRAIN_G_NAME)
+        discriminator = os.path.join(folder, PRETRAIN_D_NAME)
+        downloaded = False
+        if not _big_enough(generator, PRETRAIN_G_MIN_BYTES):
+            download_file(
+                PRETRAIN_G_URL,
+                generator,
+                PRETRAIN_G_MIN_BYTES,
+                on_progress=on_progress,
+                label="el modelo base de la voz",
+            )
+            downloaded = True
+        if not _big_enough(discriminator, PRETRAIN_D_MIN_BYTES):
+            download_file(
+                PRETRAIN_D_URL,
+                discriminator,
+                PRETRAIN_D_MIN_BYTES,
+                on_progress=on_progress,
+                label="el modelo base del discriminador",
+            )
+            downloaded = True
+        return downloaded, generator, discriminator
 
 
 def ensure_standard_models(mdx_dir, rvc_dir, on_progress=None):

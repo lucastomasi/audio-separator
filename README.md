@@ -60,6 +60,8 @@ En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace 
 
 La app baja HuBERT y `rmvpe.pt` la primera vez que convertís. El `.pth` de la voz es tuyo: dejalo en `rvc_models/`. Sirve el de la carpeta `weights`. Si solo tenés el `G_` del entrenamiento, dejá el `config.json` de ese entrenamiento al lado.
 
+También podés entrenar una voz en la ventana: tomas solas, sin música. Parte del modelo base v2 a 40 kHz y deja el `.pth` y el índice listos para convertir. El hablante queda en 0.
+
 Esos binarios quedan fuera de git. El pitch es rmvpe; no hace falta pyworld.
 
 `infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si `pip install -r requirements-macos.txt` se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.
