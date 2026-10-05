@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # requirements-macos.txt cannot be installed as one set: gradio==6.20.0
+      # needs huggingface-hub>=1.2 and transformers==4.46.3 needs huggingface-hub<1.
+      # The Mac app installs macos/requirements-bundle.txt instead.
+      - run: pip install -r macos/requirements-bundle.txt pytest
+      # tests/ imports repo-root modules (app_paths, rvc_engine).
+      - run: PYTHONPATH=. pytest -q
