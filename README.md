@@ -58,7 +58,7 @@ En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace 
 
 ## Modelos RVC
 
-La app baja HuBERT y `rmvpe.pt` la primera vez que convertís. El `.pth` de la voz es tuyo: dejalo en `rvc_models/`.
+La app baja HuBERT y `rmvpe.pt` la primera vez que convertís. El `.pth` de la voz es tuyo: dejalo en `rvc_models/`. Sirve el de la carpeta `weights`. Si solo tenés el `G_` del entrenamiento, dejá el `config.json` de ese entrenamiento al lado.
 
 Esos binarios quedan fuera de git. El pitch es rmvpe; no hace falta pyworld.
 

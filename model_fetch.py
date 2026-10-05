@@ -11,7 +11,7 @@ import urllib.request
 
 # UVR-MDX-NET-Voc_FT predicts vocals.
 # Input is [1, 4, 3072, 256]; n_fft is 6144 and compensate is 1.021.
-# Leaving n_fft unset makes _mdx_config pick 7680 when dim_f is 3072.
+# Leaving n_fft unset makes _mdx_config use dim_f * 2 (3072 -> 6144).
 VOCAL_ONNX_NAME = "UVR-MDX-NET-Voc_FT.onnx"
 VOCAL_ONNX_URL = (
     "https://github.com/TRvlvr/model_repo/releases/download/"

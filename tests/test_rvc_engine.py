@@ -33,6 +33,8 @@ class ConvertVoiceTests(unittest.TestCase):
         rvc_engine.RVC_DIR = self._old_dir
         rvc_engine._converter = None
         rvc_engine._converter_key = None
+        rvc_engine._cpu_only = False
+        rvc_engine.last_note = ""
         self._tmpdir.cleanup()
 
     def test_missing_audio(self):

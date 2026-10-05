@@ -285,6 +285,8 @@ class UiCopyTests(unittest.TestCase):
         joined = "\n".join(texts)
         self.assertIn("Bajá los modelos", joined)
         self.assertIn("Abrí la carpeta de voces", joined)
+        self.assertIn("Semitonos", joined)
+        self.assertIn("Influencia del índice", joined)
         self.assertNotIn("Application Support", joined)
         self.assertNotIn("no los descarga", joined)
         self.assertNotIn("Library", joined)

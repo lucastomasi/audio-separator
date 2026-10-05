@@ -17,10 +17,10 @@ from scipy.signal import istft, stft
 from app_paths import data_dir, source_dir
 from audio_io import get_duration, load
 from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
-from exports import copy_to_downloads, exports_dir, open_exports_dir
 import model_fetch
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
-from rvc_engine import RVC_DIR, convert_voice
+from exports import copy_to_downloads, exports_dir, open_exports_dir, unique_path
+from rvc_engine import RVC_DIR, convert_voice, match_index, song_stem
 from youtube_lib import download_audio
 
 ROOT = source_dir()
@@ -269,8 +269,7 @@ def _mdx_config(model_path, session):
             )
         config["dim_t"] = dim_t
     if "n_fft" not in config:
-        dim_f = int(config["dim_f"])
-        config["n_fft"] = 7680 if dim_f == 3072 else dim_f * 2
+        config["n_fft"] = int(config["dim_f"]) * 2
     if int(config["n_fft"]) // 2 + 1 < int(config["dim_f"]):
         config["n_fft"] = int(config["dim_f"]) * 2
     return config
@@ -438,18 +437,28 @@ def _choice_value(choices, prefer_first_real=False):
     return None
 
 
+def _index_paths():
+    return [value for _label, value in rvc_index_choices() if value]
+
+
 def model_updates():
     separation = separation_choices()
     models = rvc_model_choices()
     indexes = rvc_index_choices()
+    model_value = _choice_value(models)
     return (
-        gr.update(choices=models, value=_choice_value(models)),
-        gr.update(choices=indexes, value=""),
+        gr.update(choices=models, value=model_value),
+        gr.update(choices=indexes, value=match_index(model_value, _index_paths())),
         gr.update(
             choices=separation,
             value=_choice_value(separation, prefer_first_real=True),
         ),
     )
+
+
+def on_model_change(model):
+    indexes = rvc_index_choices()
+    return gr.update(choices=indexes, value=match_index(model, _index_paths()))
 
 
 def _resolve_mdx(choice):
@@ -579,7 +588,7 @@ def on_separate(audio, url, _stem, mdx_choice, progress=gr.Progress()):
     return source, vocal_path, instrumental_path, None, None, message, mdx_update
 
 
-def on_convert(vocal, model, index, progress=gr.Progress()):
+def on_convert(vocal, model, index, pitch, index_mix, progress=gr.Progress()):
     vocal_path = _audio_path(vocal)
     try:
         if vocal_path is None:
@@ -587,13 +596,25 @@ def on_convert(vocal, model, index, progress=gr.Progress()):
         model_path = _resolve_rvc_model(model)
         index_path = _resolve_index(index)
         model_fetch.ensure_rvc_support(RVC_DIR, on_progress=_bridge(progress))
-        converted = convert_voice(vocal_path, model_path, index_path)
-        if not converted or not os.path.isfile(converted):
+        dest = convert_voice(
+            vocal_path,
+            model_path,
+            index_path,
+            pitch=pitch,
+            index_influence=index_mix,
+        )
+        if not dest or not os.path.isfile(dest):
             raise ValueError("La conversión no devolvió un audio.")
-        dest = _copied_stem(converted, _safe_stem(vocal_path), "voz-rvc")
     except Exception as exc:
         _ui_error(exc)
-    return dest, None, "Listo. Convertí la voz con el modelo local."
+    note = f" {rvc_engine_note()}".rstrip()
+    return dest, None, f"Listo. Convertí la voz.{note}"
+
+
+def rvc_engine_note():
+    from rvc_engine import last_note
+
+    return last_note or ""
 
 
 def on_refresh():
@@ -654,15 +675,13 @@ def on_remix(vocal, instrumental, converted, use_converted, vocal_db, instrument
     try:
         if vocal_path is None or instrumental_path is None:
             raise ValueError("Primero separá el audio. Hacen falta la voz y el instrumental.")
+        os.makedirs(REMIX_DIR, exist_ok=True)
         dest = mix_stems(
             vocal_path,
             instrumental_path,
             vocal_db=float(vocal_db),
             instrumental_db=float(instrumental_db),
-            output_path=os.path.join(
-                REMIX_DIR,
-                f"{_safe_stem(vocal_path)}-remix-{time.strftime('%H%M%S')}.wav",
-            ),
+            output_path=unique_path(REMIX_DIR, f"{song_stem(vocal_path)}-remix.wav"),
         )
     except Exception as exc:
         _ui_error(exc)
@@ -682,16 +701,16 @@ def on_export(stem, vocal, instrumental, converted, remix, use_converted):
     remix_path = _audio_path(remix)
     if "vocal" in wanted and vocal_path:
         files.append(vocal_path)
-        labels.append("voz")
+        labels.append(_export_name(vocal_path))
     if "background" in wanted and instrumental_path:
         files.append(instrumental_path)
-        labels.append("instrumental")
+        labels.append(_export_name(instrumental_path))
     if "vocal" in wanted and use_converted and converted_path:
         files.append(converted_path)
-        labels.append("voz-convertida")
+        labels.append(_export_name(converted_path))
     if remix_path:
         files.append(remix_path)
-        labels.append("remix")
+        labels.append(_export_name(remix_path))
     if not files:
         raise gr.Error("Todavía no hay pistas para exportar. Separá un audio primero.")
     try:
@@ -702,6 +721,10 @@ def on_export(stem, vocal, instrumental, converted, remix, use_converted):
         raise gr.Error("No pude copiar los archivos a Descargas.")
     noun = "archivo" if len(copied) == 1 else "archivos"
     return f"Exporté {len(copied)} {noun} en {directory}."
+
+
+def _export_name(path):
+    return os.path.splitext(os.path.basename(path))[0] or "audio"
 
 
 def on_open_folder():
@@ -758,7 +781,7 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             instrumental = gr.Audio(label="Instrumental", type="filepath")
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
-            "Tu voz es un archivo .pth tuyo. Abrí la carpeta de voces, dejalo ahí y tocá Actualizá los modelos. HuBERT y el pitch los baja la app."
+            "Tu voz es el .pth de la carpeta weights. Si tenés el G_ del entrenamiento, dejá el config.json al lado. HuBERT y el pitch los baja la app."
         )
         with gr.Row():
             model = gr.Dropdown(
@@ -768,9 +791,24 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             )
             index = gr.Dropdown(
                 choices=indexes,
-                value="",
+                value=match_index(_choice_value(models), _index_paths()),
                 label="Índice",
-                info="Opcional. Si no tenés un .index, dejá Sin índice.",
+                info="Si hay un .index de esa voz, queda elegido.",
+            )
+        with gr.Row():
+            pitch = gr.Slider(
+                minimum=-12,
+                maximum=12,
+                value=0,
+                step=1,
+                label="Semitonos",
+            )
+            index_mix = gr.Slider(
+                minimum=0,
+                maximum=1,
+                value=0.66,
+                step=0.01,
+                label="Influencia del índice",
             )
         with gr.Row():
             fetch_btn = gr.Button("Bajá los modelos")
@@ -815,10 +853,11 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
         )
         convert_btn.click(
             on_convert,
-            inputs=[vocal, model, index],
+            inputs=[vocal, model, index, pitch, index_mix],
             outputs=[converted, remix, status],
             api_name="convertir",
         )
+        model.change(on_model_change, inputs=[model], outputs=[index])
         fetch_btn.click(
             on_fetch_models,
             outputs=[model, index, mdx, status],
