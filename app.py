@@ -36,6 +36,13 @@ STEM_CHOICES = [
     ("Voz e instrumental", STEM_AMBAS),
 ]
 LOCAL_SEPARATION = "Separación local"
+# Recortar corre en la ventana y la deja congelada. Compartir apunta a Hugging Face.
+_PLAYER = {
+    "type": "filepath",
+    "sources": ["upload"],
+    "editable": False,
+    "buttons": ["download"],
+}
 
 
 def launch_kwargs(**overrides):
@@ -751,11 +758,7 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
         )
         status = gr.Markdown("Subí un audio o pegá un enlace de YouTube.")
         with gr.Row():
-            audio_in = gr.Audio(
-                label="Archivo",
-                type="filepath",
-                sources=["upload"],
-            )
+            audio_in = gr.Audio(label="Archivo", **_PLAYER)
             with gr.Column():
                 url = gr.Textbox(
                     label="Enlace de YouTube",
@@ -777,8 +780,8 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             )
         separate_btn = gr.Button("Separá", variant="primary")
         with gr.Row():
-            vocal = gr.Audio(label="Voz", type="filepath")
-            instrumental = gr.Audio(label="Instrumental", type="filepath")
+            vocal = gr.Audio(label="Voz", **_PLAYER)
+            instrumental = gr.Audio(label="Instrumental", **_PLAYER)
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
             "Tu voz es el .pth de la carpeta weights. Si tenés el G_ del entrenamiento, dejá el config.json al lado. HuBERT y el pitch los baja la app."
@@ -815,7 +818,7 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
             voices_btn = gr.Button("Abrí la carpeta de voces")
             refresh_btn = gr.Button("Actualizá los modelos")
             convert_btn = gr.Button("Convertí la voz", variant="primary")
-        converted = gr.Audio(label="Voz convertida", type="filepath")
+        converted = gr.Audio(label="Voz convertida", **_PLAYER)
         gr.Markdown("### Unir")
         use_converted = gr.Checkbox(label="Usar la voz convertida", value=True)
         with gr.Row():
@@ -834,7 +837,7 @@ Corre en tu Mac. La primera separación baja el modelo. Tu voz es un archivo .pt
                 label="Nivel del instrumental (dB)",
             )
         remix_btn = gr.Button("Uní", variant="primary")
-        remix = gr.Audio(label="Remix", type="filepath")
+        remix = gr.Audio(label="Remix", **_PLAYER)
         with gr.Row():
             export_btn = gr.Button("Exportá a Descargas", variant="primary")
             open_btn = gr.Button("Abrí la carpeta")

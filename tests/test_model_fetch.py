@@ -287,6 +287,13 @@ class UiCopyTests(unittest.TestCase):
         self.assertIn("Abrí la carpeta de voces", joined)
         self.assertIn("Semitonos", joined)
         self.assertIn("Influencia del índice", joined)
+        players = [block for block in demo.blocks.values() if isinstance(block, app.gr.Audio)]
+        self.assertEqual(len(players), 5)
+        for player in players:
+            self.assertFalse(player.editable)
+            self.assertEqual(list(player.sources), ["upload"])
+            self.assertNotIn("share", player.buttons)
+            self.assertIn("download", player.buttons)
         self.assertNotIn("Application Support", joined)
         self.assertNotIn("no los descarga", joined)
         self.assertNotIn("Library", joined)
