@@ -1,6 +1,9 @@
 """Local RVC conversion. No Hugging Face download, no extra UI options."""
+import hashlib
 import os
+import shutil
 import sys
+import tempfile
 import time
 import types
 
@@ -12,9 +15,12 @@ from app_paths import data_dir
 
 RVC_DIR = os.path.join(data_dir(), "rvc_models")
 OUTPUT_DIR = os.path.join(data_dir(), "rvc_output")
+MAX_INDEX_BYTES = 512 * 1024 * 1024
+_PICKLE_SUFFIXES = (".bin", ".pt", ".pth")
 
 _converter = None
 _converter_key = None
+_weight_tmpdir = None
 
 
 def _stub_pyworld():
@@ -81,31 +87,79 @@ def require_support_models():
     return hubert, rmvpe
 
 
+def _staging_dir():
+    global _weight_tmpdir
+    if _weight_tmpdir is None:
+        _weight_tmpdir = tempfile.TemporaryDirectory(prefix="as-rvc-")
+        try:
+            os.chmod(_weight_tmpdir.name, 0o700)
+        except OSError:
+            pass
+    return _weight_tmpdir.name
+
+
+def _pickle_files(directory):
+    found = []
+    for name in os.listdir(directory):
+        if name.lower().endswith(_PICKLE_SUFFIXES):
+            found.append(os.path.join(directory, name))
+    return found
+
+
 def _validate_hubert(path):
-    if os.path.isdir(path):
-        if os.path.isfile(os.path.join(path, "config.json")):
-            return path
+    if not os.path.isdir(path):
+        raise ValueError(
+            "El motor RVC necesita la carpeta rvc_models/hubert_base "
+            "(config.json y los pesos). Un hubert_base.pt suelto no alcanza."
+        )
+    if not os.path.isfile(os.path.join(path, "config.json")):
         raise ValueError(
             "rvc_models/hubert_base no tiene config.json. "
             "Copiá la carpeta completa del modelo HuBERT, con config.json y los pesos."
         )
-    raise ValueError(
-        "El motor RVC necesita la carpeta rvc_models/hubert_base "
-        "(config.json y los pesos). Un hubert_base.pt suelto no alcanza."
-    )
+    has_safe = os.path.isfile(os.path.join(path, "model.safetensors"))
+    pickles = _pickle_files(path)
+    if not has_safe and not pickles:
+        raise ValueError("Faltan los pesos de HuBERT.")
+    for pickle_path in pickles:
+        _reject_unsafe_checkpoint(pickle_path)
+    return os.path.realpath(path)
 
 
 def _reject_unsafe_checkpoint(path):
     try:
         result = scan_file_path(path)
     except Exception as exc:
-        raise ValueError("No pude revisar el modelo RVC (.pth).") from exc
+        raise ValueError("No pude revisar el modelo.") from exc
     if getattr(result, "issues_count", 0):
         raise ValueError(
-            "Ese .pth no es seguro para cargarlo. Usá un modelo RVC de confianza."
+            "Ese modelo no es seguro para cargarlo. Usá archivos de confianza."
         )
     if getattr(result, "scan_err", False):
-        raise ValueError("No pude revisar el modelo RVC (.pth).")
+        raise ValueError("No pude revisar el modelo.")
+
+
+def _checked_copy(path):
+    path = os.path.realpath(path)
+    _reject_unsafe_checkpoint(path)
+    digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
+    dest = os.path.join(_staging_dir(), f"{digest}-{os.path.basename(path)}")
+    shutil.copy2(path, dest)
+    try:
+        os.chmod(dest, 0o600)
+    except OSError:
+        pass
+    _reject_unsafe_checkpoint(dest)
+    return dest
+
+
+def _checked_hubert_dir(path):
+    path = _validate_hubert(path)
+    dest = os.path.join(_staging_dir(), "hubert_base")
+    if os.path.isdir(dest):
+        shutil.rmtree(dest)
+    shutil.copytree(path, dest)
+    return _validate_hubert(dest)
 
 
 def _output_path(audio_path):
@@ -169,15 +223,19 @@ def convert_voice(audio_path, model_path, index_path=None):
     if not model_path or not os.path.isfile(model_path):
         raise ValueError("Falta el modelo RVC (.pth) en disco.")
     hubert, rmvpe = require_support_models()
-    hubert = _validate_hubert(hubert)
+    hubert = _checked_hubert_dir(hubert)
     if os.path.getsize(rmvpe) <= 0:
         raise ValueError("rvc_models/rmvpe.pt está vacío.")
-    if index_path and not os.path.isfile(index_path):
-        raise ValueError("No encontré el índice RVC (.index).")
-    _reject_unsafe_checkpoint(model_path)
+    rmvpe = _checked_copy(rmvpe)
+    if index_path:
+        if not os.path.isfile(index_path):
+            raise ValueError("No encontré el índice RVC (.index).")
+        if os.path.getsize(index_path) > MAX_INDEX_BYTES:
+            raise ValueError("Ese índice es demasiado grande.")
+    model_path = _checked_copy(model_path)
     converter = _get_converter(hubert, rmvpe)
     tag = os.path.abspath(model_path)
-    index = index_path or ""
+    index = os.path.realpath(index_path) if index_path else ""
     try:
         converter.apply_conf(
             tag=tag,
@@ -208,9 +266,9 @@ def convert_voice(audio_path, model_path, index_path=None):
             )
         ):
             raise
-        raise ValueError(f"No pude convertir la voz: {exc}") from exc
+        raise ValueError("No pude convertir la voz.") from exc
     except Exception as exc:
-        raise ValueError(f"No pude convertir la voz: {exc}") from exc
+        raise ValueError("No pude convertir la voz.") from exc
     if not isinstance(converted, tuple) or len(converted) != 2:
         raise ValueError("La conversión no devolvió audio.")
     samples, sample_rate = converted
