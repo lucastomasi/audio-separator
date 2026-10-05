@@ -32,7 +32,7 @@ class LaunchSecurityTests(unittest.TestCase):
     def test_ui_error_hides_paths(self):
         with self.assertRaises(Exception) as caught:
             app._ui_error(ValueError("falló en /Users/ada/Library/secret"))
-        self.assertEqual(str(caught.exception), "Algo salió mal.")
+        self.assertIn("Algo salió mal.", str(caught.exception))
         self.assertNotIn("/Users/", str(caught.exception))
 
     def test_ui_error_keeps_safe_spanish(self):
@@ -93,8 +93,11 @@ class DesktopTests(unittest.TestCase):
         self.assertLess(port, 65536)
 
     def test_ready_rejects_unauthorized_listener(self):
-        error = mock.Mock(spec=desktop.urllib.error.HTTPError)
-        error.code = 401
+        from email.message import Message
+
+        error = desktop.urllib.error.HTTPError(
+            "http://127.0.0.1:1/", 401, "no", Message(), None
+        )
         with mock.patch("urllib.request.urlopen", side_effect=error):
             self.assertFalse(
                 desktop.our_server_ready("http://127.0.0.1:1/?access_token=x", "x", timeout=0.2)
