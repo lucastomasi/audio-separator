@@ -1,29 +1,17 @@
 """Download YouTube as audio-only mp3. No Gradio/torch."""
 import os
-import re
 import shutil
 
 from app_paths import data_dir
-from audio_text import normalize_media_url
+from audio_text import extract_youtube_id, youtube_watch_url
 
 AUDIO_EXTS = ("mp3", "m4a", "wav", "webm", "opus", "ogg")
-YOUTUBE_ID_RE = re.compile(
-    r"(?:v=|/youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})"
-)
 
 
 def downloads_dir():
     path = os.path.join(data_dir(), "downloads")
     os.makedirs(path, exist_ok=True)
     return path
-
-
-def extract_youtube_id(url):
-    url = normalize_media_url(url)
-    if not url:
-        return None
-    match = YOUTUBE_ID_RE.search(url)
-    return match.group(1) if match else None
 
 
 def existing_audio(video_id, directory=None):
@@ -51,12 +39,13 @@ def ffmpeg_binary():
     return None
 
 
-def node_binary():
-    found = shutil.which("node")
-    if found:
-        return found
-    fallback = "/usr/local/bin/node"
-    return fallback if os.path.isfile(fallback) else None
+def ffprobe_binary():
+    here = os.path.dirname(os.path.abspath(__file__))
+    bundled = os.path.abspath(os.path.join(here, "..", "bin", "ffprobe"))
+    if os.path.isfile(bundled):
+        return bundled
+    found = shutil.which("ffprobe")
+    return found
 
 
 def ydl_options(directory):
@@ -71,13 +60,10 @@ def ydl_options(directory):
         "noplaylist": True,
         "no_warnings": True,
         "quiet": True,
+        "socket_timeout": 15,
         "outtmpl": os.path.join(directory, "%(id)s.%(ext)s"),
         "restrictfilenames": True,
-        "remote_components": ["ejs:github"],
     }
-    node_path = node_binary()
-    if node_path:
-        opts["js_runtimes"] = {"node": {"path": node_path}}
     ffmpeg_path = ffmpeg_binary()
     if ffmpeg_path:
         opts["ffmpeg_location"] = ffmpeg_path
@@ -85,30 +71,24 @@ def ydl_options(directory):
 
 
 def download_audio(url, directory=None):
-    url = normalize_media_url(url)
-    if not url:
-        raise ValueError("Pega un enlace de YouTube.")
+    watch_url, video_id = youtube_watch_url(url)
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)
-    cached_id = extract_youtube_id(url)
-    cached = existing_audio(cached_id, directory)
+    cached = existing_audio(video_id, directory)
     if cached:
         return cached, True, None
     import yt_dlp
     try:
         with yt_dlp.YoutubeDL(ydl_options(directory)) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(watch_url, download=True)
     except Exception as exc:
         raise ValueError(
             "No se pudo descargar el audio de YouTube. Revisa el enlace."
         ) from exc
     if info and info.get("_type") == "playlist":
-        entries = [e for e in (info.get("entries") or []) if e]
-        if not entries:
-            raise ValueError("Esa lista no tiene videos.")
-        info = entries[0]
-    video_id = (info or {}).get("id")
-    if not video_id:
+        raise ValueError("Pega un enlace de YouTube.")
+    got_id = (info or {}).get("id")
+    if got_id != video_id:
         raise ValueError("No pude identificar el video de YouTube.")
     path = existing_audio(video_id, directory)
     if not path:
