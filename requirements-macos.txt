@@ -1,5 +1,15 @@
-# Intel macOS CPU stack. PyTorch dropped x86_64 Mac wheels after 2.2.2.
-# The Space pins torch 2.9.1 + onnxruntime-gpu (Linux/CUDA) and librosa/numba.
+# Intel macOS CPU stack for the app venv (Gradio / UVR / desktop).
+# PyTorch dropped x86_64 Mac wheels after 2.2.2 — keep that pin.
+#
+# Conversion and train run in the isolated venv (requirements-vc.txt). This
+# file must stay resolvable with a stock pip on Python 3.12, so it does not
+# pin transformers or coqui-tts:
+#   - gradio==6.20.0 needs huggingface-hub>=1.2,<2
+#   - transformers 4.x needs huggingface-hub<1.0 (hard conflict)
+#   - coqui-tts==0.27.5 needs transformers>=4.57 (conflicts with 4.53.3)
+#   - infer-rvc-python==1.3.1 pulls pyworld==0.3.4 (no cp312 wheel) and
+#     fought librosa>=0.10; convert uses third_party/vc instead
+# Space/Linux pins stay in requirements.txt.
 numpy<2
 torch==2.2.2
 torchaudio==2.2.2
@@ -9,27 +19,13 @@ pedalboard
 yt-dlp
 tqdm
 gradio==6.20.0
+huggingface-hub>=1.2,<2
 ffmpeg-python
 scipy
+scikit-learn
 requests
 urllib3
 pywebview
-infer-rvc-python==1.3.1
 picklescan
-transformers==4.53.3
-coqpit-config
-einops
-inflect
-anyascii
-pysbd
-coqui-tts-trainer
-faiss-cpu
-praat-parselmouth
-torchcrepe
-resampy
-av>=15.1.0,<16
-librosa>=0.10,<0.11
-numba>=0.60
-llvmlite>=0.43
 safetensors
-coqui-tts==0.27.5
+edge-tts

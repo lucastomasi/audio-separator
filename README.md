@@ -48,6 +48,8 @@ cd audio-separator
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-macos.txt
+python3.12 -m venv .venv-vc
+.venv-vc/bin/pip install -r requirements-vc.txt
 ```
 
 ### Lo que no viene en el clone
@@ -56,7 +58,6 @@ pip install -r requirements-macos.txt
 |---|---|
 | Pesos RVC (HuBERT, RMVPE, f0G/D) | App → **Completar instalación**, o `library/models/rvc/` |
 | ONNX UVR | `mdx_models/*.onnx` (no se suben). El zip **full** es un enlatado: los copia del Mac de build. Sin esos archivos `build_standalone.sh` aborta. |
-| RVC-WebUI (solo para **Entrenar**) | `git clone --depth 1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI third_party/RVC-WebUI` |
 
 ```bash
 python desktop.py

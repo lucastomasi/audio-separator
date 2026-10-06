@@ -1,4 +1,7 @@
-# Isolated conversion-engine venv (Intel Mac: no torch 2.11 wheel).
+# Isolated conversion + train venv (Intel Mac: no torch 2.11 wheel).
+# Known-good with Applio (third_party/vc) and Python 3.12:
+# transformers 4.53.3 + huggingface-hub 0.36.2 (hub<1.0).
+# Keep this set out of the Gradio app venv — Gradio 6.20 needs hub>=1.2.
 torch==2.2.2
 torchaudio==2.2.2
 numpy>=1.26,<2
@@ -10,7 +13,8 @@ soxr
 soundfile
 scipy
 einops
-transformers>=4.40,<5
+huggingface-hub==0.36.2
+transformers==4.53.3
 torchcrepe
 torchfcpe
 pedalboard
@@ -18,3 +22,7 @@ noisereduce
 wget
 tqdm
 av>=15.1.0,<16
+scikit-learn
+matplotlib
+tensorboard
+safetensors
