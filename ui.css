@@ -24,48 +24,25 @@ button[aria-label="Settings"],
   display: none !important;
 }
 
+.app-chrome {
+  align-items: flex-end !important;
+  margin: 2px 0 4px !important;
+  gap: 8px !important;
+}
+
 .app-header h1 {
-  margin: 2px 0 0 !important;
-  font-size: 1.38rem !important;
+  margin: 0 !important;
+  font-size: 1.28rem !important;
   font-weight: 700 !important;
   letter-spacing: -0.03em !important;
   color: #1D1D1F !important;
+  line-height: 1.15 !important;
 }
 
 .lede {
-  margin: 2px 0 8px !important;
-  font-size: 0.82rem !important;
+  margin: 2px 0 0 !important;
+  font-size: 0.8rem !important;
   color: #86868B !important;
-}
-
-.stepper-wrap {
-  margin: 0 0 12px !important;
-}
-
-.stepper {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  font-size: 0.72rem !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.01em !important;
-  color: #86868B !important;
-}
-
-.stepper span {
-  position: relative;
-  padding: 4px 10px 4px 0;
-  margin-right: 8px;
-}
-
-.stepper span:not(:last-child)::after {
-  content: "›";
-  position: absolute;
-  right: -2px;
-  color: #C7C7CC;
-  font-weight: 400;
 }
 
 .hint {
@@ -129,11 +106,44 @@ div.progress-bar {
 
 #main-tabs > .tab-nav,
 #main-tabs > div:first-child {
-  gap: 4px !important;
-  margin-bottom: 10px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 2px !important;
+  margin: 0 0 12px !important;
+  padding: 3px !important;
+  border-radius: 10px !important;
+  background: rgba(118, 118, 128, 0.12) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 #main-tabs button {
+  flex: 1 1 auto !important;
+  min-height: 30px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  color: #1D1D1F !important;
+}
+
+#main-tabs button.selected,
+#main-tabs button[aria-selected="true"] {
+  background: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12) !important;
+  color: #1D1D1F !important;
+}
+
+#song-source-tabs > .tab-nav,
+#song-source-tabs > div:first-child {
+  gap: 2px !important;
+  margin-bottom: 8px !important;
+}
+
+#install-btn {
+  min-height: 36px !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
 }
@@ -258,9 +268,23 @@ a[download],
 }
 
 .dark .lede,
-.dark .hint,
-.dark .stepper {
+.dark .hint {
   color: #98989D !important;
+}
+
+.dark #main-tabs > .tab-nav,
+.dark #main-tabs > div:first-child {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark #main-tabs button {
+  color: #F5F5F7 !important;
+}
+
+.dark #main-tabs button.selected,
+.dark #main-tabs button[aria-selected="true"] {
+  background: #3A3A3C !important;
+  color: #F5F5F7 !important;
 }
 
 .dark #job-status {
@@ -301,7 +325,8 @@ a[download],
   #train-btn,
   #rvc-btn,
   #join-btn,
-  #tts-rvc-btn {
+  #tts-rvc-btn,
+  #install-btn {
     position: sticky;
     bottom: 8px;
     z-index: 5;

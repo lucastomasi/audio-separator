@@ -99,6 +99,10 @@ class DesktopTests(unittest.TestCase):
         self.assertGreater(port, 0)
         self.assertLess(port, 65536)
 
+    def test_splash_follows_system_dark(self):
+        self.assertIn("prefers-color-scheme: dark", desktop.SPLASH)
+        self.assertIn("#1C1C1E", desktop.SPLASH)
+
     def test_ready_rejects_unauthorized_listener(self):
         from email.message import Message
 

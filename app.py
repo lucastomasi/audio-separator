@@ -196,17 +196,13 @@ def get_gui():
         theme=APP_THEME,
         css=UI_CSS,
     ) as app:
-        gr.Markdown("# Audio Separator", elem_classes=["app-header"])
-        gr.Markdown(
-            "Separá, cambiá la voz y uní en este Mac.",
-            elem_classes=["lede"],
-        )
-        gr.HTML(
-            '<p class="stepper">'
-            "<span>Canción</span><span>Separar</span>"
-            "<span>Convertir</span><span>Unir</span></p>",
-            elem_classes=["stepper-wrap"],
-        )
+        with gr.Row(elem_classes=["app-chrome"]):
+            with gr.Column(scale=1, min_width=220):
+                gr.Markdown("# Audio Separator", elem_classes=["app-header"])
+                gr.Markdown(
+                    "Separá, cambiá la voz y uní.",
+                    elem_classes=["lede"],
+                )
         status = gr.Markdown(_install_status_line(), elem_id="job-status")
         import library as _lib_ui
 
@@ -229,13 +225,18 @@ def get_gui():
         ):
             with gr.Tab("1 Canción", id="cancion"):
                 with gr.Group(elem_classes=["step"]):
-                    with gr.Tabs():
+                    gr.Markdown("Canción", elem_classes=["panel-title"])
+                    with gr.Tabs(elem_id="song-source-tabs"):
                         with gr.Tab("Archivo"):
                             gr.Markdown(
-                                "Arrastrá el audio al reproductor o cargá el demo.",
+                                "Arrastrá el audio o cargá el demo.",
                                 elem_classes=["hint"],
                             )
                             aud = audio_conf()
+                            with gr.Row(elem_classes=["action-row"]):
+                                demo_btn = gr.Button(
+                                    "Cargar demo", variant="secondary"
+                                )
                             with gr.Row():
                                 clip_start = gr.Textbox(
                                     label="Inicio (m:ss)",
@@ -247,10 +248,10 @@ def get_gui():
                                     placeholder="0:25",
                                     scale=1,
                                 )
-                                clip_btn = gr.Button("Recortar", scale=1)
-                            with gr.Row(elem_classes=["action-row"]):
-                                demo_btn = gr.Button(
-                                    "Cargar demo", variant="secondary"
+                                clip_btn = gr.Button(
+                                    "Recortar",
+                                    variant="secondary",
+                                    scale=1,
                                 )
                         with gr.Tab("YouTube"):
                             with gr.Row():
@@ -258,19 +259,21 @@ def get_gui():
                                 url_button_gui = url_button_conf()
                             want_video = gr.Checkbox(
                                 True,
-                                label="También bajar el video (para pegarlo después)",
+                                label="También bajar el video",
                             )
 
             with gr.Tab("2 Separar", id="separar"):
                 with gr.Group(elem_classes=["step"]):
-                    stem_gui = stem_conf()
-                    target_format_gui = format_conf()
-                    button_base = button_conf()
+                    gr.Markdown("Separar", elem_classes=["panel-title"])
                     gr.Markdown(
                         "Por defecto saca voz e instrumental. "
                         "En Intel tarda minutos; no cierres la ventana.",
                         elem_classes=["hint"],
                     )
+                    with gr.Row():
+                        stem_gui = stem_conf()
+                        target_format_gui = format_conf()
+                    button_base = button_conf()
                     with gr.Row():
                         vocal_out = out_audio("Voz")
                         background_out = out_audio("Instrumental")
@@ -286,21 +289,101 @@ def get_gui():
                         nueva_btn = gr.Button(
                             "Nueva canción", variant="secondary"
                         )
+                    with gr.Accordion("Opciones avanzadas", open=False):
+                        with gr.Row():
+                            main_gui = main_conf()
+                            dereverb_gui = dereverb_conf()
+                        with gr.Row():
+                            vocal_effects_gui = vocal_effects_conf()
+                            background_effects_gui = background_effects_conf()
+                        with gr.Accordion(
+                            "Efectos de voz", open=False, visible=False
+                        ) as vocal_acc:
+                            with gr.Row():
+                                vocal_reverb_room_size_gui = (
+                                    vocal_reverb_room_size_conf()
+                                )
+                                vocal_reverb_damping_gui = vocal_reverb_damping_conf()
+                            with gr.Row():
+                                vocal_reverb_dryness_gui = (
+                                    vocal_reverb_dryness_level_conf()
+                                )
+                                vocal_reverb_wet_level_gui = (
+                                    vocal_reverb_wet_level_conf()
+                                )
+                            with gr.Row():
+                                vocal_delay_seconds_gui = vocal_delay_seconds_conf()
+                                vocal_delay_mix_gui = vocal_delay_mix_conf()
+                            with gr.Row():
+                                vocal_gain_db_gui = vocal_gain_db_conf()
+                            with gr.Row():
+                                vocal_compressor_threshold_db_gui = (
+                                    vocal_compressor_threshold_db_conf()
+                                )
+                                vocal_compressor_ratio_gui = (
+                                    vocal_compressor_ratio_conf()
+                                )
+                            with gr.Row():
+                                vocal_compressor_attack_ms_gui = (
+                                    vocal_compressor_attack_ms_conf()
+                                )
+                                vocal_compressor_release_ms_gui = (
+                                    vocal_compressor_release_ms_conf()
+                                )
+                        with gr.Accordion(
+                            "Efectos de instrumental",
+                            open=False,
+                            visible=False,
+                        ) as background_acc:
+                            with gr.Row():
+                                background_highpass_freq_gui = (
+                                    background_highpass_freq_conf()
+                                )
+                                background_lowpass_freq_gui = (
+                                    background_lowpass_freq_conf()
+                                )
+                            with gr.Row():
+                                background_reverb_room_size_gui = (
+                                    background_reverb_room_size_conf()
+                                )
+                                background_reverb_damping_gui = (
+                                    background_reverb_damping_conf()
+                                )
+                            with gr.Row():
+                                background_reverb_wet_level_gui = (
+                                    background_reverb_wet_level_conf()
+                                )
+                                background_gain_db_gui = background_gain_db_conf()
+                            with gr.Row():
+                                background_compressor_threshold_db_gui = (
+                                    background_compressor_threshold_db_conf()
+                                )
+                                background_compressor_ratio_gui = (
+                                    background_compressor_ratio_conf()
+                                )
+                            with gr.Row():
+                                background_compressor_attack_ms_gui = (
+                                    background_compressor_attack_ms_conf()
+                                )
+                                background_compressor_release_ms_gui = (
+                                    background_compressor_release_ms_conf()
+                                )
 
             with gr.Tab("3 Convertir", id="convertir"):
                 with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("Convertir", elem_classes=["panel-title"])
+                    gr.Markdown(
+                        "La voz separada entra sola. El modelo solo cambia el timbre.",
+                        elem_classes=["hint"],
+                    )
                     rvc_in = gr.Audio(
                         label="Audio a convertir",
                         type="filepath",
                         sources=["upload"],
                         buttons=[],
                     )
-                    gr.Markdown(
-                        "La voz separada entra sola. El modelo solo cambia el timbre.",
-                        elem_classes=["hint"],
-                    )
                     rvc_pick = gr.Dropdown(
-                        label="Buscar modelo",
+                        label="Modelo",
                         choices=_rvc_choices,
                         value=_rvc_value,
                         info="Si está vacío, entrená o cargá un .pth en Biblioteca.",
@@ -327,6 +410,7 @@ def get_gui():
 
             with gr.Tab("4 Unir", id="unir"):
                 with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("Unir", elem_classes=["panel-title"])
                     with gr.Row():
                         remix_voice = gr.Audio(
                             label="Voz",
@@ -428,6 +512,15 @@ def get_gui():
 
             with gr.Tab("Entrenar", id="entrenar"):
                 with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("Entrenar", elem_classes=["panel-title"])
+                    gr.Markdown(
+                        "El entrenamiento es en este Mac. "
+                        "Separá solo la voz, sin quitar reverb. "
+                        "10 epochs de prueba. "
+                        "Cerrar la ventana no corta el entrenamiento; Separar y Convertir sí. "
+                        "No lo compartas si la voz no es tuya.",
+                        elem_classes=["hint"],
+                    )
                     train_name = gr.Textbox(
                         label="Nombre", placeholder="mi_voz"
                     )
@@ -466,14 +559,6 @@ def get_gui():
                         step=1,
                         label="Epochs (CPU Intel: 10 de prueba)",
                     )
-                    gr.Markdown(
-                        "El entrenamiento es en este Mac. "
-                        "Separá solo la voz, sin quitar reverb. "
-                        "10 epochs de prueba. "
-                        "Cerrar la ventana no corta el entrenamiento; Separar y Convertir sí. "
-                        "No lo compartas si la voz no es tuya.",
-                        elem_classes=["hint"],
-                    )
                     train_btn = gr.Button(
                         "Entrenar",
                         variant="primary",
@@ -484,6 +569,7 @@ def get_gui():
                 with gr.Tabs():
                     with gr.Tab("Instalación"):
                         with gr.Group(elem_classes=["step"]):
+                            gr.Markdown("Instalación", elem_classes=["panel-title"])
                             gr.Markdown(
                                 "Una vez: modelos UVR (ONNX) y pesos RVC. "
                                 "Solo baja lo que falte; si ya están en disco, no toca.",
@@ -491,7 +577,7 @@ def get_gui():
                             )
                             install_btn = gr.Button(
                                 "Completar instalación",
-                                variant="secondary",
+                                variant="primary" if _need_install else "secondary",
                                 elem_id="install-btn",
                             )
                             install_log = gr.Textbox(
@@ -502,6 +588,7 @@ def get_gui():
                             )
                     with gr.Tab("Biblioteca"):
                         with gr.Group(elem_classes=["step"]):
+                            gr.Markdown("Biblioteca", elem_classes=["panel-title"])
                             gr.Markdown(
                                 "Si Convertir está vacío, entrená una voz o cargá un .pth. "
                                 "hubert y rmvpe se instalan una vez en Instalación.",
@@ -538,6 +625,7 @@ def get_gui():
                                 )
                     with gr.Tab("Texto"):
                         with gr.Group(elem_classes=["step"]):
+                            gr.Markdown("Texto", elem_classes=["panel-title"])
                             gr.Markdown(
                                 "ElevenLabs si hay key; si no, Edge (internet). "
                                 "Después aplica tu modelo de la biblioteca.",
@@ -574,48 +662,6 @@ def get_gui():
                                 elem_id="tts-rvc-btn",
                             )
                             tts_audio = out_audio("Salida")
-
-        with gr.Accordion("Opciones avanzadas", open=False):
-            with gr.Row():
-                main_gui = main_conf()
-                dereverb_gui = dereverb_conf()
-            with gr.Row():
-                vocal_effects_gui = vocal_effects_conf()
-                background_effects_gui = background_effects_conf()
-            with gr.Accordion("Efectos de voz", open=False, visible=False) as vocal_acc:
-                with gr.Row():
-                    vocal_reverb_room_size_gui = vocal_reverb_room_size_conf()
-                    vocal_reverb_damping_gui = vocal_reverb_damping_conf()
-                with gr.Row():
-                    vocal_reverb_dryness_gui = vocal_reverb_dryness_level_conf()
-                    vocal_reverb_wet_level_gui = vocal_reverb_wet_level_conf()
-                with gr.Row():
-                    vocal_delay_seconds_gui = vocal_delay_seconds_conf()
-                    vocal_delay_mix_gui = vocal_delay_mix_conf()
-                with gr.Row():
-                    vocal_gain_db_gui = vocal_gain_db_conf()
-                with gr.Row():
-                    vocal_compressor_threshold_db_gui = vocal_compressor_threshold_db_conf()
-                    vocal_compressor_ratio_gui = vocal_compressor_ratio_conf()
-                with gr.Row():
-                    vocal_compressor_attack_ms_gui = vocal_compressor_attack_ms_conf()
-                    vocal_compressor_release_ms_gui = vocal_compressor_release_ms_conf()
-            with gr.Accordion("Efectos de instrumental", open=False, visible=False) as background_acc:
-                with gr.Row():
-                    background_highpass_freq_gui = background_highpass_freq_conf()
-                    background_lowpass_freq_gui = background_lowpass_freq_conf()
-                with gr.Row():
-                    background_reverb_room_size_gui = background_reverb_room_size_conf()
-                    background_reverb_damping_gui = background_reverb_damping_conf()
-                with gr.Row():
-                    background_reverb_wet_level_gui = background_reverb_wet_level_conf()
-                    background_gain_db_gui = background_gain_db_conf()
-                with gr.Row():
-                    background_compressor_threshold_db_gui = background_compressor_threshold_db_conf()
-                    background_compressor_ratio_gui = background_compressor_ratio_conf()
-                with gr.Row():
-                    background_compressor_attack_ms_gui = background_compressor_attack_ms_conf()
-                    background_compressor_release_ms_gui = background_compressor_release_ms_conf()
 
         install_btn.click(
             install_rvc_job,

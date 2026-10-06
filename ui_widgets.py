@@ -17,7 +17,7 @@ def url_media_conf():
 def url_button_conf():
     return gr.Button(
         "Descargar",
-        variant="secondary",
+        variant="primary",
         scale=1,
     )
 
@@ -212,7 +212,6 @@ def format_conf():
     return gr.Radio(
         choices=FORMAT_OPTIONS,
         value="WAV",
-        label="Formato de salida",
-        info="WAV = máxima fidelidad. MP3 más chico, menos fiel.",
+        label="Formato",
     )
 
