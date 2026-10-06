@@ -1,5 +1,12 @@
 # Intel macOS CPU stack. PyTorch dropped x86_64 Mac wheels after 2.2.2.
 # The Space pins torch 2.9.1 + onnxruntime-gpu (Linux/CUDA) and librosa/numba.
+#
+# Conversion RVC runs in .venv-vc (see requirements-vc.txt), not this venv.
+# Do not add infer-rvc-python here: it pins torchcrepe==0.0.20 → librosa==0.9.1
+# and fights coqui-tts / the rest of this file.
+#
+# gradio 6.20 needs huggingface-hub>=1.2; that requires transformers 5.x
+# (transformers 4.x still asks huggingface-hub<1).
 numpy<2
 torch==2.2.2
 torchaudio==2.2.2
@@ -14,9 +21,8 @@ scipy
 requests
 urllib3
 pywebview
-infer-rvc-python==1.3.1
 picklescan
-transformers==4.53.3
+transformers==5.0.0
 coqpit-config
 einops
 inflect
@@ -25,10 +31,9 @@ pysbd
 coqui-tts-trainer
 faiss-cpu
 praat-parselmouth
-torchcrepe
 resampy
 av>=15.1.0,<16
-librosa>=0.10,<0.11
+librosa>=0.11
 numba>=0.60
 llvmlite>=0.43
 safetensors

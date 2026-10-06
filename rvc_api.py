@@ -1,7 +1,6 @@
-"""Thin Python API over the vendored RVC stack. No pip rvc / rvc-python.
+"""Thin Python API over the vendored RVC stack (vc_runner / .venv-vc).
 
 Uses library/models/rvc_voices/ only (same as Convertir in the app).
-Mac Intel: infer_rvc_python BaseLoader with only_cpu=True.
 """
 from __future__ import annotations
 
@@ -123,7 +122,7 @@ def rvc_convert(
 ) -> Path:
     """Convert a wav with a trained library voice.
 
-    Reuses the shared BaseLoader (HuBERT/RMVPE stay warm across calls).
+    Reuses the shared conversion worker (HuBERT/RMVPE stay warm across calls).
     Writes under ~/Downloads/Audio Separator/ unless output_wav is set.
     """
     input_path = Path(input_wav)
