@@ -15,13 +15,13 @@ numpy<2
 soundfile
 scipy
 picklescan
-yt-dlp
+yt-dlp==2026.8.19
 onnxruntime
 pedalboard
 tqdm
-gradio
+gradio==6.20.0
 ffmpeg-python
-requests
-urllib3
+requests==2.32.5
+urllib3==2.5.0
 pywebview
 safetensors

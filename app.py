@@ -895,16 +895,56 @@ def build_server():
     return demo
 
 
+def _allowed_paths():
+    import app_security
+
+    return app_security.allowed_paths()
+
+
+def _blocked_paths():
+    import app_security
+
+    return app_security.blocked_paths()
+
+
+def auth_dependency(request):
+    import app_security
+
+    return app_security.auth_dependency(request)
+
+
+def _ui_error(exc):
+    import app_security
+
+    return app_security.ui_error(exc)
+
+
+def _mdx_config(model_path, session):
+    import app_security
+
+    return app_security.mdx_config(model_path, session)
+
+
+TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
+TOKEN_HEADER = "x-audio-separator-token"
+TOKEN_QUERY = "access_token"
+
+
 def launch_kwargs(**overrides):
+    import inspect
+
+    import app_security
+
     settings = dict(
         max_threads=4,
-        share=IS_COLAB,
+        share=False if not IS_COLAB else True,
         show_error=False,
         quiet=False,
         debug=IS_COLAB,
         ssr_mode=False,
         theme=APP_THEME,
         css=UI_CSS,
+        head=app_security._HEAD_TOKEN_JS,
         footer_links=[],
         inbrowser=False,
         server_name=__import__("app_env").host(),
@@ -912,18 +952,28 @@ def launch_kwargs(**overrides):
             os.environ.get("AUDIO_SEPARATOR_PORT")
             or __import__("app_env").preferred_port()
         ),
-        allowed_paths=[
-            __import__("app_env").home(),
-            __import__("app_env").data_dir(),
-            os.path.join(os.path.expanduser("~"), "Downloads"),
-        ],
+        allowed_paths=app_security.allowed_paths(),
+        blocked_paths=app_security.blocked_paths(),
+        max_file_size=app_security.MAX_UPLOAD,
+        strict_cors=True,
+        enable_monitoring=False,
+        mcp_server=False,
+        auth_dependency=app_security.auth_dependency,
+        app_kwargs={
+            "docs_url": None,
+            "redoc_url": None,
+            "openapi_url": None,
+        },
     )
     settings.update(overrides)
-    return settings
+    supported = set(inspect.signature(gr.Blocks.launch).parameters)
+    return {key: value for key, value in settings.items() if key in supported}
 
 
 if __name__ == "__main__":
     import argparse
+
+    import app_security
 
     parser = argparse.ArgumentParser(description="Run the app with optional sharing")
     parser.add_argument("--share", action="store_true")
@@ -932,4 +982,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.share:
         IS_COLAB = True
+    app_security.ensure_token()
     build_server().launch(**launch_kwargs(inbrowser=args.open))

@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """Native window for Audio Separator. Closing the window stops the app."""
 import os
+import secrets
 import socket
 import sys
 import threading
 import time
+import traceback
+import urllib.error
+import urllib.request
 
 import webview
 
 from app_env import host as env_host, pick_port
+from app_security import TOKEN_ENV, TOKEN_HEADER, TOKEN_QUERY, ensure_token
 
 HOST = env_host()
-PORT = pick_port()
-URL = f"http://{HOST}:{PORT}"
 SPLASH = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -58,11 +61,19 @@ SPLASH = """<!DOCTYPE html>
 """
 
 
-def port_open():
+def pick_free_port():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((HOST, 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def port_open(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(0.4)
     try:
-        sock.connect((HOST, PORT))
+        sock.connect((HOST, port))
         return True
     except OSError:
         return False
@@ -73,32 +84,60 @@ def port_open():
 def _attach_logs():
     if sys.stderr.isatty():
         return
-    path = os.path.expanduser("~/Library/Logs/audio-separator.log")
+    path = os.path.expanduser("~/Library/Logs/Audio Separator/launch.log")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     handle = open(path, "a", encoding="utf-8", buffering=1)
     sys.stdout = handle
     sys.stderr = handle
 
 
-def start_server():
+def _offline_env():
+    """Bundled weights only. Do not reach Hugging Face at runtime."""
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+
+
+def start_server(port):
     try:
         from app import build_server, launch_kwargs
 
         demo = build_server()
-        demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+        demo.launch(
+            **launch_kwargs(
+                prevent_thread_lock=True,
+                inbrowser=False,
+                server_name=HOST,
+                server_port=port,
+            )
+        )
     except Exception:
-        import traceback
-
         traceback.print_exc()
 
 
-def wait_until_ready(timeout=300):
+def our_server_ready(url, token, timeout=300):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if port_open():
-            return True
-        time.sleep(0.4)
+        request = urllib.request.Request(
+            url,
+            headers={"Host": HOST, TOKEN_HEADER: token},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=0.4) as response:
+                if 200 <= response.status < 400:
+                    return True
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                return False
+            time.sleep(0.4)
+        except (OSError, urllib.error.URLError):
+            time.sleep(0.4)
     return False
+
+
+def wait_until_ready(port, token, timeout=300):
+    url = f"http://{HOST}:{port}/?{TOKEN_QUERY}={token}"
+    return our_server_ready(url, token, timeout=timeout)
 
 
 BLOCK_DOWNLOAD_JS = """
@@ -125,8 +164,8 @@ def inject_download_guard(window):
         pass
 
 
-def attach_when_ready(window):
-    if not wait_until_ready():
+def attach_when_ready(window, url, token):
+    if not our_server_ready(url, token):
         window.load_html(
             SPLASH.replace(
                 "Arrancando… el primer inicio puede tardar uno o dos minutos.",
@@ -134,18 +173,39 @@ def attach_when_ready(window):
             )
         )
         return
-    window.load_url(URL)
+    window.load_url(url)
+
+
+def _report_launch_failure():
+    log_dir = os.path.expanduser("~/Library/Logs/Audio Separator")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        os.chmod(log_dir, 0o700)
+        log_path = os.path.join(log_dir, "launch.log")
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write("\n")
+            handle.write(traceback.format_exc())
+        os.chmod(log_path, 0o600)
+    except OSError:
+        pass
 
 
 def main():
     _attach_logs()
-    already = port_open()
+    _offline_env()
+    token = ensure_token()
+    if not os.environ.get(TOKEN_ENV):
+        os.environ[TOKEN_ENV] = secrets.token_urlsafe(32)
+        token = os.environ[TOKEN_ENV]
+    port = pick_port()
+    url = f"http://{HOST}:{port}/?{TOKEN_QUERY}={token}"
+    already = port_open(port)
     if not already:
-        threading.Thread(target=start_server, daemon=True).start()
+        threading.Thread(target=start_server, args=(port,), daemon=True).start()
 
     window = webview.create_window(
         "Audio Separator",
-        URL if already else None,
+        url if already else None,
         html=None if already else SPLASH,
         width=1100,
         height=820,
@@ -180,8 +240,15 @@ def main():
     except Exception:
         pass
 
-    webview.start(None if already else attach_when_ready, None if already else window)
+    webview.start(
+        None if already else (lambda opened: attach_when_ready(opened, url, token)),
+        None if already else window,
+    )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        _report_launch_failure()
+        raise SystemExit(1)

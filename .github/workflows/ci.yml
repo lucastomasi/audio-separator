@@ -16,5 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install numpy scipy soundfile gradio scikit-learn
+      - run: >
+          pip install
+          "numpy<2" scipy soundfile gradio scikit-learn
+          yt-dlp requests urllib3
       - run: PYTHONPATH=. python -m unittest discover -s tests -q

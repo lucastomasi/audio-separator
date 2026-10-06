@@ -15,15 +15,22 @@ class ExportsTests(unittest.TestCase):
         second = exports.unique_path(tmp.name, "voz.wav")
         self.assertEqual(os.path.basename(second), "voz (2).wav")
 
-    def test_copy_to_downloads(self):
+    def test_copy_to_downloads_only_exportable(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        src = os.path.join(tmp.name, "src.wav")
+        allowed_root = os.path.join(tmp.name, "Trabajos")
+        os.makedirs(allowed_root)
+        src = os.path.join(allowed_root, "src.wav")
         with open(src, "wb") as handle:
             handle.write(b"abc")
+        outside = os.path.join(tmp.name, "secret.wav")
+        with open(outside, "wb") as handle:
+            handle.write(b"no")
         dest_root = os.path.join(tmp.name, "out")
-        with mock.patch.object(exports, "exports_dir", return_value=dest_root):
-            directory, copied = exports.copy_to_downloads([src], ["voz"])
+        with mock.patch.object(exports, "exports_dir", return_value=dest_root), mock.patch.object(
+            exports, "_export_roots", return_value=[allowed_root, dest_root]
+        ):
+            directory, copied = exports.copy_to_downloads([src, outside], ["voz", "leak"])
         self.assertEqual(directory, dest_root)
         self.assertEqual(len(copied), 1)
         self.assertTrue(copied[0].endswith("voz.wav"))
