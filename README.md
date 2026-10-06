@@ -55,7 +55,7 @@ pip install -r requirements-macos.txt
 | Hace falta | Dónde |
 |---|---|
 | Pesos RVC (HuBERT, RMVPE, f0G/D) | App → **Completar instalación**, o `library/models/rvc/` |
-| ONNX UVR | `mdx_models/*.onnx` (no se suben; van en el zip full) |
+| ONNX UVR | `mdx_models/*.onnx` (no se suben). El zip **full** es un enlatado: los copia del Mac de build. Sin esos archivos `build_standalone.sh` aborta. |
 | RVC-WebUI (solo para **Entrenar**) | `git clone --depth 1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI third_party/RVC-WebUI` |
 
 ```bash

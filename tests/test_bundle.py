@@ -13,6 +13,23 @@ from bundle_py import BUNDLE_PY
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class FullZipIsCannedTests(unittest.TestCase):
+    def test_standalone_requires_uvr_onnx(self):
+        text = (ROOT / "scripts" / "build_standalone.sh").read_text(encoding="utf-8")
+        self.assertIn("UVR-MDX-NET-Voc_FT.onnx", text)
+        self.assertIn("el zip full es un enlatado", text)
+        self.assertIn("no baja ONNX en el Mac de destino", text)
+        self.assertIn("no baja RVC en el Mac de destino", text)
+
+    def test_cloud_install_does_not_download_models(self):
+        text = (ROOT / ".cursor" / "install.sh").read_text(encoding="utf-8")
+        self.assertNotIn("TRvlvr", text)
+        self.assertNotIn("huggingface", text.lower())
+        self.assertNotIn("curl ", text)
+        self.assertIn("/opt/audio-separator-models", text)
+        self.assertIn("No bajes nada", text)
+
+
 class BundlePyTests(unittest.TestCase):
     def test_required_modules_listed(self):
         names = set(BUNDLE_PY)

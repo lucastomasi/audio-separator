@@ -72,6 +72,24 @@ if [[ ! -d "$ROOT/library/models/rvc/hubert_base" ]]; then
   echo "ERROR: falta library/models/rvc/hubert_base (Transformers)"
   exit 1
 fi
+# Full zip is canned: dest Mac must not download weights.
+for f in \
+  UVR-MDX-NET-Voc_FT.onnx \
+  UVR_MDXNET_KARA_2.onnx \
+  Reverb_HQ_By_FoxJoy.onnx \
+  UVR-MDX-NET-Inst_HQ_4.onnx
+do
+  if [[ ! -s "$ROOT/mdx_models/$f" ]]; then
+    echo "ERROR: falta mdx_models/$f — el zip full es un enlatado, no baja ONNX en el Mac de destino." >&2
+    exit 1
+  fi
+done
+for f in rmvpe.pt f0G40k.pth f0D40k.pth hubert_base/model.safetensors hubert_base/config.json; do
+  if [[ ! -s "$ROOT/library/models/rvc/$f" ]]; then
+    echo "ERROR: falta library/models/rvc/$f — el zip full es un enlatado, no baja RVC en el Mac de destino." >&2
+    exit 1
+  fi
+done
 
 echo "==> Sync app sources → Resources/app"
 mkdir -p "$APPDIR"
