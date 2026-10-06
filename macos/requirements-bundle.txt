@@ -9,7 +9,7 @@
 # torchcrepe is optional for the same reason and is not required here.
 numpy<2
 torch==2.2.2
-torchaudio==2.2.2
+torchaudio==2.11.0
 onnxruntime
 soundfile
 pedalboard
