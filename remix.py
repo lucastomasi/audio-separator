@@ -1,102 +1,101 @@
-"""Mix vocal and instrumental stems and write a wav. No Gradio."""
+"""Mix a new vocal onto an instrumental. No Gradio/torch."""
 import os
 
 import numpy as np
+import pedalboard
 import soundfile as sf
-from pedalboard import Gain, Pedalboard
 
-from app_paths import data_dir
-from audio_io import load
+import audio_io
 
-SAMPLE_RATE = 44100
-REMIX_DIR = os.path.join(data_dir(), "remix_output")
+SR = 44100
 
 
-def as_stereo(wave):
+def to_stereo(wave):
     wave = np.asarray(wave, dtype=np.float32)
     if wave.ndim == 1:
-        return np.stack([wave, wave], axis=0)
+        return np.stack([wave, wave])
     if wave.shape[0] == 1:
-        return np.concatenate([wave, wave], axis=0)
-    return np.ascontiguousarray(wave[:2], dtype=np.float32)
+        return np.repeat(wave, 2, axis=0)
+    return wave[:2]
 
 
-def apply_gain(wave, gain_db, sample_rate):
-    wave = np.ascontiguousarray(wave, dtype=np.float32)
-    if abs(float(gain_db)) < 1e-6:
+def delay_ms(wave, samplerate, milliseconds):
+    samples = int(round(float(milliseconds) / 1000.0 * samplerate))
+    if samples == 0:
         return wave
-    board = Pedalboard([Gain(gain_db=float(gain_db))])
-    processed = np.asarray(board(wave, int(sample_rate)), dtype=np.float32)
-    if processed.ndim == 1:
-        processed = processed.reshape(1, -1)
-    return np.ascontiguousarray(processed, dtype=np.float32)
+    if samples > 0:
+        pad = np.zeros((wave.shape[0], samples), dtype=np.float32)
+        return np.concatenate([pad, wave], axis=1)
+    trim = min(-samples, wave.shape[1])
+    return wave[:, trim:]
 
 
-def match_length(left, right):
-    length = max(left.shape[-1], right.shape[-1])
+def stretch_to_length(wave, samplerate, target_samples, high_quality=False):
+    current = wave.shape[1]
+    if current <= 0 or target_samples <= 0 or current == target_samples:
+        return wave
+    factor = current / float(target_samples)
+    stretched = pedalboard.time_stretch(
+        wave,
+        samplerate=float(samplerate),
+        stretch_factor=float(factor),
+        high_quality=high_quality,
+    )
+    stretched = np.asarray(stretched, dtype=np.float32)
+    if stretched.ndim == 1:
+        stretched = np.stack([stretched, stretched])
+    if stretched.shape[1] < target_samples:
+        pad = np.zeros(
+            (stretched.shape[0], target_samples - stretched.shape[1]),
+            dtype=np.float32,
+        )
+        return np.concatenate([stretched, pad], axis=1)
+    return stretched[:, :target_samples]
+
+
+def db_to_gain(db):
+    return float(10 ** (float(db) / 20.0))
+
+
+def mix_tracks(voice, instrumental, voice_db=0.0, instrumental_db=0.0):
+    voice = to_stereo(voice)
+    instrumental = to_stereo(instrumental)
+    length = max(voice.shape[1], instrumental.shape[1])
 
     def pad(wave):
-        if wave.shape[-1] == length:
-            return wave
-        out = np.zeros((wave.shape[0], length), dtype=np.float32)
-        out[:, : wave.shape[-1]] = wave
-        return out
+        if wave.shape[1] < length:
+            extra = np.zeros((wave.shape[0], length - wave.shape[1]), dtype=np.float32)
+            return np.concatenate([wave, extra], axis=1)
+        return wave[:, :length]
 
-    return pad(left), pad(right)
-
-
-def limit_peak(wave, ceiling=0.99):
-    if wave.size == 0:
-        return wave
-    peak = float(np.max(np.abs(wave)))
-    if peak > ceiling:
-        return wave * np.float32(ceiling / peak)
-    return wave
-
-
-def mix_arrays(vocal, instrumental, vocal_db=0.0, instrumental_db=0.0, sample_rate=SAMPLE_RATE):
-    vocal = apply_gain(as_stereo(vocal), vocal_db, sample_rate)
-    instrumental = apply_gain(as_stereo(instrumental), instrumental_db, sample_rate)
-    vocal, instrumental = match_length(vocal, instrumental)
-    return limit_peak(vocal + instrumental)
-
-
-def write_wav(path, wave, sample_rate):
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    data = np.asarray(wave, dtype=np.float32)
-    if data.ndim == 1:
-        sf.write(path, data, sample_rate, subtype="PCM_16")
-    else:
-        sf.write(path, np.ascontiguousarray(data.T), sample_rate, subtype="PCM_16")
-    return path
-
-
-def mix_stems(
-    vocal_path,
-    instrumental_path,
-    vocal_db=0.0,
-    instrumental_db=0.0,
-    output_path=None,
-):
-    if not vocal_path or not os.path.isfile(vocal_path):
-        raise ValueError("Falta la pista de voz para unir.")
-    if not instrumental_path or not os.path.isfile(instrumental_path):
-        raise ValueError("Falta la pista instrumental para unir.")
-    vocal, sample_rate = load(vocal_path, mono=False, sr=SAMPLE_RATE)
-    instrumental, _sample_rate = load(instrumental_path, mono=False, sr=SAMPLE_RATE)
-    if np.asarray(vocal).size == 0 or np.asarray(instrumental).size == 0:
-        raise ValueError("Una de las pistas está vacía.")
-    mixed = mix_arrays(
-        vocal,
-        instrumental,
-        vocal_db=vocal_db,
-        instrumental_db=instrumental_db,
-        sample_rate=sample_rate,
+    mixed = pad(voice) * db_to_gain(voice_db) + pad(instrumental) * db_to_gain(
+        instrumental_db
     )
-    if output_path is None:
-        os.makedirs(REMIX_DIR, exist_ok=True)
-        stem = os.path.splitext(os.path.basename(vocal_path))[0]
-        output_path = os.path.join(REMIX_DIR, f"{stem}-remix.wav")
-    return write_wav(output_path, mixed, sample_rate)
+    return np.clip(mixed, -1.0, 1.0).astype(np.float32)
+
+
+def remix_to_wav(
+    voice_path,
+    instrumental_path,
+    out_path,
+    delay_milliseconds=0.0,
+    match_duration=True,
+    voice_db=0.0,
+    instrumental_db=0.0,
+):
+    if not voice_path:
+        raise ValueError("Falta la voz nueva.")
+    if not instrumental_path:
+        raise ValueError("Falta el instrumental.")
+
+    voice, _ = audio_io.load(voice_path, mono=False, sr=SR)
+    instrumental, _ = audio_io.load(instrumental_path, mono=False, sr=SR)
+    voice = to_stereo(voice)
+    instrumental = to_stereo(instrumental)
+    voice = delay_ms(voice, SR, delay_milliseconds)
+    if match_duration:
+        voice = stretch_to_length(voice, SR, instrumental.shape[1], high_quality=False)
+    mixed = mix_tracks(voice, instrumental, voice_db, instrumental_db)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
+    sf.write(out_path, mixed.T, SR)
+    return os.path.abspath(out_path)

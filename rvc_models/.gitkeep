@@ -1,5 +1,1 @@
-# Local RVC files. Not downloaded at runtime and not committed.
-# hubert_base/   folder with config.json and the weights
-# rmvpe.pt
-# your-voice.pth
-# your-voice.index   (optional)
+# Place hubert_base/ and rmvpe.pt here. Not downloaded at runtime.

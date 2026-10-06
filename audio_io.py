@@ -43,7 +43,14 @@ def resample(y, orig_sr, target_sr):
     ).astype(np.float32)
 
 
+def _as_path(path):
+    if isinstance(path, dict):
+        path = path.get("path") or path.get("name") or path.get("orig_name")
+    return path
+
+
 def load(path, mono=False, sr=44100):
+    path = _as_path(path)
     try:
         wave, file_sr = sf.read(path, always_2d=True)
     except Exception:

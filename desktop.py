@@ -2,25 +2,56 @@
 """Native window for Audio Separator. Closing the window stops the app."""
 import os
 import socket
-import subprocess
 import sys
 import threading
 import time
-import traceback
 
-URL = "http://127.0.0.1:7860"
-HOST = "127.0.0.1"
-PORT = 7860
+import webview
+
+from app_env import host as env_host, pick_port
+
+HOST = env_host()
+PORT = pick_port()
+URL = f"http://{HOST}:{PORT}"
 SPLASH = """<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>Audio Separator</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      background: #F2F2F7;
+      color: #1D1D1F;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card { text-align: center; padding: 2rem; }
+    h1 { font-size: 1.45rem; margin: 0 0 .4rem; font-weight: 700; letter-spacing: -0.03em; }
+    p { margin: 0; color: #86868B; font-size: 0.9rem; }
+    .bar {
+      width: 120px; height: 3px; margin: 18px auto 0; overflow: hidden;
+      border-radius: 3px; background: #E5E5EA;
+    }
+    .bar i {
+      display: block; width: 40%; height: 100%; background: #007AFF;
+      animation: slide 1.1s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
+  </style>
 </head>
 <body>
-  <div style="font-family:-apple-system,sans-serif;padding:2rem;text-align:center">
+  <div class="card">
     <h1>Audio Separator</h1>
     <p>Arrancando… el primer inicio puede tardar uno o dos minutos.</p>
+    <div class="bar" aria-hidden="true"><i></i></div>
   </div>
 </body>
 </html>
@@ -39,10 +70,26 @@ def port_open():
         sock.close()
 
 
+def _attach_logs():
+    if sys.stderr.isatty():
+        return
+    path = os.path.expanduser("~/Library/Logs/audio-separator.log")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle = open(path, "a", encoding="utf-8", buffering=1)
+    sys.stdout = handle
+    sys.stderr = handle
+
+
 def start_server():
-    from app import build_server, launch_kwargs
-    demo = build_server()
-    demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+    try:
+        from app import build_server, launch_kwargs
+
+        demo = build_server()
+        demo.launch(**launch_kwargs(prevent_thread_lock=True, inbrowser=False))
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
 
 
 def wait_until_ready(timeout=300):
@@ -54,40 +101,48 @@ def wait_until_ready(timeout=300):
     return False
 
 
+BLOCK_DOWNLOAD_JS = """
+(function () {
+  function block(e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var a = t.closest('a[download], a[href^="blob:"], a[href^="data:"], button[aria-label*="Download" i], button[aria-label*="Descargar" i], button[title*="Download" i]');
+    if (a) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+  }
+  document.addEventListener('click', block, true);
+})();
+"""
+
+
+def inject_download_guard(window):
+    try:
+        window.evaluate_js(BLOCK_DOWNLOAD_JS)
+    except Exception:
+        pass
+
+
 def attach_when_ready(window):
     if not wait_until_ready():
-        window.load_html("No se pudo arrancar Audio Separator.")
+        window.load_html(
+            SPLASH.replace(
+                "Arrancando… el primer inicio puede tardar uno o dos minutos.",
+                "No se pudo arrancar Audio Separator.",
+            )
+        )
         return
     window.load_url(URL)
 
 
-def _report_launch_failure():
-    log_dir = os.path.expanduser("~/Library/Logs/Audio Separator")
-    try:
-        os.makedirs(log_dir, exist_ok=True)
-        with open(os.path.join(log_dir, "launch.log"), "a", encoding="utf-8") as handle:
-            handle.write("\n")
-            handle.write(traceback.format_exc())
-    except OSError:
-        pass
-    if sys.platform != "darwin":
-        return
-    subprocess.run(
-        [
-            "osascript",
-            "-e",
-            'display dialog "Audio Separator no pudo abrir. El detalle está en ~/Library/Logs/Audio Separator/launch.log" buttons {"OK"} default button 1 with title "Audio Separator"',
-        ],
-        check=False,
-    )
-
-
 def main():
-    import webview
-
+    _attach_logs()
     already = port_open()
     if not already:
         threading.Thread(target=start_server, daemon=True).start()
+
     window = webview.create_window(
         "Audio Separator",
         URL if already else None,
@@ -97,12 +152,36 @@ def main():
         min_size=(720, 560),
         text_select=True,
     )
+
+    def on_loaded():
+        inject_download_guard(window)
+
+    def on_closed():
+        try:
+            from vc_runner import stop_vc_worker
+
+            stop_vc_worker()
+        except Exception:
+            pass
+        try:
+            from runpod_train import stop_pod
+
+            stop_pod()
+        except Exception:
+            pass
+        os._exit(0)
+
+    try:
+        window.events.loaded += on_loaded
+    except Exception:
+        pass
+    try:
+        window.events.closed += on_closed
+    except Exception:
+        pass
+
     webview.start(None if already else attach_when_ready, None if already else window)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        _report_launch_failure()
-        raise SystemExit(1)
+    main()
