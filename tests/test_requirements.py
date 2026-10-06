@@ -19,6 +19,7 @@ class MacosRequirementsTests(unittest.TestCase):
     def test_app_venv_keeps_intel_torch_and_gradio(self):
         pins = _pins(ROOT / "requirements-macos.txt")
         self.assertIn("torch==2.2.2", pins)
+        self.assertIn("torchvision==0.17.2", pins)
         self.assertIn("torchaudio==2.2.2", pins)
         self.assertIn("gradio==6.20.0", pins)
         self.assertIn("scikit-learn", pins)
@@ -34,6 +35,7 @@ class MacosRequirementsTests(unittest.TestCase):
     def test_vc_venv_keeps_known_good_transformers(self):
         pins = _pins(ROOT / "requirements-vc.txt")
         self.assertIn("torch==2.2.2", pins)
+        self.assertIn("torchvision==0.17.2", pins)
         self.assertIn("torchaudio==2.2.2", pins)
         self.assertIn("transformers==4.53.3", pins)
         self.assertIn("huggingface-hub==0.36.2", pins)

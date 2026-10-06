@@ -2,10 +2,12 @@
 # Known-good with Applio (third_party/vc) and Python 3.12:
 # transformers 4.53.3 + huggingface-hub 0.36.2 (hub<1.0).
 # Keep this set out of the Gradio app venv — Gradio 6.20 needs hub>=1.2.
+# torchcrepe>=0.0.23 allows librosa 0.10 (0.0.20 pins librosa==0.9.1).
 torch==2.2.2
+torchvision==0.17.2
 torchaudio==2.2.2
 numpy>=1.26,<2
-faiss-cpu
+faiss-cpu==1.10.0
 numba==0.60.0
 llvmlite==0.43.0
 librosa>=0.10,<0.11
@@ -15,7 +17,7 @@ scipy
 einops
 huggingface-hub==0.36.2
 transformers==4.53.3
-torchcrepe
+torchcrepe>=0.0.23
 torchfcpe
 pedalboard
 noisereduce
