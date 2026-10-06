@@ -3,7 +3,16 @@ import os
 import shutil
 import subprocess
 
-from app_paths import data_dir, is_inside
+from app_env import data_dir, package_dir
+
+
+def is_inside(path, root):
+    try:
+        path = os.path.realpath(path)
+        root = os.path.realpath(root)
+        return os.path.commonpath([path, root]) == root
+    except (ValueError, OSError):
+        return False
 
 
 def exports_dir():
@@ -24,11 +33,15 @@ def unique_path(directory, filename):
 
 def _export_roots():
     home = data_dir()
+    pkg = package_dir()
     return [
+        os.path.join(home, "Trabajos"),
         os.path.join(home, "clean_song_output"),
         os.path.join(home, "remix_output"),
         os.path.join(home, "rvc_output"),
         os.path.join(home, "downloads"),
+        os.path.join(home, "Voces"),
+        os.path.join(pkg, "remix_output"),
         exports_dir(),
     ]
 

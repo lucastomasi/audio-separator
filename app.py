@@ -1,930 +1,988 @@
-"""Gradio UI for the local Mac app. Launch with desktop.py."""
-import json
 import os
-import re
-import secrets
-import shutil
-import threading
-import time
-from urllib.parse import parse_qs, urlparse
-
 import gradio as gr
-import numpy as np
-import soundfile as sf
-from scipy.ndimage import uniform_filter
-from scipy.signal import istft, stft
 
-from app_paths import data_dir, is_inside, source_dir
-from audio_io import get_duration, load
-from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
-from exports import copy_to_downloads, exports_dir, is_exportable, open_exports_dir
-from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
-from rvc_engine import RVC_DIR, convert_voice
-from youtube_lib import download_audio
+from uvr_runtime import (
+    IS_COLAB,
+    IS_ZERO_GPU,
+    sound_separate,
+    unlock_run_button,
+)
+from exports import open_exports_dir
+from ui_widgets import (
+    url_media_conf,
+    url_button_conf,
+    audio_conf,
+    out_audio,
+    out_file,
+    stem_conf,
+    main_conf,
+    dereverb_conf,
+    vocal_effects_conf,
+    background_effects_conf,
+    vocal_reverb_room_size_conf,
+    vocal_reverb_damping_conf,
+    vocal_reverb_wet_level_conf,
+    vocal_reverb_dryness_level_conf,
+    vocal_delay_seconds_conf,
+    vocal_delay_mix_conf,
+    vocal_compressor_threshold_db_conf,
+    vocal_compressor_ratio_conf,
+    vocal_compressor_attack_ms_conf,
+    vocal_compressor_release_ms_conf,
+    vocal_gain_db_conf,
+    background_highpass_freq_conf,
+    background_lowpass_freq_conf,
+    background_reverb_room_size_conf,
+    background_reverb_damping_conf,
+    background_reverb_wet_level_conf,
+    background_compressor_threshold_db_conf,
+    background_compressor_ratio_conf,
+    background_compressor_attack_ms_conf,
+    background_compressor_release_ms_conf,
+    background_gain_db_conf,
+    button_conf,
+    output_conf,
+    show_vocal_components,
+    format_conf,
+)
+from app_jobs import (
+    IDLE_STATUS,
+    DEMO_SONG,
+    DEMO_STATUS,
+    READY_STATUS,
+    demo_song_path,
+    ensure_demo_voice,
+    load_demo_bundle,
+    install_rvc_job,
+    audio_downloader,
+    clip_for_clone,
+    on_audio_ready,
+    reset_job,
+    refresh_library_ui,
+    load_rvc_into_library,
+    train_rvc_job,
+    rvc_job,
+    tts_rvc_job,
+    remix_job,
+    remux_job,
+    cover_job,
+    lock_download_button,
+    _gradio_path,
+    _install_status_line,
+)
 
-ROOT = source_dir()
-CLEAN_DIR = os.path.join(data_dir(), "clean_song_output")
-MDX_DIR = os.path.join(data_dir(), "mdx_models")
-HOST = "127.0.0.1"
-PORT = 7860
-CSS_PATH = os.path.join(ROOT, "ui.css")
-TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
-TOKEN_COOKIE = "as_token"
-TOKEN_QUERY = "access_token"
-TOKEN_HEADER = "x-audio-separator-token"
-MAX_UPLOAD = "200mb"
-MAX_N_FFT = 16384
-MAX_DIM_F = 8192
-MAX_DIM_T = 2048
-MAX_HOP = 4096
-_JOB_LOCK = threading.Lock()
-_HEAD_TOKEN_JS = """
-<script>
-(function () {
-  var params = new URLSearchParams(window.location.search);
-  var token = params.get("access_token");
-  if (token) {
-    document.cookie = "as_token=" + encodeURIComponent(token) + "; path=/; SameSite=Strict";
-  }
-})();
-</script>
-"""
+APP_THEME = gr.themes.Soft(
+    primary_hue="blue",
+    secondary_hue="slate",
+    neutral_hue="slate",
+    radius_size=gr.themes.sizes.radius_md,
+).set(
+    button_primary_background_fill="#007AFF",
+    button_primary_background_fill_hover="#0066d6",
+    button_primary_text_color="white",
+    button_secondary_background_fill="#E8E8ED",
+    button_secondary_background_fill_hover="#DCDCE0",
+    block_background_fill="#FFFFFF",
+    background_fill_primary="#F2F2F7",
+    border_color_primary="#D1D1D6",
+    checkbox_label_text_weight="500",
+)
 
-STEM_CHOICES = [
-    ("Solo la voz", STEM_SOLO_VOZ),
-    ("Solo el instrumental", STEM_SOLO_INST),
-    ("Voz e instrumental", STEM_AMBAS),
-]
-LOCAL_SEPARATION = "Separación local"
+UI_CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.css")
+with open(UI_CSS_PATH, encoding="utf-8") as css_file:
+    UI_CSS = css_file.read()
 
 
-def _token_ok(provided, token):
-    if not provided or not token or len(provided) != len(token):
-        return False
-    return secrets.compare_digest(provided, token)
+def _convert_interactive():
+    from occupancy import HOLD_TRAIN, snapshot
+
+    occ = snapshot()
+    on = not (occ is not None and occ.holder == HOLD_TRAIN)
+    return gr.update(interactive=on), gr.update(interactive=on)
 
 
-def _loopback_host(request):
-    host = request.headers.get("host") or ""
-    if host.startswith("["):
-        name = host.rsplit("]", 1)[0].lstrip("[")
+def _join_ready(voice, inst):
+    voice_path = _gradio_path(voice)
+    inst_path = _gradio_path(inst)
+    has_voice = bool(voice_path and os.path.isfile(str(voice_path)))
+    has_inst = bool(inst_path and os.path.isfile(str(inst_path)))
+    if has_voice and has_inst:
+        text = "Listo para unir."
+    elif not has_voice and not has_inst:
+        text = "Falta la voz y el instrumental."
+    elif not has_voice:
+        text = "Falta la voz."
     else:
-        name = host.split(":")[0]
-    return name.lower() in {"127.0.0.1", "localhost", "::1"}
+        text = "Falta el instrumental."
+    return text, gr.update(interactive=has_voice and has_inst)
 
 
-def _token_from_referer(request, token):
-    referer = request.headers.get("referer") or ""
-    parsed = urlparse(referer)
-    host = (parsed.hostname or "").lower()
-    if host not in {"127.0.0.1", "localhost", "::1"}:
-        return None
-    values = parse_qs(parsed.query).get(TOKEN_QUERY) or []
-    if not values:
-        return None
-    return values[0] if _token_ok(values[0], token) else None
+def _use_recent(path):
+    import os
+
+    from ui_status import KIND_ERROR, KIND_OK, status_update
+
+    if not path or not os.path.isfile(str(path)):
+        return gr.update(), status_update(KIND_ERROR, "Ese archivo ya no está.")
+    return [path], status_update(
+        KIND_OK, f"Elegido: {os.path.basename(str(path))}"
+    )
+
+
+def _continue_last():
+    import os
+
+    from train_run import latest_job
+    from ui_status import KIND_ERROR, KIND_OK, status_update
+
+    job = latest_job()
+    if not job:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            status_update(KIND_ERROR, "No hay un entrenamiento anterior."),
+        )
+    files = [path for path in job.get("files") or [] if os.path.isfile(path)]
+    if not files:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            status_update(KIND_ERROR, "El último entrenamiento no tiene archivos."),
+        )
+    epochs = int(job.get("epochs") or 10)
+    return (
+        job["exp"],
+        files,
+        epochs,
+        status_update(KIND_OK, f"Último: {job['exp']}. Apretá Entrenar para seguir."),
+    )
+
+
+def _on_train(name, dataset, epochs, progress=gr.Progress()):
+    name_s = (name or "").strip()
+    if isinstance(dataset, (list, tuple)):
+        files = [item for item in dataset if item]
+    elif dataset:
+        files = [dataset]
+    else:
+        files = []
+    if not name_s or not files:
+        from ui_status import KIND_ERROR, status_update
+
+        if not name_s and not files:
+            text = "Poné un nombre y subí al menos un audio de la voz."
+        elif not name_s:
+            text = "Poné un nombre para la voz."
+        else:
+            text = "Subí al menos un audio de la voz a entrenar."
+        rvc_upd, tts_upd = refresh_library_ui()
+        btn_a, btn_b = _convert_interactive()
+        return rvc_upd, status_update(KIND_ERROR, text), tts_upd, btn_a, btn_b
+    rvc_upd, bar, tts_upd = train_rvc_job(
+        name_s, files, epochs, False, None, progress
+    )
+    btn_a, btn_b = _convert_interactive()
+    return rvc_upd, bar, tts_upd, btn_a, btn_b
+
+
+def get_gui():
+    with gr.Blocks(
+        title="Audio Separator",
+        fill_width=True,
+        fill_height=False,
+        delete_cache=(3200, 10800),
+        theme=APP_THEME,
+        css=UI_CSS,
+    ) as app:
+        gr.Markdown("# Audio Separator", elem_classes=["app-header"])
+        gr.Markdown(
+            "Separá, cambiá la voz y uní en este Mac.",
+            elem_classes=["lede"],
+        )
+        gr.HTML(
+            '<p class="stepper">'
+            "<span>Canción</span><span>Separar</span>"
+            "<span>Convertir</span><span>Unir</span></p>",
+            elem_classes=["stepper-wrap"],
+        )
+        status = gr.Markdown(_install_status_line(), elem_id="job-status")
+        import library as _lib_ui
+
+        _lib_ui.ensure_dirs()
+        ensure_demo_voice()
+        _rvc_choices = _lib_ui.dropdown_choices(_lib_ui.list_rvc_voices())
+        _rvc_value = _rvc_choices[0][1] if _rvc_choices else None
+        try:
+            from install_rvc_assets import first_install_ready as _ready
+
+            _need_install = not _ready()
+        except Exception:
+            _need_install = True
+
+
+        last_video = gr.State(value=None)
+        with gr.Tabs(
+            elem_id="main-tabs",
+            selected="ajustes" if _need_install else "cancion",
+        ):
+            with gr.Tab("1 Canción", id="cancion"):
+                with gr.Group(elem_classes=["step"]):
+                    with gr.Tabs():
+                        with gr.Tab("Archivo"):
+                            gr.Markdown(
+                                "Arrastrá el audio al reproductor o cargá el demo.",
+                                elem_classes=["hint"],
+                            )
+                            aud = audio_conf()
+                            with gr.Row():
+                                clip_start = gr.Textbox(
+                                    label="Inicio (m:ss)",
+                                    placeholder="0:15",
+                                    scale=1,
+                                )
+                                clip_end = gr.Textbox(
+                                    label="Fin (m:ss)",
+                                    placeholder="0:25",
+                                    scale=1,
+                                )
+                                clip_btn = gr.Button("Recortar", scale=1)
+                            with gr.Row(elem_classes=["action-row"]):
+                                demo_btn = gr.Button(
+                                    "Cargar demo", variant="secondary"
+                                )
+                        with gr.Tab("YouTube"):
+                            with gr.Row():
+                                url_media_gui = url_media_conf()
+                                url_button_gui = url_button_conf()
+                            want_video = gr.Checkbox(
+                                True,
+                                label="También bajar el video (para pegarlo después)",
+                            )
+
+            with gr.Tab("2 Separar", id="separar"):
+                with gr.Group(elem_classes=["step"]):
+                    stem_gui = stem_conf()
+                    target_format_gui = format_conf()
+                    button_base = button_conf()
+                    gr.Markdown(
+                        "Por defecto saca voz e instrumental. "
+                        "En Intel tarda minutos; no cierres la ventana.",
+                        elem_classes=["hint"],
+                    )
+                    with gr.Row():
+                        vocal_out = out_audio("Voz")
+                        background_out = out_audio("Instrumental")
+                    output_base = output_conf()
+                    gr.Markdown(
+                        "Salida en Descargas. Usá **Mostrar en Finder** (no el ícono ↓).",
+                        elem_classes=["hint"],
+                    )
+                    with gr.Row(elem_classes=["action-row"]):
+                        open_folder_btn = gr.Button(
+                            "Mostrar en Finder", variant="secondary"
+                        )
+                        nueva_btn = gr.Button(
+                            "Nueva canción", variant="secondary"
+                        )
+
+            with gr.Tab("3 Convertir", id="convertir"):
+                with gr.Group(elem_classes=["step"]):
+                    rvc_in = gr.Audio(
+                        label="Audio a convertir",
+                        type="filepath",
+                        sources=["upload"],
+                        buttons=[],
+                    )
+                    gr.Markdown(
+                        "La voz separada entra sola. El modelo solo cambia el timbre.",
+                        elem_classes=["hint"],
+                    )
+                    rvc_pick = gr.Dropdown(
+                        label="Buscar modelo",
+                        choices=_rvc_choices,
+                        value=_rvc_value,
+                        info="Si está vacío, entrená o cargá un .pth en Biblioteca.",
+                        elem_classes=["model-search"],
+                        filterable=True,
+                    )
+                    rvc_btn = gr.Button(
+                        "Convertir voz",
+                        variant="primary",
+                        elem_id="rvc-btn",
+                    )
+                    rvc_audio = out_audio("Voz convertida")
+                    open_rvc_btn = gr.Button(
+                        "Mostrar en Finder", variant="secondary"
+                    )
+                    with gr.Accordion("Si no trajo la voz", open=False):
+                        use_sep_btn = gr.Button(
+                            "Usar voz separada", variant="secondary"
+                        )
+                        rvc_same = gr.Checkbox(
+                            False,
+                            label="Este archivo está en Entrenar",
+                        )
+
+            with gr.Tab("4 Unir", id="unir"):
+                with gr.Group(elem_classes=["step"]):
+                    with gr.Row():
+                        remix_voice = gr.Audio(
+                            label="Voz",
+                            type="filepath",
+                            sources=["upload"],
+                            buttons=[],
+                        )
+                        remix_inst = gr.Audio(
+                            label="Instrumental",
+                            type="filepath",
+                            sources=["upload"],
+                            buttons=[],
+                        )
+                    join_ready = gr.Markdown(
+                        "Falta la voz y el instrumental.",
+                        elem_classes=["hint"],
+                    )
+                    with gr.Row():
+                        remix_delay = gr.Slider(
+                            -2000,
+                            2000,
+                            value=0,
+                            step=10,
+                            label="Retraso de la voz (ms)",
+                        )
+                        remix_match = gr.Checkbox(
+                            False,
+                            label="Igualar duración al instrumental",
+                        )
+                    with gr.Row():
+                        remix_voice_db = gr.Slider(
+                            -20, 12, value=0, step=1, label="Volumen voz (dB)"
+                        )
+                        remix_inst_db = gr.Slider(
+                            -20,
+                            12,
+                            value=0,
+                            step=1,
+                            label="Volumen instrumental (dB)",
+                        )
+                    remix_btn = gr.Button(
+                        "Unir",
+                        variant="primary",
+                        elem_id="join-btn",
+                        interactive=False,
+                    )
+                    remix_audio = out_audio("Unión")
+                    remix_file = out_file("Archivo unido")
+                    open_join_btn = gr.Button(
+                        "Mostrar en Finder", variant="secondary"
+                    )
+                    with gr.Accordion("Video y portada", open=False):
+                        with gr.Row():
+                            remux_video_in = gr.File(
+                                label="Video o imagen",
+                                file_types=[
+                                    ".mp4",
+                                    ".mov",
+                                    ".mkv",
+                                    ".webm",
+                                    ".avi",
+                                    ".jpg",
+                                    ".jpeg",
+                                    ".png",
+                                    ".webp",
+                                    ".gif",
+                                    ".bmp",
+                                ],
+                            )
+                            remux_audio_in = gr.Audio(
+                                label="Audio nuevo",
+                                type="filepath",
+                                sources=["upload"],
+                                buttons=[],
+                            )
+                        remux_btn = gr.Button(
+                            "Pegar audio al video o a la imagen", variant="secondary"
+                        )
+                        remux_file = out_file("MP4 unido")
+                        with gr.Row():
+                            cover_title = gr.Textbox(
+                                label="Título", placeholder="Nombre del tema"
+                            )
+                            cover_artist = gr.Textbox(
+                                label="Artista", placeholder="Opcional"
+                            )
+                        with gr.Row():
+                            cover_btn = gr.Button(
+                                "Portada local", variant="secondary"
+                            )
+                            cover_ai_btn = gr.Button(
+                                "Portada artística", variant="secondary"
+                            )
+                        cover_preview = gr.Image(
+                            label="Portada",
+                            type="filepath",
+                            buttons=[],
+                        )
+
+            with gr.Tab("Entrenar", id="entrenar"):
+                with gr.Group(elem_classes=["step"]):
+                    train_name = gr.Textbox(
+                        label="Nombre", placeholder="mi_voz"
+                    )
+                    _recent_choices = _lib_ui.recent_media()
+                    train_recent = gr.Dropdown(
+                        label="Últimos en esta Mac",
+                        choices=_recent_choices,
+                        value=_recent_choices[0][1] if _recent_choices else None,
+                    )
+                    with gr.Row():
+                        use_recent_btn = gr.Button(
+                            "Elegir este", variant="secondary"
+                        )
+                        continue_btn = gr.Button(
+                            "Continuar el último", variant="secondary"
+                        )
+                    train_dataset = gr.File(
+                        label="Elegir archivo",
+                        file_count="multiple",
+                        file_types=[
+                            ".wav",
+                            ".mp3",
+                            ".flac",
+                            ".m4a",
+                            ".mp4",
+                            ".mov",
+                            ".mkv",
+                            ".webm",
+                            ".avi",
+                        ],
+                    )
+                    train_epochs = gr.Slider(
+                        5,
+                        50,
+                        value=10,
+                        step=1,
+                        label="Epochs (CPU Intel: 10 de prueba)",
+                    )
+                    gr.Markdown(
+                        "El entrenamiento es en este Mac. "
+                        "Separá solo la voz, sin quitar reverb. "
+                        "10 epochs de prueba. "
+                        "Cerrar la ventana no corta el entrenamiento; Separar y Convertir sí. "
+                        "No lo compartas si la voz no es tuya.",
+                        elem_classes=["hint"],
+                    )
+                    train_btn = gr.Button(
+                        "Entrenar",
+                        variant="primary",
+                        elem_id="train-btn",
+                    )
+
+            with gr.Tab("Ajustes", id="ajustes"):
+                with gr.Tabs():
+                    with gr.Tab("Instalación"):
+                        with gr.Group(elem_classes=["step"]):
+                            gr.Markdown(
+                                "Una vez: modelos UVR (ONNX) y pesos RVC. "
+                                "Solo baja lo que falte; si ya están en disco, no toca.",
+                                elem_classes=["hint"],
+                            )
+                            install_btn = gr.Button(
+                                "Completar instalación",
+                                variant="secondary",
+                                elem_id="install-btn",
+                            )
+                            install_log = gr.Textbox(
+                                label="Registro de instalación",
+                                interactive=False,
+                                lines=2,
+                                placeholder="Solo la primera vez / solo lo que falte.",
+                            )
+                    with gr.Tab("Biblioteca"):
+                        with gr.Group(elem_classes=["step"]):
+                            gr.Markdown(
+                                "Si Convertir está vacío, entrená una voz o cargá un .pth. "
+                                "hubert y rmvpe se instalan una vez en Instalación.",
+                                elem_classes=["hint"],
+                            )
+                            with gr.Row():
+                                rvc_hubert = gr.File(
+                                    label="hubert (.pt o carpeta zip)",
+                                    file_types=[".pt", ".pth"],
+                                )
+                                rvc_rmvpe = gr.File(
+                                    label="rmvpe.pt", file_types=[".pt", ".pth"]
+                                )
+                            with gr.Row():
+                                rvc_g = gr.File(
+                                    label="f0G40k.pth", file_types=[".pth", ".pt"]
+                                )
+                                rvc_d = gr.File(
+                                    label="f0D40k.pth", file_types=[".pth", ".pt"]
+                                )
+                            with gr.Row():
+                                rvc_model = gr.File(
+                                    label="Modelo .pth", file_types=[".pth", ".pt"]
+                                )
+                                rvc_index = gr.File(
+                                    label="Índice .index", file_types=[".index"]
+                                )
+                            with gr.Row(elem_classes=["action-row"]):
+                                load_rvc_btn = gr.Button(
+                                    "Cargar en biblioteca", variant="secondary"
+                                )
+                                refresh_lib_btn = gr.Button(
+                                    "Actualizar listas", variant="secondary"
+                                )
+                    with gr.Tab("Texto"):
+                        with gr.Group(elem_classes=["step"]):
+                            gr.Markdown(
+                                "ElevenLabs si hay key; si no, Edge (internet). "
+                                "Después aplica tu modelo de la biblioteca.",
+                                elem_classes=["hint"],
+                            )
+                            tts_text = gr.Textbox(
+                                label="Texto",
+                                lines=3,
+                                placeholder="Escribí lo que tiene que decir la voz…",
+                            )
+                            with gr.Row():
+                                import tts_rvc_engine as _tts_rvc_ui
+
+                                tts_edge = gr.Dropdown(
+                                    label="Voz Edge (idioma base)",
+                                    choices=_tts_rvc_ui.EDGE_VOICES,
+                                    value="es-AR-ElenaNeural",
+                                    allow_custom_value=False,
+                                )
+                                tts_pitch = gr.Slider(
+                                    -12, 12, value=0, step=1, label="Tono"
+                                )
+                            tts_rvc_pick = gr.Dropdown(
+                                label="Buscar modelo",
+                                choices=_rvc_choices,
+                                value=_rvc_value,
+                                info="El mismo que en Convertir.",
+                                elem_classes=["model-search"],
+                                filterable=True,
+                            )
+                            tts_btn = gr.Button(
+                                "Generar voz",
+                                variant="primary",
+                                elem_id="tts-rvc-btn",
+                            )
+                            tts_audio = out_audio("Salida")
+
+        with gr.Accordion("Opciones avanzadas", open=False):
+            with gr.Row():
+                main_gui = main_conf()
+                dereverb_gui = dereverb_conf()
+            with gr.Row():
+                vocal_effects_gui = vocal_effects_conf()
+                background_effects_gui = background_effects_conf()
+            with gr.Accordion("Efectos de voz", open=False, visible=False) as vocal_acc:
+                with gr.Row():
+                    vocal_reverb_room_size_gui = vocal_reverb_room_size_conf()
+                    vocal_reverb_damping_gui = vocal_reverb_damping_conf()
+                with gr.Row():
+                    vocal_reverb_dryness_gui = vocal_reverb_dryness_level_conf()
+                    vocal_reverb_wet_level_gui = vocal_reverb_wet_level_conf()
+                with gr.Row():
+                    vocal_delay_seconds_gui = vocal_delay_seconds_conf()
+                    vocal_delay_mix_gui = vocal_delay_mix_conf()
+                with gr.Row():
+                    vocal_gain_db_gui = vocal_gain_db_conf()
+                with gr.Row():
+                    vocal_compressor_threshold_db_gui = vocal_compressor_threshold_db_conf()
+                    vocal_compressor_ratio_gui = vocal_compressor_ratio_conf()
+                with gr.Row():
+                    vocal_compressor_attack_ms_gui = vocal_compressor_attack_ms_conf()
+                    vocal_compressor_release_ms_gui = vocal_compressor_release_ms_conf()
+            with gr.Accordion("Efectos de instrumental", open=False, visible=False) as background_acc:
+                with gr.Row():
+                    background_highpass_freq_gui = background_highpass_freq_conf()
+                    background_lowpass_freq_gui = background_lowpass_freq_conf()
+                with gr.Row():
+                    background_reverb_room_size_gui = background_reverb_room_size_conf()
+                    background_reverb_damping_gui = background_reverb_damping_conf()
+                with gr.Row():
+                    background_reverb_wet_level_gui = background_reverb_wet_level_conf()
+                    background_gain_db_gui = background_gain_db_conf()
+                with gr.Row():
+                    background_compressor_threshold_db_gui = background_compressor_threshold_db_conf()
+                    background_compressor_ratio_gui = background_compressor_ratio_conf()
+                with gr.Row():
+                    background_compressor_attack_ms_gui = background_compressor_attack_ms_conf()
+                    background_compressor_release_ms_gui = background_compressor_release_ms_conf()
+
+        install_btn.click(
+            install_rvc_job,
+            outputs=[
+                status,
+                install_log,
+                aud,
+                button_base,
+                rvc_pick,
+                tts_rvc_pick,
+            ],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        demo_btn.click(
+            load_demo_bundle,
+            outputs=[aud, button_base, rvc_pick, tts_rvc_pick, status],
+        )
+        url_button_gui.click(
+            lock_download_button,
+            outputs=[url_button_gui, status],
+        ).then(
+            audio_downloader,
+            [url_media_gui, want_video],
+            [aud, last_video, button_base, status, url_button_gui],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        last_video.change(lambda p: p, last_video, remux_video_in)
+        aud.change(on_audio_ready, aud, [button_base, status])
+        stem_gui.change(
+            show_vocal_components,
+            [stem_gui],
+            [main_gui, dereverb_gui, vocal_effects_gui, background_effects_gui],
+        )
+        vocal_effects_gui.change(
+            lambda active: gr.update(visible=active),
+            vocal_effects_gui,
+            vocal_acc,
+        )
+        background_effects_gui.change(
+            lambda active: gr.update(visible=active),
+            background_effects_gui,
+            background_acc,
+        )
+        def _open_folder():
+            from ui_status import KIND_OK, status_update
+
+            return status_update(KIND_OK, f"Carpeta abierta: {open_exports_dir()}")
+
+        open_folder_btn.click(
+            _open_folder,
+            outputs=[status],
+        )
+        open_rvc_btn.click(
+            _open_folder,
+            outputs=[status],
+        )
+        open_join_btn.click(
+            _open_folder,
+            outputs=[status],
+        )
+        nueva_btn.click(
+            reset_job,
+            outputs=[
+                aud,
+                vocal_out,
+                background_out,
+                output_base,
+                status,
+                button_base,
+                url_media_gui,
+                remix_inst,
+                remix_voice,
+                remix_audio,
+                remix_file,
+                rvc_audio,
+                rvc_model,
+                tts_audio,
+                tts_text,
+            ],
+        )
+        clip_btn.click(
+            clip_for_clone,
+            inputs=[aud, clip_start, clip_end],
+            outputs=[aud, status],
+            show_progress="minimal",
+        )
+        refresh_lib_btn.click(
+            refresh_library_ui, outputs=[rvc_pick, tts_rvc_pick]
+        )
+        tts_btn.click(
+            tts_rvc_job,
+            inputs=[tts_text, tts_rvc_pick, tts_edge, tts_pitch],
+            outputs=[tts_audio, remix_voice, status],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        vocal_out.change(
+            lambda path: (path, path),
+            vocal_out,
+            [remix_voice, rvc_in],
+        )
+        background_out.change(lambda path: path, background_out, remix_inst)
+        remix_voice.change(
+            _join_ready,
+            [remix_voice, remix_inst],
+            [join_ready, remix_btn],
+        )
+        remix_inst.change(
+            _join_ready,
+            [remix_voice, remix_inst],
+            [join_ready, remix_btn],
+        )
+        remix_audio.change(lambda path: path, remix_audio, remux_audio_in)
+        remux_btn.click(
+            remux_job,
+            inputs=[remux_video_in, remux_audio_in],
+            outputs=[remux_file, status],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        cover_btn.click(
+            lambda t, a, p: cover_job(t, a, p, False),
+            inputs=[cover_title, cover_artist, remux_audio_in],
+            outputs=[cover_preview, status],
+        )
+        cover_ai_btn.click(
+            lambda t, a, p: cover_job(t, a, p, True),
+            inputs=[cover_title, cover_artist, remux_audio_in],
+            outputs=[cover_preview, status],
+        )
+        load_rvc_btn.click(
+            load_rvc_into_library,
+            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
+            outputs=[rvc_pick, tts_rvc_pick, status],
+        )
+        def _pull_separated(vocal):
+            from ui_status import KIND_ERROR, KIND_OK, status_update
+
+            path = vocal.get("path") if isinstance(vocal, dict) else vocal
+            if not path or not os.path.isfile(str(path)):
+                return None, status_update(
+                    KIND_ERROR, "Separar no tiene una voz para traer."
+                )
+            name = os.path.basename(str(path))
+            return path, status_update(
+                KIND_OK, f"Melodía: {name} (desde Separar)."
+            )
+
+        use_sep_btn.click(
+            _pull_separated,
+            inputs=[vocal_out],
+            outputs=[rvc_in, status],
+        )
+        rvc_btn.click(
+            rvc_job,
+            inputs=[rvc_in, rvc_pick, rvc_model, rvc_index, train_dataset, rvc_same],
+            outputs=[rvc_audio, remix_voice, status],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        use_recent_btn.click(
+            _use_recent,
+            inputs=[train_recent],
+            outputs=[train_dataset, status],
+        )
+        continue_btn.click(
+            _continue_last,
+            outputs=[train_name, train_dataset, train_epochs, status],
+        )
+        train_btn.click(
+            _on_train,
+            inputs=[train_name, train_dataset, train_epochs],
+            outputs=[rvc_pick, status, tts_rvc_pick, rvc_btn, tts_btn],
+            show_progress="full",
+            concurrency_limit=1,
+        )
+        def _boot_ui():
+            import library
+
+            last_vid = library.get_session_meta().get("last_video_path")
+            if last_vid and not os.path.isfile(last_vid):
+                last_vid = None
+            last_audio = library.get_session_meta().get("last_audio_path")
+            if last_audio and not os.path.isfile(last_audio):
+                last_audio = None
+            ensure_demo_voice()
+            rvc_upd, tts_upd = refresh_library_ui()
+            song = last_audio or demo_song_path()
+            run = unlock_run_button() if song else gr.update()
+            from occupancy import HOLD_TRAIN, snapshot
+            from ui_status import KIND_ERROR, KIND_OK, KIND_RUN, RUN_TRAIN, status_update
+
+            occ = snapshot()
+            rvc_on, tts_on = _convert_interactive()
+            from train_run import boot_status
+
+            persisted = boot_status()
+            if occ is not None and occ.holder == HOLD_TRAIN:
+                status_txt = status_update(KIND_RUN, persisted or RUN_TRAIN)
+            elif persisted and persisted.startswith("Modelo listo:"):
+                status_txt = status_update(KIND_OK, persisted)
+            elif song and song == demo_song_path() and not last_audio:
+                status_txt = status_update(KIND_OK, DEMO_STATUS)
+            elif not song:
+                status_txt = status_update(KIND_OK, _install_status_line())
+            else:
+                status_txt = status_update(KIND_OK, READY_STATUS)
+            return (
+                rvc_upd,
+                tts_upd,
+                last_vid,
+                last_vid,
+                song,
+                run,
+                status_txt,
+                rvc_on,
+                tts_on,
+            )
+
+        app.load(
+            _boot_ui,
+            outputs=[
+                rvc_pick,
+                tts_rvc_pick,
+                last_video,
+                remux_video_in,
+                aud,
+                button_base,
+                status,
+                rvc_btn,
+                tts_btn,
+            ],
+        )
+        remix_btn.click(
+            remix_job,
+            inputs=[
+                remix_voice,
+                remix_inst,
+                remix_delay,
+                remix_match,
+                remix_voice_db,
+                remix_inst_db,
+                target_format_gui,
+            ],
+            outputs=[remix_audio, remix_file, status],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+        button_base.click(
+            sound_separate,
+            inputs=[
+                aud,
+                stem_gui,
+                main_gui,
+                dereverb_gui,
+                vocal_effects_gui,
+                background_effects_gui,
+                vocal_reverb_room_size_gui, vocal_reverb_damping_gui, vocal_reverb_dryness_gui, vocal_reverb_wet_level_gui,
+                vocal_delay_seconds_gui, vocal_delay_mix_gui, vocal_compressor_threshold_db_gui, vocal_compressor_ratio_gui,
+                vocal_compressor_attack_ms_gui, vocal_compressor_release_ms_gui, vocal_gain_db_gui,
+                background_highpass_freq_gui, background_lowpass_freq_gui, background_reverb_room_size_gui,
+                background_reverb_damping_gui, background_reverb_wet_level_gui, background_compressor_threshold_db_gui,
+                background_compressor_ratio_gui, background_compressor_attack_ms_gui, background_compressor_release_ms_gui,
+                background_gain_db_gui, target_format_gui,
+            ],
+            outputs=[vocal_out, background_out, output_base, status, button_base],
+            show_progress="minimal",
+            concurrency_limit=1,
+        )
+
+    return app
+
+
+def build_server():
+    demo = get_gui()
+    demo.queue(default_concurrency_limit=1)
+    return demo
+
+
+def _allowed_paths():
+    import app_security
+
+    return app_security.allowed_paths()
+
+
+def _blocked_paths():
+    import app_security
+
+    return app_security.blocked_paths()
 
 
 def auth_dependency(request):
-    token = os.environ.get(TOKEN_ENV, "")
-    if not token or not _loopback_host(request):
-        return None
-    provided = (
-        request.headers.get(TOKEN_HEADER)
-        or request.query_params.get(TOKEN_QUERY)
-        or request.cookies.get(TOKEN_COOKIE)
-        or _token_from_referer(request, token)
-    )
-    if _token_ok(provided, token):
-        return "local"
-    return None
+    import app_security
+
+    return app_security.auth_dependency(request)
+
+
+def _ui_error(exc):
+    import app_security
+
+    return app_security.ui_error(exc)
+
+
+def _mdx_config(model_path, session):
+    import app_security
+
+    return app_security.mdx_config(model_path, session)
+
+
+TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
+TOKEN_HEADER = "x-audio-separator-token"
+TOKEN_QUERY = "access_token"
 
 
 def launch_kwargs(**overrides):
-    """Arguments for demo.launch(). desktop.py passes prevent_thread_lock and inbrowser."""
-    try:
-        with open(CSS_PATH, encoding="utf-8") as handle:
-            css = handle.read()
-    except OSError:
-        css = ""
-    kwargs = {
-        "server_name": HOST,
-        "server_port": PORT,
-        "inbrowser": False,
-        "share": False,
-        "show_error": False,
-        "ssr_mode": False,
-        "css": css,
-        "head": _HEAD_TOKEN_JS,
-        "theme": gr.themes.Soft(),
-        "allowed_paths": _allowed_paths(),
-        "blocked_paths": _blocked_paths(),
-        "footer_links": [],
-        "max_file_size": MAX_UPLOAD,
-        "strict_cors": True,
-        "enable_monitoring": False,
-        "run_history": False,
-        "mcp_server": False,
-        "auth_dependency": auth_dependency,
-        "app_kwargs": {
+    import inspect
+
+    import app_security
+
+    settings = dict(
+        max_threads=4,
+        share=False if not IS_COLAB else True,
+        show_error=False,
+        quiet=False,
+        debug=IS_COLAB,
+        ssr_mode=False,
+        theme=APP_THEME,
+        css=UI_CSS,
+        head=app_security._HEAD_TOKEN_JS,
+        footer_links=[],
+        inbrowser=False,
+        server_name=__import__("app_env").host(),
+        server_port=int(
+            os.environ.get("AUDIO_SEPARATOR_PORT")
+            or __import__("app_env").preferred_port()
+        ),
+        allowed_paths=app_security.allowed_paths(),
+        blocked_paths=app_security.blocked_paths(),
+        max_file_size=app_security.MAX_UPLOAD,
+        strict_cors=True,
+        enable_monitoring=False,
+        mcp_server=False,
+        auth_dependency=auth_dependency,
+        app_kwargs={
             "docs_url": None,
             "redoc_url": None,
             "openapi_url": None,
         },
-    }
-    kwargs.update(overrides)
-    import inspect
-
+    )
+    settings.update(overrides)
     supported = set(inspect.signature(gr.Blocks.launch).parameters)
-    return {key: value for key, value in kwargs.items() if key in supported}
-
-
-def _output_dirs():
-    return [
-        CLEAN_DIR,
-        REMIX_DIR,
-        os.path.join(data_dir(), "rvc_output"),
-        os.path.join(data_dir(), "downloads"),
-        exports_dir(),
-    ]
-
-
-def _allowed_paths():
-    paths = _output_dirs()
-    for path in paths:
-        os.makedirs(path, exist_ok=True)
-    return paths
-
-
-def _blocked_paths():
-    blocked = [
-        os.path.expanduser("~/.ssh"),
-        os.path.expanduser("~/.gnupg"),
-        os.path.expanduser("~/.aws"),
-        "/etc",
-    ]
-    if os.path.realpath(data_dir()) != os.path.realpath(source_dir()):
-        blocked.append(source_dir())
-    else:
-        blocked.extend(
-            [
-                os.path.join(source_dir(), ".git"),
-                os.path.join(source_dir(), ".cursor"),
-                os.path.join(source_dir(), ".env"),
-            ]
-        )
-    return [path for path in blocked if path]
-
-
-def _inside(path, root):
-    return is_inside(path, root)
-
-
-def _run_job(work):
-    if not _JOB_LOCK.acquire(blocking=False):
-        raise gr.Error("Esperá a que termine lo que está corriendo.")
-    try:
-        return work()
-    finally:
-        _JOB_LOCK.release()
-
-
-def _list_files(directory, extension):
-    if not os.path.isdir(directory):
-        return []
-    found = []
-    for name in sorted(os.listdir(directory)):
-        if name.startswith("."):
-            continue
-        if name.lower().endswith(extension):
-            found.append(os.path.join(directory, name))
-    return found
-
-
-def _audio_path(value):
-    if value is None:
-        return None
-    if isinstance(value, (str, os.PathLike)):
-        path = str(value)
-        return path if path and os.path.isfile(path) else None
-    if isinstance(value, dict):
-        path = value.get("path") or value.get("name")
-        return path if path and os.path.isfile(path) else None
-    return None
-
-
-def _safe_stem(path):
-    name = os.path.splitext(os.path.basename(str(path)))[0]
-    name = re.sub(r"[^\w.-]+", "_", name, flags=re.UNICODE).strip("._")
-    return (name or "audio")[:60]
-
-
-def _duration_note(path):
-    try:
-        seconds = float(get_duration(path))
-    except Exception:
-        return ""
-    return f" ({seconds:.1f} s)"
-
-
-def _as_stereo(wave):
-    wave = np.asarray(wave, dtype=np.float32)
-    if wave.size == 0 or wave.shape[-1] == 0:
-        raise ValueError("El audio está vacío.")
-    if wave.ndim == 1:
-        return np.stack([wave, wave], axis=0)
-    if wave.shape[0] == 1:
-        return np.concatenate([wave, wave], axis=0)
-    return np.ascontiguousarray(wave[:2], dtype=np.float32)
-
-
-def _copied_stem(src, stem, label):
-    os.makedirs(CLEAN_DIR, exist_ok=True)
-    stamp = time.strftime("%H%M%S")
-    ext = os.path.splitext(src)[1] or ".wav"
-    dest = os.path.join(CLEAN_DIR, f"{stem}-{label}-{stamp}{ext}")
-    if os.path.exists(dest):
-        dest = os.path.join(
-            CLEAN_DIR, f"{stem}-{label}-{stamp}-{time.time_ns() % 100000}{ext}"
-        )
-    shutil.copy2(src, dest)
-    return dest
-
-
-def _write_audio(directory, stem, label, wave, sample_rate):
-    os.makedirs(directory, exist_ok=True)
-    stamp = time.strftime("%H%M%S")
-    dest = os.path.join(directory, f"{stem}-{label}-{stamp}.wav")
-    if os.path.exists(dest):
-        dest = os.path.join(
-            directory, f"{stem}-{label}-{stamp}-{time.time_ns() % 100000}.wav"
-        )
-    data = np.nan_to_num(np.asarray(wave, dtype=np.float32))
-    peak = float(np.max(np.abs(data))) if data.size else 0.0
-    if peak > 0.99:
-        data = data * np.float32(0.99 / peak)
-    if data.ndim == 1:
-        sf.write(dest, data, sample_rate, subtype="PCM_16")
-    else:
-        sf.write(dest, np.ascontiguousarray(data.T), sample_rate, subtype="PCM_16")
-    return dest
-
-
-def _vocal_weight(freqs):
-    freqs = np.asarray(freqs, dtype=np.float64)
-    low = np.clip((freqs - 80.0) / (250.0 - 80.0), 0.0, 1.0)
-    high = np.clip((7000.0 - freqs) / (7000.0 - 4000.0), 0.0, 1.0)
-    return (low * high).astype(np.float32)
-
-
-def separate_center(stereo, sample_rate):
-    """Split a stereo mix into a centered vocal and the leftover instrumental."""
-    length = stereo.shape[1]
-    n_fft = 4096
-    if length < n_fft:
-        n_fft = 2048 if length >= 2048 else 1024 if length >= 1024 else 512
-    hop = max(128, n_fft // 4)
-    noverlap = n_fft - hop
-    mid = ((stereo[0] + stereo[1]) * 0.5).astype(np.float32)
-    side = ((stereo[0] - stereo[1]) * 0.5).astype(np.float32)
-    freqs, _, mid_spec = stft(
-        mid,
-        fs=sample_rate,
-        window="hann",
-        nperseg=n_fft,
-        noverlap=noverlap,
-        boundary="zeros",
-        padded=True,
-    )
-    _, _, side_spec = stft(
-        side,
-        fs=sample_rate,
-        window="hann",
-        nperseg=n_fft,
-        noverlap=noverlap,
-        boundary="zeros",
-        padded=True,
-    )
-    mag_mid = np.abs(mid_spec)
-    mag_side = np.abs(side_spec)
-    weight = _vocal_weight(freqs)
-    side_ratio = float(np.mean(mag_side) / (np.mean(mag_mid) + 1e-8))
-    if side_ratio < 0.05:
-        mask = weight[:, None]
-    else:
-        center = mag_mid / (mag_mid + mag_side + 1e-8)
-        mask = np.clip((center - 0.35) / 0.45, 0.0, 1.0) * weight[:, None]
-    if mask.shape[0] > 1 and mask.shape[1] > 1:
-        mask = uniform_filter(mask, size=(9, 5), mode="nearest")
-    vocal_spec = mid_spec * mask.astype(np.float32)
-    _, vocal = istft(
-        vocal_spec,
-        fs=sample_rate,
-        window="hann",
-        nperseg=n_fft,
-        noverlap=noverlap,
-        input_onesided=True,
-        boundary=True,
-    )
-    vocal = np.nan_to_num(vocal.astype(np.float32))
-    if vocal.shape[0] < length:
-        vocal = np.pad(vocal, (0, length - vocal.shape[0]))
-    vocal = vocal[:length]
-    vocals = np.stack([vocal, vocal], axis=0)
-    instrumental = np.nan_to_num(stereo - vocals)
-    return vocals, instrumental
-
-
-def _positive_dim(shape, index):
-    if not isinstance(shape, (list, tuple)) or len(shape) <= index:
-        return None
-    value = shape[index]
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int) and value > 0:
-        return value
-    if isinstance(value, str) and value.isdigit() and int(value) > 0:
-        return int(value)
-    return None
-
-
-def _mdx_config(model_path, session):
-    config = {"hop": 1024, "overlap": 0.5, "compensate": 1.0}
-    sidecar = os.path.splitext(model_path)[0] + ".json"
-    if os.path.isfile(sidecar):
-        with open(sidecar, encoding="utf-8") as handle:
-            loaded = json.load(handle)
-        if not isinstance(loaded, dict):
-            raise ValueError("El .json del modelo tiene que ser un objeto.")
-        for key in ("hop", "overlap", "compensate", "dim_f", "dim_t", "n_fft"):
-            if key in loaded:
-                config[key] = loaded[key]
-    shape = session.get_inputs()[0].shape
-    if "dim_f" not in config:
-        dim_f = _positive_dim(shape, 2)
-        if not dim_f:
-            raise ValueError(
-                "No pude leer dim_f del ONNX. Dejá un .json al lado con n_fft, dim_f y dim_t."
-            )
-        config["dim_f"] = dim_f
-    if "dim_t" not in config:
-        dim_t = _positive_dim(shape, 3)
-        if not dim_t:
-            raise ValueError(
-                "No pude leer dim_t del ONNX. Dejá un .json al lado con n_fft, dim_f y dim_t."
-            )
-        config["dim_t"] = dim_t
-    if "n_fft" not in config:
-        dim_f = int(config["dim_f"])
-        config["n_fft"] = 7680 if dim_f == 3072 else dim_f * 2
-    if int(config["n_fft"]) // 2 + 1 < int(config["dim_f"]):
-        config["n_fft"] = int(config["dim_f"]) * 2
-    n_fft = int(config["n_fft"])
-    hop = int(config["hop"])
-    dim_f = int(config["dim_f"])
-    dim_t = int(config["dim_t"])
-    if (
-        n_fft > MAX_N_FFT
-        or hop > MAX_HOP
-        or dim_f > MAX_DIM_F
-        or dim_t > MAX_DIM_T
-        or hop < 1
-        or dim_t < 2
-        or dim_f < 1
-        or n_fft < 2
-    ):
-        raise ValueError("La configuración del modelo ONNX no es válida.")
-    return config
-
-
-def _fit_freq(spec, dim_f):
-    spec = np.asarray(spec)
-    if spec.shape[0] > dim_f:
-        return spec[:dim_f]
-    if spec.shape[0] < dim_f:
-        return np.pad(spec, ((0, dim_f - spec.shape[0]), (0, 0)))
-    return spec
-
-
-def _pack_channels(left, right, dim_f, dim_t):
-    # Channel order: left real, left imag, right real, right imag.
-    left = _fit_freq(left, dim_f)
-    right = _fit_freq(right, dim_f)
-    packed = np.stack(
-        [
-            np.asarray(left.real, dtype=np.float32),
-            np.asarray(left.imag, dtype=np.float32),
-            np.asarray(right.real, dtype=np.float32),
-            np.asarray(right.imag, dtype=np.float32),
-        ],
-        axis=0,
-    )
-    frames = packed.shape[-1]
-    if frames < dim_t:
-        packed = np.pad(packed, ((0, 0), (0, 0), (0, dim_t - frames)))
-    elif frames > dim_t:
-        packed = packed[..., :dim_t]
-    return packed
-
-
-def _stft_channel(wave, n_fft, hop, sample_rate):
-    _, _, spec = stft(
-        np.asarray(wave, dtype=np.float32),
-        fs=sample_rate,
-        window="hann",
-        nperseg=n_fft,
-        noverlap=n_fft - hop,
-        boundary="zeros",
-        padded=True,
-    )
-    return spec
-
-
-def _wave_from_packed(packed, n_fft, hop, sample_rate, length):
-    freq_bins = n_fft // 2 + 1
-    dim_f = packed.shape[1]
-    frames = packed.shape[2]
-    channels = []
-    for real_index, imag_index in ((0, 1), (2, 3)):
-        spec = np.zeros((freq_bins, frames), dtype=np.complex64)
-        usable = min(dim_f, freq_bins)
-        spec[:usable] = packed[real_index, :usable] + 1j * packed[imag_index, :usable]
-        _, wave = istft(
-            spec,
-            fs=sample_rate,
-            window="hann",
-            nperseg=n_fft,
-            noverlap=n_fft - hop,
-            input_onesided=True,
-            boundary=True,
-        )
-        wave = np.nan_to_num(wave.astype(np.float32))
-        if wave.shape[0] < length:
-            wave = np.pad(wave, (0, length - wave.shape[0]))
-        channels.append(wave[:length])
-    return np.stack(channels, axis=0)
-
-
-def _overlap_window(start, valid, length, fade):
-    window = np.ones(valid, dtype=np.float32)
-    if fade <= 1:
-        return window
-    ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
-    if start > 0:
-        fade_in = min(fade, valid)
-        window[:fade_in] *= ramp[:fade_in]
-    if start + valid < length:
-        fade_out = min(fade, valid)
-        window[-fade_out:] *= ramp[:fade_out][::-1]
-    return window
-
-
-def separate_with_onnx(stereo, sample_rate, model_path):
-    import onnxruntime as ort
-
-    session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
-    config = _mdx_config(model_path, session)
-    n_fft = int(config["n_fft"])
-    hop = int(config["hop"])
-    dim_f = int(config["dim_f"])
-    dim_t = int(config["dim_t"])
-    overlap = float(config.get("overlap", 0.5))
-    compensate = float(config.get("compensate", 1.0))
-    if hop < 1 or dim_t < 2 or dim_f < 1 or n_fft < 2:
-        raise ValueError("La configuración del modelo ONNX no es válida.")
-    chunk = hop * (dim_t - 1)
-    overlap = min(max(overlap, 0.0), 0.9)
-    step = max(1, int(round(chunk * (1.0 - overlap))))
-    length = stereo.shape[1]
-    accumulator = np.zeros((2, length), dtype=np.float32)
-    weight = np.zeros(length, dtype=np.float32)
-    fade = int(round(chunk * overlap))
-    input_name = session.get_inputs()[0].name
-    starts = list(range(0, max(length, 1), step)) or [0]
-    if starts[-1] + chunk < length:
-        starts.append(max(0, length - chunk))
-    seen = set()
-    for start in starts:
-        if start in seen or start >= length:
-            continue
-        seen.add(start)
-        valid = min(chunk, length - start)
-        piece = np.zeros((2, chunk), dtype=np.float32)
-        piece[:, :valid] = stereo[:, start : start + valid]
-        packed = _pack_channels(
-            _stft_channel(piece[0], n_fft, hop, sample_rate),
-            _stft_channel(piece[1], n_fft, hop, sample_rate),
-            dim_f,
-            dim_t,
-        )
-        predicted = session.run(None, {input_name: packed[None, ...]})[0][0]
-        vocal = _wave_from_packed(predicted, n_fft, hop, sample_rate, chunk)
-        window = _overlap_window(start, valid, length, fade)
-        accumulator[:, start : start + valid] += vocal[:, :valid] * window
-        weight[start : start + valid] += window
-    vocals = accumulator / np.maximum(weight, 1e-6)
-    instrumental = stereo - vocals * np.float32(compensate)
-    return np.nan_to_num(vocals.astype(np.float32)), np.nan_to_num(
-        instrumental.astype(np.float32)
-    )
-
-
-def separation_choices():
-    choices = [(LOCAL_SEPARATION, "")]
-    choices.extend(
-        (os.path.basename(path), path) for path in _list_files(MDX_DIR, ".onnx")
-    )
-    return choices
-
-
-def rvc_model_choices():
-    return [(os.path.basename(path), path) for path in _list_files(RVC_DIR, ".pth")]
-
-
-def rvc_index_choices():
-    choices = [("Sin índice", "")]
-    choices.extend(
-        (os.path.basename(path), path) for path in _list_files(RVC_DIR, ".index")
-    )
-    return choices
-
-
-def _choice_value(choices, prefer_first_real=False):
-    if prefer_first_real:
-        for _label, value in choices:
-            if value:
-                return value
-    for _label, value in choices:
-        return value
-    return None
-
-
-def model_updates():
-    separation = separation_choices()
-    models = rvc_model_choices()
-    indexes = rvc_index_choices()
-    return (
-        gr.update(choices=models, value=_choice_value(models)),
-        gr.update(choices=indexes, value=""),
-        gr.update(
-            choices=separation,
-            value=_choice_value(separation, prefer_first_real=True),
-        ),
-    )
-
-
-def _resolve_mdx(choice):
-    if not choice or choice == LOCAL_SEPARATION:
-        return None
-    if not _inside(choice, MDX_DIR) or not str(choice).lower().endswith(".onnx"):
-        raise ValueError("Ese modelo de separación no está en mdx_models.")
-    if not os.path.isfile(choice):
-        raise ValueError("No encontré ese modelo .onnx.")
-    return os.path.abspath(choice)
-
-
-def _resolve_rvc_model(choice):
-    if not choice or not _inside(choice, RVC_DIR) or not str(choice).lower().endswith(".pth"):
-        raise ValueError("Elegí un modelo .pth que esté en rvc_models.")
-    if not os.path.isfile(choice):
-        raise ValueError("No encontré ese modelo RVC.")
-    return os.path.abspath(choice)
-
-
-def _resolve_index(choice):
-    if not choice:
-        return None
-    if not _inside(choice, RVC_DIR) or not str(choice).lower().endswith(".index"):
-        raise ValueError("Ese índice no está en rvc_models.")
-    if not os.path.isfile(choice):
-        raise ValueError("No encontré ese índice.")
-    return os.path.abspath(choice)
-
-
-def separate_to_files(src_path, mdx_choice=""):
-    wave, sample_rate = load(src_path, mono=False, sr=SAMPLE_RATE)
-    stereo = _as_stereo(wave)
-    model_path = _resolve_mdx(mdx_choice)
-    note = "Usé la separación local (canal central)."
-    vocals = instrumental = None
-    if model_path:
-        try:
-            vocals, instrumental = separate_with_onnx(stereo, sample_rate, model_path)
-            note = f"Usé el modelo {os.path.basename(model_path)}."
-        except Exception as exc:
-            vocals = instrumental = None
-            note = (
-                f"No pude usar {os.path.basename(model_path)} ({exc}). "
-                "Seguí con la separación local."
-            )
-    if vocals is None:
-        vocals, instrumental = separate_center(stereo, sample_rate)
-        if model_path is None:
-            note = (
-                "Usé la separación local (canal central). "
-                "Si tenés un .onnx, dejalo en mdx_models."
-            )
-    stem = _safe_stem(src_path)
-    vocal_path = _write_audio(CLEAN_DIR, stem, "voz", vocals, sample_rate)
-    instrumental_path = _write_audio(
-        CLEAN_DIR, stem, "instrumental", instrumental, sample_rate
-    )
-    return vocal_path, instrumental_path, note
-
-
-def _public_message(text):
-    text = str(text)
-    if re.search(r"(?i)(/users/|/home/|/library/|/tmp/|/var/|:\\|audio_separator_home)", text):
-        return "Algo salió mal."
-    return text
-
-
-def _ui_error(exc):
-    if isinstance(exc, gr.Error):
-        raise exc
-    if isinstance(exc, ValueError):
-        raise gr.Error(_public_message(exc)) from exc
-    raise gr.Error("Algo salió mal.") from exc
-
-
-def on_download(url):
-    url = (url or "").strip()
-    if not url:
-        raise gr.Error("Pegá un enlace de YouTube.")
-    def work():
-        return download_audio(url)
-    try:
-        path, cached, _ignored = _run_job(work)
-    except Exception as exc:
-        _ui_error(exc)
-    if cached:
-        message = f"Ese audio ya estaba descargado{_duration_note(path)}."
-    else:
-        message = f"Listo. Bajé el audio de YouTube{_duration_note(path)}."
-    return path, None, None, None, None, message
-
-
-def on_separate(audio, url, _stem, mdx_choice):
-    source = _audio_path(audio)
-    try:
-        def work():
-            chosen = source
-            if chosen is None and (url or "").strip():
-                chosen, _cached, _ignored = download_audio(url)
-            if chosen is None:
-                raise ValueError("Subí un audio o pegá un enlace de YouTube.")
-            vocal_path, instrumental_path, note = separate_to_files(chosen, mdx_choice)
-            return chosen, vocal_path, instrumental_path, note
-        source, vocal_path, instrumental_path, note = _run_job(work)
-    except Exception as exc:
-        _ui_error(exc)
-    message = f"Listo. Separé la voz y el instrumental{_duration_note(source)}. {note}"
-    return source, vocal_path, instrumental_path, None, None, message
-
-
-def on_convert(vocal, model, index):
-    vocal_path = _audio_path(vocal)
-    try:
-        if vocal_path is None:
-            raise ValueError("Primero separá el audio para tener la voz.")
-        def work():
-            model_path = _resolve_rvc_model(model)
-            index_path = _resolve_index(index)
-            converted = convert_voice(vocal_path, model_path, index_path)
-            if not converted or not os.path.isfile(converted):
-                raise ValueError("La conversión no devolvió un audio.")
-            return _copied_stem(converted, _safe_stem(vocal_path), "voz-rvc")
-        dest = _run_job(work)
-    except Exception as exc:
-        _ui_error(exc)
-    return dest, None, "Listo. Convertí la voz con el modelo local."
-
-
-def on_refresh():
-    models = rvc_model_choices()
-    note = (
-        "Actualicé la lista de modelos."
-        if models
-        else "No hay modelos .pth en rvc_models. Copiá el modelo ahí y actualizá de nuevo."
-    )
-    return (*model_updates(), note)
-
-
-def _vocal_for_remix(vocal, converted, use_converted):
-    converted_path = _audio_path(converted)
-    vocal_path = _audio_path(vocal)
-    if use_converted and converted_path:
-        return converted_path, "la voz convertida"
-    if vocal_path:
-        return vocal_path, "la voz separada"
-    if converted_path:
-        return converted_path, "la voz convertida"
-    return None, ""
-
-
-def on_remix(vocal, instrumental, converted, use_converted, vocal_db, instrumental_db):
-    vocal_path, which = _vocal_for_remix(vocal, converted, use_converted)
-    instrumental_path = _audio_path(instrumental)
-    try:
-        if vocal_path is None or instrumental_path is None:
-            raise ValueError("Primero separá el audio. Hacen falta la voz y el instrumental.")
-        def work():
-            return mix_stems(
-                vocal_path,
-                instrumental_path,
-                vocal_db=float(vocal_db),
-                instrumental_db=float(instrumental_db),
-                output_path=os.path.join(
-                    REMIX_DIR,
-                    f"{_safe_stem(vocal_path)}-remix-{time.strftime('%H%M%S')}.wav",
-                ),
-            )
-        dest = _run_job(work)
-    except Exception as exc:
-        _ui_error(exc)
-    return (
-        dest,
-        f"Listo. Uní {which} con el instrumental{_duration_note(dest)}.",
-    )
-
-
-def on_export(stem, vocal, instrumental, converted, remix, use_converted):
-    wanted = set(stem_choice_to_list(stem))
-    files = []
-    labels = []
-    vocal_path = _audio_path(vocal)
-    instrumental_path = _audio_path(instrumental)
-    converted_path = _audio_path(converted)
-    remix_path = _audio_path(remix)
-    if "vocal" in wanted and vocal_path and is_exportable(vocal_path):
-        files.append(vocal_path)
-        labels.append("voz")
-    if "background" in wanted and instrumental_path and is_exportable(instrumental_path):
-        files.append(instrumental_path)
-        labels.append("instrumental")
-    if "vocal" in wanted and use_converted and converted_path and is_exportable(converted_path):
-        files.append(converted_path)
-        labels.append("voz-convertida")
-    if remix_path and is_exportable(remix_path):
-        files.append(remix_path)
-        labels.append("remix")
-    if not files:
-        raise gr.Error("Todavía no hay pistas para exportar. Separá un audio primero.")
-    try:
-        _directory, copied = copy_to_downloads(files, labels)
-    except Exception as exc:
-        _ui_error(exc)
-    if not copied:
-        raise gr.Error("No pude copiar los archivos a Descargas.")
-    noun = "archivo" if len(copied) == 1 else "archivos"
-    return f"Exporté {len(copied)} {noun} en Descargas."
-
-
-def on_open_folder():
-    try:
-        open_exports_dir()
-    except OSError:
-        return "No pude abrirla desde acá. Buscá Descargas / Audio Separator."
-    return "Abrí la carpeta de Descargas."
-
-
-def build_server():
-    separation = separation_choices()
-    models = rvc_model_choices()
-    indexes = rvc_index_choices()
-    with gr.Blocks(title="Audio Separator", analytics_enabled=False) as demo:
-        gr.Markdown(
-            """
-# Audio Separator
-Separá la voz del instrumental, convertí la voz con un modelo RVC de `rvc_models` y volvé a unir las pistas.
-
-Corre en tu Mac. No usa el Space de Hugging Face.
-            """.strip()
-        )
-        status = gr.Markdown("Subí un audio o pegá un enlace de YouTube.")
-        with gr.Row():
-            audio_in = gr.Audio(
-                label="Archivo",
-                type="filepath",
-                sources=["upload"],
-            )
-            with gr.Column():
-                url = gr.Textbox(
-                    label="Enlace de YouTube",
-                    placeholder="Pegá el enlace acá",
-                )
-                download_btn = gr.Button("Bajá el audio")
-        with gr.Row():
-            stem = gr.Radio(
-                choices=STEM_CHOICES,
-                value=STEM_AMBAS,
-                label="Qué querés exportar",
-                info="La separación y la unión usan las dos pistas. Esto elige qué se copia a Descargas.",
-            )
-            mdx = gr.Dropdown(
-                choices=separation,
-                value=_choice_value(separation, prefer_first_real=True),
-                label="Modelo de separación",
-                info="Si no hay un .onnx en mdx_models, queda la separación local.",
-            )
-        separate_btn = gr.Button("Separá", variant="primary")
-        with gr.Row():
-            vocal = gr.Audio(label="Voz", type="filepath")
-            instrumental = gr.Audio(label="Instrumental", type="filepath")
-        gr.Markdown("### Convertir la voz")
-        gr.Markdown(
-            "Elegí un `.pth` de `rvc_models`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
-        )
-        with gr.Row():
-            model = gr.Dropdown(
-                choices=models,
-                value=_choice_value(models),
-                label="Modelo RVC",
-            )
-            index = gr.Dropdown(
-                choices=indexes,
-                value="",
-                label="Índice",
-                info="Opcional. Si no tenés un .index, dejá Sin índice.",
-            )
-        with gr.Row():
-            refresh_btn = gr.Button("Actualizá los modelos")
-            convert_btn = gr.Button("Convertí la voz", variant="primary")
-        converted = gr.Audio(label="Voz convertida", type="filepath")
-        gr.Markdown("### Unir")
-        use_converted = gr.Checkbox(label="Usar la voz convertida", value=True)
-        with gr.Row():
-            vocal_db = gr.Slider(
-                minimum=-24,
-                maximum=12,
-                value=0,
-                step=0.5,
-                label="Nivel de la voz (dB)",
-            )
-            instrumental_db = gr.Slider(
-                minimum=-24,
-                maximum=12,
-                value=0,
-                step=0.5,
-                label="Nivel del instrumental (dB)",
-            )
-        remix_btn = gr.Button("Uní", variant="primary")
-        remix = gr.Audio(label="Remix", type="filepath")
-        with gr.Row():
-            export_btn = gr.Button("Exportá a Descargas", variant="primary")
-            open_btn = gr.Button("Abrí la carpeta")
-
-        download_btn.click(
-            on_download,
-            inputs=[url],
-            outputs=[audio_in, vocal, instrumental, converted, remix, status],
-            api_name="bajar",
-        )
-        separate_btn.click(
-            on_separate,
-            inputs=[audio_in, url, stem, mdx],
-            outputs=[audio_in, vocal, instrumental, converted, remix, status],
-            api_name="separar",
-        )
-        convert_btn.click(
-            on_convert,
-            inputs=[vocal, model, index],
-            outputs=[converted, remix, status],
-            api_name="convertir",
-        )
-        refresh_btn.click(
-            on_refresh,
-            outputs=[model, index, mdx, status],
-            api_name="modelos",
-        )
-        remix_btn.click(
-            on_remix,
-            inputs=[vocal, instrumental, converted, use_converted, vocal_db, instrumental_db],
-            outputs=[remix, status],
-            api_name="unir",
-        )
-        export_btn.click(
-            on_export,
-            inputs=[stem, vocal, instrumental, converted, remix, use_converted],
-            outputs=[status],
-            api_name="exportar",
-        )
-        open_btn.click(
-            on_open_folder,
-            outputs=[status],
-            api_name=False,
-        )
-        demo.load(
-            model_updates,
-            outputs=[model, index, mdx],
-            api_visibility="private",
-        )
-    return demo
+    return {key: value for key, value in settings.items() if key in supported}
 
 
 if __name__ == "__main__":
-    if not os.environ.get(TOKEN_ENV):
-        os.environ[TOKEN_ENV] = secrets.token_urlsafe(32)
-    token = os.environ[TOKEN_ENV]
-    print(f"http://127.0.0.1:{PORT}/?{TOKEN_QUERY}={token}")
-    build_server().launch(**launch_kwargs())
+    import argparse
+
+    import app_security
+
+    parser = argparse.ArgumentParser(description="Run the app with optional sharing")
+    parser.add_argument("--share", action="store_true")
+    parser.add_argument("--theme", type=str, default=None)
+    parser.add_argument("--open", action="store_true")
+    args = parser.parse_args()
+    if args.share:
+        IS_COLAB = True
+    app_security.ensure_token()
+    build_server().launch(**launch_kwargs(inbrowser=args.open))

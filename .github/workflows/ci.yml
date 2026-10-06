@@ -10,15 +10,16 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # requirements-macos.txt cannot be installed as one set: gradio==6.20.0
-      # needs huggingface-hub>=1.2 and transformers==4.46.3 needs huggingface-hub<1.
-      # The Mac app installs macos/requirements-bundle.txt instead.
-      - run: pip install -r macos/requirements-bundle.txt "pytest==8.3.5"
-      # tests/ imports repo-root modules (app_paths, rvc_engine).
-      - run: PYTHONPATH=. pytest -q
+      - run: >
+          pip install
+          "numpy<2" scipy soundfile gradio scikit-learn
+          yt-dlp requests urllib3
+          pedalboard picklescan safetensors pywebview
+          torch torchaudio onnxruntime
+      - run: PYTHONPATH=. python -m unittest discover -s tests -q

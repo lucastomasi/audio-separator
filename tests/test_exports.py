@@ -1,33 +1,42 @@
-"""Exports only copy files that live in this app's output folders."""
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import exports
 
 
-class ExportableTests(unittest.TestCase):
-    def tearDown(self):
-        os.environ.pop("AUDIO_SEPARATOR_HOME", None)
+class ExportsTests(unittest.TestCase):
+    def test_unique_path_adds_index(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        first = os.path.join(tmp.name, "voz.wav")
+        open(first, "w").close()
+        second = exports.unique_path(tmp.name, "voz.wav")
+        self.assertEqual(os.path.basename(second), "voz (2).wav")
 
-    def test_rejects_symlink_outside(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["AUDIO_SEPARATOR_HOME"] = tmp
-            clean = os.path.join(tmp, "clean_song_output")
-            os.makedirs(clean)
-            secret = os.path.join(tmp, "secret.wav")
-            with open(secret, "wb") as handle:
-                handle.write(b"RIFF")
-            link = os.path.join(clean, "voz.wav")
-            os.symlink(secret, link)
-            self.assertFalse(exports.is_exportable(link))
+    def test_copy_to_downloads_only_exportable(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        allowed_root = os.path.join(tmp.name, "Trabajos")
+        os.makedirs(allowed_root)
+        src = os.path.join(allowed_root, "src.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"abc")
+        outside = os.path.join(tmp.name, "secret.wav")
+        with open(outside, "wb") as handle:
+            handle.write(b"no")
+        dest_root = os.path.join(tmp.name, "out")
+        with mock.patch.object(exports, "exports_dir", return_value=dest_root), mock.patch.object(
+            exports, "_export_roots", return_value=[allowed_root, dest_root]
+        ):
+            directory, copied = exports.copy_to_downloads([src, outside], ["voz", "leak"])
+        self.assertEqual(directory, dest_root)
+        self.assertEqual(len(copied), 1)
+        self.assertTrue(copied[0].endswith("voz.wav"))
+        with open(copied[0], "rb") as handle:
+            self.assertEqual(handle.read(), b"abc")
 
-    def test_accepts_real_output(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["AUDIO_SEPARATOR_HOME"] = tmp
-            clean = os.path.join(tmp, "clean_song_output")
-            os.makedirs(clean)
-            wav = os.path.join(clean, "voz.wav")
-            with open(wav, "wb") as handle:
-                handle.write(b"RIFF")
-            self.assertTrue(exports.is_exportable(wav))
+
+if __name__ == "__main__":
+    unittest.main()

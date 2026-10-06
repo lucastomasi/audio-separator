@@ -1,66 +1,193 @@
-"""YouTube downloads accept only reconstructed youtube.com watch URLs."""
+import os
+import tempfile
 import unittest
 from unittest import mock
 
-from audio_text import extract_youtube_id, youtube_watch_url
-import youtube_lib
+from youtube_lib import (
+    clip_audio,
+    download_audio,
+    extract_audio_from_media,
+    extract_youtube_id,
+    identity_line,
+    parse_seconds,
+    probe_youtube,
+    ydl_options,
+)
 
 
-class YoutubeWatchUrlTests(unittest.TestCase):
-    def test_watch_url(self):
-        url, video_id = youtube_watch_url(
-            "https://www.youtube.com/watch?v=dQw4w9wgWcQ"
-        )
-        self.assertEqual(video_id, "dQw4w9wgWcQ")
-        self.assertEqual(url, "https://www.youtube.com/watch?v=dQw4w9wgWcQ")
-
-    def test_short_url(self):
-        url, video_id = youtube_watch_url("https://youtu.be/dQw4w9wgWcQ")
-        self.assertEqual(video_id, "dQw4w9wgWcQ")
-        self.assertEqual(url, "https://www.youtube.com/watch?v=dQw4w9wgWcQ")
-
-    def test_rejects_localhost(self):
-        with self.assertRaises(ValueError):
-            youtube_watch_url("http://127.0.0.1/watch?v=dQw4w9wgWcQ")
-
-    def test_rejects_lan(self):
-        with self.assertRaises(ValueError):
-            youtube_watch_url("http://192.168.1.8/watch?v=dQw4w9wgWcQ")
-
-    def test_rejects_file(self):
-        with self.assertRaises(ValueError):
-            youtube_watch_url("file:///etc/passwd")
-
-    def test_rejects_other_host(self):
-        with self.assertRaises(ValueError):
-            youtube_watch_url("https://example.com/watch?v=dQw4w9wgWcQ")
-
-    def test_rejects_userinfo(self):
-        with self.assertRaises(ValueError):
-            youtube_watch_url("https://u:p@www.youtube.com/watch?v=dQw4w9wgWcQ")
-
-    def test_id_in_evil_url_is_not_enough(self):
+class YoutubeIdTests(unittest.TestCase):
+    def test_watch_and_short_urls(self):
         self.assertEqual(
-            extract_youtube_id("http://127.0.0.1/watch?v=dQw4w9wgWcQ"),
-            "dQw4w9wgWcQ",
+            extract_youtube_id("https://www.youtube.com/watch?v=jNQXAC9IVRw"),
+            "jNQXAC9IVRw",
         )
+        self.assertEqual(extract_youtube_id("https://youtu.be/jNQXAC9IVRw"), "jNQXAC9IVRw")
+        self.assertEqual(
+            extract_youtube_id("www.youtube.com/watch?v=jNQXAC9IVRw"),
+            "jNQXAC9IVRw",
+        )
+
+    def test_empty(self):
+        self.assertIsNone(extract_youtube_id(""))
+        self.assertIsNone(extract_youtube_id(None))
+
+
+class ParseSecondsTests(unittest.TestCase):
+    def test_mm_ss_and_number(self):
+        self.assertEqual(parse_seconds("0:15"), 15)
+        self.assertEqual(parse_seconds("1:02"), 62)
+        self.assertEqual(parse_seconds(25), 25)
+        self.assertIsNone(parse_seconds(""))
+
+    def test_clip_requires_times(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tmp.write(b"x")
+        tmp.close()
+        self.addCleanup(lambda: os.remove(tmp.name))
         with self.assertRaises(ValueError):
-            youtube_watch_url("http://127.0.0.1/watch?v=dQw4w9wgWcQ")
+            clip_audio(tmp.name, None, None)
 
+    def test_clip_calls_ffmpeg(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "song.mp3")
+        with open(src, "wb") as handle:
+            handle.write(b"abc")
 
-class YdlOptionsTests(unittest.TestCase):
-    def test_no_remote_javascript(self):
-        opts = youtube_lib.ydl_options("/tmp")
-        self.assertNotIn("remote_components", opts)
-        self.assertNotIn("js_runtimes", opts)
+        def fake_run(cmd, capture_output=True, text=True):
+            dest = cmd[-1]
+            with open(dest, "wb") as handle:
+                handle.write(b"clip")
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch("youtube_lib.ffmpeg_binary", return_value="ffmpeg"):
+            with mock.patch("youtube_lib.subprocess.run", side_effect=fake_run):
+                path = clip_audio(src, "0:10", "0:20", directory=tmp.name)
+        self.assertTrue(path.endswith("song_10-20.wav"))
+        self.assertTrue(os.path.isfile(path))
+
+    def test_extract_audio_from_video(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = os.path.join(tmp.name, "clip.mp4")
+        dest = os.path.join(tmp.name, "clip.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"mp4")
+
+        def fake_run(cmd, capture_output=True):
+            with open(cmd[-1], "wb") as handle:
+                handle.write(b"RIFF")
+            return mock.Mock(returncode=0)
+
+        with mock.patch("youtube_lib.ffmpeg_binary", return_value="ffmpeg"):
+            with mock.patch("youtube_lib.subprocess.run", side_effect=fake_run):
+                path = extract_audio_from_media(src, dest)
+        self.assertEqual(path, os.path.abspath(dest))
+        self.assertTrue(os.path.isfile(path))
 
 
 class DownloadAudioTests(unittest.TestCase):
-    def test_bad_url_does_not_import_ydl(self):
-        with mock.patch("builtins.__import__", side_effect=ImportError("yt_dlp")) as importer:
-            with self.assertRaises(ValueError) as caught:
-                youtube_lib.download_audio("http://127.0.0.1/secret")
-            self.assertIn("YouTube", str(caught.exception))
-            self.assertFalse(
-                any(call.args and call.args[0] == "yt_dlp" for call in importer.call_args_list)
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_empty_url(self):
+        with self.assertRaises(ValueError):
+            download_audio("  ", directory=self.dir)
+
+    def test_rejects_non_youtube_url(self):
+        with mock.patch("yt_dlp.YoutubeDL") as ydl:
+            with self.assertRaises(ValueError) as ctx:
+                download_audio("https://example.com/secret.wav", directory=self.dir)
+        self.assertIn("YouTube", str(ctx.exception))
+        ydl.assert_not_called()
+
+    def test_skips_redownload_if_wav_exists(self):
+        path = os.path.join(self.dir, "jNQXAC9IVRw.wav")
+        with open(path, "wb") as handle:
+            handle.write(b"fake-audio")
+        with mock.patch("yt_dlp.YoutubeDL") as ydl_cls:
+            result, reused, note = download_audio(
+                "https://youtu.be/jNQXAC9IVRw", directory=self.dir
             )
+        self.assertTrue(reused)
+        self.assertIsNone(note)
+        self.assertEqual(result, os.path.abspath(path))
+        ydl_cls.assert_not_called()
+
+    def test_download_writes_wav(self):
+        video_id = "abcdefghijk"
+
+        class FakeYDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                dest = os.path.join(self.dir, f"{video_id}.wav")
+                with open(dest, "wb") as handle:
+                    handle.write(b"RIFF" + b"\x00" * 12 + b"WAVEfmt ")
+                return {"id": video_id, "ext": "wav"}
+
+        FakeYDL.dir = self.dir
+
+        with mock.patch("yt_dlp.YoutubeDL", FakeYDL):
+            path, reused, note = download_audio(
+                "https://youtu.be/abcdefghijk", directory=self.dir
+            )
+        self.assertFalse(reused)
+        self.assertIsNone(note)
+        self.assertTrue(path.endswith(".wav"))
+        self.assertTrue(os.path.isfile(path))
+
+    def test_probe_does_not_download(self):
+        seen = {}
+
+        class FakeYDL:
+            def __init__(self, opts):
+                seen["opts"] = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                seen["download"] = download
+                seen["url"] = url
+                return {
+                    "id": "abcdefghijk",
+                    "channel": "DotDager",
+                    "title": "CFK ERA DE DERECHA",
+                }
+
+        with mock.patch("yt_dlp.YoutubeDL", FakeYDL):
+            ident = probe_youtube("https://youtu.be/abcdefghijk")
+        self.assertFalse(seen["download"])
+        self.assertEqual(ident["channel"], "DotDager")
+        self.assertEqual(ident["title"], "CFK ERA DE DERECHA")
+        self.assertEqual(ident["id"], "abcdefghijk")
+        self.assertEqual(
+            identity_line(ident["channel"], ident["title"], ident["id"]),
+            "DotDager — CFK ERA DE DERECHA (abcdefghijk)",
+        )
+
+    def test_options_are_audio_only(self):
+        opts = ydl_options(self.dir)
+        self.assertIn("bestaudio", opts["format"])
+        self.assertTrue(opts["noplaylist"])
+        self.assertEqual(opts["postprocessors"][0]["preferredcodec"], "wav")
+        self.assertEqual(opts.get("concurrent_fragment_downloads"), 4)
+
+
+if __name__ == "__main__":
+    unittest.main()

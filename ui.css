@@ -1,8 +1,309 @@
+/* macOS-like shell: SF stack, system blue, grouped panels */
+
 .gradio-container {
-  max-width: 1120px !important;
-  padding: 20px 16px 48px !important;
+  max-width: 1040px !important;
+  padding: 10px 14px 32px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    sans-serif !important;
+  background: #F2F2F7 !important;
+  color: #1D1D1F !important;
 }
 
-footer {
+.gradio-container,
+.gradio-container * {
+  -webkit-font-smoothing: antialiased;
+}
+
+footer,
+.footer,
+#footer,
+.api-docs,
+button[aria-label="Use via API"],
+button[aria-label="Settings"],
+.built-with {
   display: none !important;
+}
+
+.app-header h1 {
+  margin: 2px 0 0 !important;
+  font-size: 1.38rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: #1D1D1F !important;
+}
+
+.lede {
+  margin: 2px 0 8px !important;
+  font-size: 0.82rem !important;
+  color: #86868B !important;
+}
+
+.stepper-wrap {
+  margin: 0 0 12px !important;
+}
+
+.stepper {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  color: #86868B !important;
+}
+
+.stepper span {
+  position: relative;
+  padding: 4px 10px 4px 0;
+  margin-right: 8px;
+}
+
+.stepper span:not(:last-child)::after {
+  content: "›";
+  position: absolute;
+  right: -2px;
+  color: #C7C7CC;
+  font-weight: 400;
+}
+
+.hint {
+  margin: 0 0 8px !important;
+  font-size: 0.78rem !important;
+  line-height: 1.35 !important;
+  color: #86868B !important;
+}
+
+.warn-hint {
+  color: #FF9F0A !important;
+}
+
+.progress-bar,
+div.progress-bar {
+  background: #007AFF !important;
+}
+
+#job-status {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 0 12px !important;
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  color: #1D1D1F !important;
+  font-size: 0.84rem !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+}
+
+#job-status.is-error {
+  border-color: rgba(255, 59, 48, 0.35) !important;
+  background: rgba(255, 59, 48, 0.08) !important;
+}
+
+#job-status.is-ok {
+  border-color: rgba(52, 199, 89, 0.35) !important;
+}
+
+#job-status.is-run {
+  border-color: rgba(0, 122, 255, 0.4) !important;
+  background: rgba(0, 122, 255, 0.06) !important;
+}
+
+#job-status.is-idle {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.step {
+  margin-bottom: 10px !important;
+  padding: 12px 14px 14px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  background: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+#main-tabs > .tab-nav,
+#main-tabs > div:first-child {
+  gap: 4px !important;
+  margin-bottom: 10px !important;
+}
+
+#main-tabs button {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+}
+
+.model-search {
+  margin-top: 4px !important;
+}
+
+.model-search label span {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.model-search input,
+.model-search textarea {
+  border-radius: 12px !important;
+  background: rgba(118, 118, 128, 0.12) !important;
+  border: 1px solid transparent !important;
+  min-height: 40px !important;
+  padding: 8px 14px !important;
+  font-size: 15px !important;
+}
+
+.model-search input:focus,
+.model-search textarea:focus {
+  background: #fff !important;
+  border-color: #007AFF !important;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.18) !important;
+  outline: none !important;
+}
+
+.dark .model-search input,
+.dark .model-search textarea {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .model-search input:focus,
+.dark .model-search textarea:focus {
+  background: #1c1c1e !important;
+}
+
+#rvc-btn,
+#train-btn,
+#join-btn,
+#tts-rvc-btn,
+#run-btn {
+  background: #007AFF !important;
+  color: #fff !important;
+}
+
+.step .tab-nav button,
+.step .tabs > div:first-child button {
+  font-size: 0.84rem !important;
+  font-weight: 600 !important;
+}
+
+.step label,
+.step .label-wrap span {
+  font-size: 0.8rem !important;
+}
+
+.step .accordion {
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 10px !important;
+  margin-top: 8px !important;
+}
+
+.panel-title {
+  margin: 0 0 6px !important;
+  font-size: 0.92rem !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.02em !important;
+  color: #1D1D1F !important;
+}
+
+#run-btn,
+#rvc-btn,
+#train-btn,
+#join-btn,
+#tts-rvc-btn {
+  min-height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+.action-row {
+  gap: 8px !important;
+  margin-top: 4px !important;
+}
+
+.top-row {
+  align-items: stretch !important;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(0, 122, 255, 0.45) !important;
+  outline-offset: 1px !important;
+}
+
+button[aria-label="Download"],
+button[aria-label="download"],
+button[aria-label="Share"],
+button[aria-label="share"],
+a[download],
+[data-testid="download-file"],
+.icon-button[aria-label*="Download" i],
+.icon-button[aria-label*="Descargar" i] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.dark .gradio-container {
+  background: #1C1C1E !important;
+  color: #F5F5F7 !important;
+}
+
+.dark .app-header h1,
+.dark .panel-title {
+  color: #F5F5F7 !important;
+}
+
+.dark .lede,
+.dark .hint,
+.dark .stepper {
+  color: #98989D !important;
+}
+
+.dark #job-status {
+  background: rgba(44, 44, 46, 0.88) !important;
+  color: #F5F5F7 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark #job-status.is-error {
+  border-color: rgba(255, 69, 58, 0.55) !important;
+  background: rgba(255, 69, 58, 0.16) !important;
+}
+
+.dark #job-status.is-ok {
+  border-color: rgba(48, 209, 88, 0.45) !important;
+}
+
+.dark #job-status.is-run {
+  border-color: rgba(10, 132, 255, 0.55) !important;
+  background: rgba(10, 132, 255, 0.12) !important;
+}
+
+.dark .step {
+  background: #2C2C2E !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark #job-status.is-idle {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+@media (max-width: 720px) {
+  .gradio-container {
+    padding: 8px 8px 24px !important;
+  }
+
+  #run-btn,
+  #train-btn,
+  #rvc-btn,
+  #join-btn,
+  #tts-rvc-btn {
+    position: sticky;
+    bottom: 8px;
+    z-index: 5;
+  }
 }

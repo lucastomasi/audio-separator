@@ -1,79 +1,75 @@
 # Audio Separator
 
-App local para Mac: separar voz e instrumental, bajar audio de YouTube, convertir voz con RVC en disco y volver a unir.
+App local para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. El audio queda en disco.
 
-No usa el Space de Hugging Face.
+YouTube, Edge TTS y Completar instalación (Hugging Face / pesos) usan red. Separar, Entrenar y Convertir van offline solo si los modelos ya están en disco.
 
-## Instalar en Mac
+## Requisitos
 
-Para Apple Silicon, bajá el disco (trae Python y las librerías; no hace falta instalar nada más):
+- macOS 13+
+- CPU x86_64 o Rosetta 2
+- Python 3.12 para desarrollo
+- ~3 GB libres para el `.app` standalone
 
-https://github.com/lucastomasi/audio-separator/releases/download/macos-arm64/Audio-Separator-arm64.dmg
+## App empaquetada
 
-Abrilo. La app está a la izquierda y Aplicaciones a la derecha. Arrastrá **Audio Separator** a **Aplicaciones**, cerrá el disco y no la abras desde adentro. `LEEME.txt` está en el mismo disco.
+| Zip | Qué trae |
+|---|---|
+| `Audio-Separator-macOS-Intel.zip` | Full, pesos adentro (~2 GB) |
+| `Audio-Separator-macOS-Intel-Lite.zip` | Sin ~700 MB de RVC; **Completar instalación** la primera vez |
 
-En Aplicaciones, **Control-clic** (clic derecho) sobre Audio Separator → **Abrir** → **Abrir**.
+**Entregable:** `dist/Audio-Separator-macOS-Intel.zip`. Copiá `Audio Separator.app` a Aplicaciones. Clic derecho → **Abrir**. No hace falta Terminal ni Grok. No está notarizado por Apple.
 
-macOS puede decir que no puede verificar al desarrollador. La app no está firmada ni notarizada. Control-clic → Abrir es el paso normal.
+El alias de desarrollo en `~/grok` **no** es el producto.
 
-No uses `xattr` para sacar la cuarentena: eso apaga Gatekeeper para esa app. Si el Control-clic no alcanza, volvé a bajar el disco desde la release de este repo.
-
-La primera ventana puede tardar uno o dos minutos. Si falla, el detalle queda en `~/Library/Logs/Audio Separator/launch.log`.
-
-### Modelos y procesador
-
-La separación local (canal central) funciona sin bajar nada. Es más simple que un modelo de separación.
-
-Estos archivos son grandes y no van en el DMG. La app no los descarga:
-
-- Un `.onnx` para separar mejor, en `~/Library/Application Support/Audio Separator/mdx_models/`.
-- Para convertir la voz, en `~/Library/Application Support/Audio Separator/rvc_models/`:
-  - `hubert_base/` — carpeta con `config.json` y los pesos (`model.safetensors` o `pytorch_model.bin`). Un `hubert_base.pt` suelto no alcanza.
-  - `rmvpe.pt`
-  - `tu-voz.pth`
-  - `tu-voz.index` — opcional.
-
-No hace falta una GPU NVIDIA. La separación ONNX corre en CPU. La conversión de voz puede usar el chip de Apple si PyTorch lo detecta; si no, usa CPU y tarda más.
-
-YouTube usa el ffmpeg que viene dentro del `.app`. Si una descarga falla, instalá ffmpeg en la Mac (`brew install ffmpeg`) y volvé a abrir.
-
-### Armar el .app y el DMG
-
-En una Mac, desde el repo:
+Los zip **no** van en git. Se arman con:
 
 ```bash
-bash macos/build_release.sh
+./scripts/build_standalone.sh
+./scripts/build_standalone_lite.sh
 ```
 
-Eso deja `dist/Audio Separator.app` y `dist/Audio-Separator-arm64.dmg`. El script embebe un CPython 3.12, compila `macos/launcher.c` como ejecutable Mach-O y arma el disco con la app a la izquierda y Aplicaciones a la derecha.
+## Flujo
 
-El ejecutable no es un script. `clang` lo genera en la Mac del armado y le pone una firma ad-hoc, sin certificado de desarrollador y sin notarización. Gatekeeper igual pide Control-clic → Abrir.
+1. **Canción** — archivo o YouTube  
+2. **Extraer** — voz / instrumental (minutos en Intel)  
+3. **Resultado** — `~/Downloads/Audio Separator`  
+4. **Voz (RVC)** — Entrenar (cada epoch se guarda) → Convertir  
+5. **Unir**  
+6. **Texto → habla** — Edge (internet) → tu `.pth` RVC  
 
-En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace de arriba es solo Apple Silicon.
-
-`bash macos/build_app.sh --layout-only` crea la carpeta del `.app` sin Python y sin el binario.
+Cerrar la ventana no corta un train ya largado. No relances el mismo nombre si sigue corriendo.
 
 ## Desarrollo
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r macos/requirements-bundle.txt
-.venv/bin/python desktop.py
+git clone https://github.com/lucastomasi/audio-separator.git
+cd audio-separator
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-macos.txt
 ```
 
-`requirements-macos.txt` no se instala como un solo set. No lo uses.
+### Lo que no viene en el clone
 
-## Modelos RVC
+| Hace falta | Dónde |
+|---|---|
+| Pesos RVC (HuBERT, RMVPE, f0G/D) | App → **Completar instalación**, o `library/models/rvc/` |
+| ONNX UVR | `mdx_models/*.onnx` (no se suben). El zip **full** es un enlatado: los copia del Mac de build. Sin esos archivos `build_standalone.sh` aborta. |
+| RVC-WebUI (solo para **Entrenar**) | `git clone --depth 1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI third_party/RVC-WebUI` |
 
-Copiá estos archivos a `rvc_models/` antes de convertir. La app no los descarga. Si la corrés desde el repo, esa carpeta está al lado del código. Si abrís el `.app`, es `~/Library/Application Support/Audio Separator/rvc_models/`.
+```bash
+python desktop.py
+```
 
-- `hubert_base/` — carpeta del modelo HuBERT, con `config.json` y los pesos (`model.safetensors` o `pytorch_model.bin`). Un `hubert_base.pt` suelto no alcanza.
-- `rmvpe.pt` — el estimador de pitch.
-- `tu-voz.pth` — el modelo de voz.
-- `tu-voz.index` — opcional, el índice de esa voz.
+Tests:
 
-Esos binarios quedan fuera de git. En la app: Actualizá los modelos y después Convertí la voz. El pitch es rmvpe; no hace falta pyworld.
+```bash
+.venv/bin/python -m unittest discover -s tests -q
+```
 
-`infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si el install del bundle se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.
+No abras `desktop.py` y `./convert_rvc.sh` a la vez (OpenMP en Intel).
 
-Un `.pth` o un índice de un desconocido es código. Copiá solo modelos de confianza.
+## Licencia
+
+MIT del glue: `LICENSE`. Modelos y webui de terceros: `NOTICE.md`.

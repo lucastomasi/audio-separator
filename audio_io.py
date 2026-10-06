@@ -1,54 +1,33 @@
 """Local audio helpers so we don't need librosa (and its numba/llvmlite stack)."""
 import json
 import math
-import os
 import subprocess
-import tempfile
 
 import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
 
-from youtube_lib import ffmpeg_binary, ffprobe_binary
-
-
-def _tool_env():
-    return {"PATH": "/usr/bin:/bin", "LANG": "C"}
-
-
-def _media_path(path):
-    if not path:
-        raise ValueError("Falta el archivo de audio.")
-    real = os.path.realpath(path)
-    if not os.path.isfile(real):
-        raise ValueError("No encontré el audio.")
-    return real
-
 
 def get_duration(filename=None, path=None):
-    audio_path = _media_path(filename or path)
+    audio_path = filename or path
     try:
         with sf.SoundFile(audio_path) as handle:
             return len(handle) / float(handle.samplerate)
     except Exception:
-        probe = ffprobe_binary() or "ffprobe"
-        output = subprocess.check_output(
+        probe = subprocess.check_output(
             [
-                probe,
+                "ffprobe",
                 "-v",
                 "error",
                 "-show_entries",
                 "format=duration",
                 "-of",
                 "json",
-                "-i",
                 audio_path,
             ],
             stderr=subprocess.STDOUT,
-            env=_tool_env(),
-            cwd=tempfile.gettempdir(),
         )
-        return float(json.loads(output)["format"]["duration"])
+        return float(json.loads(probe)["format"]["duration"])
 
 
 def resample(y, orig_sr, target_sr):
@@ -64,39 +43,34 @@ def resample(y, orig_sr, target_sr):
     ).astype(np.float32)
 
 
+def _as_path(path):
+    if isinstance(path, dict):
+        path = path.get("path") or path.get("name") or path.get("orig_name")
+    return path
+
+
 def load(path, mono=False, sr=44100):
-    audio_path = _media_path(path)
+    path = _as_path(path)
     try:
-        wave, file_sr = sf.read(audio_path, always_2d=True)
+        wave, file_sr = sf.read(path, always_2d=True)
     except Exception:
-        ffmpeg = ffmpeg_binary() or "ffmpeg"
-        handle = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        stereo_path = handle.name
-        handle.close()
-        try:
-            subprocess.check_call(
-                [
-                    ffmpeg,
-                    "-y",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    audio_path,
-                    "-ac",
-                    "2",
-                    "-ar",
-                    str(sr or 44100),
-                    stereo_path,
-                ],
-                env=_tool_env(),
-                cwd=tempfile.gettempdir(),
-            )
-            wave, file_sr = sf.read(stereo_path, always_2d=True)
-        finally:
-            try:
-                os.remove(stereo_path)
-            except OSError:
-                pass
+        stereo_path = f"{path}.decoded.wav"
+        subprocess.check_call(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                path,
+                "-ac",
+                "2",
+                "-ar",
+                str(sr or 44100),
+                stereo_path,
+            ]
+        )
+        wave, file_sr = sf.read(stereo_path, always_2d=True)
     wave = wave.T.astype(np.float32)
     if sr and int(file_sr) != int(sr):
         wave = resample(wave, orig_sr=file_sr, target_sr=sr)

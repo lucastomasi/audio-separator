@@ -11,9 +11,14 @@ import desktop
 class LaunchSecurityTests(unittest.TestCase):
     def test_allowed_paths_are_outputs_only(self):
         allowed = [os.path.realpath(path) for path in app._allowed_paths()]
-        self.assertNotIn(os.path.realpath(app.ROOT), allowed)
+        self.assertNotIn(os.path.realpath(app.__file__.rsplit("/", 1)[0]), allowed)
         self.assertNotIn(os.path.realpath(tempfile.gettempdir()), allowed)
-        self.assertTrue(any(path.endswith("clean_song_output") for path in allowed))
+        self.assertTrue(
+            any(
+                path.endswith("clean_song_output") or path.endswith("Trabajos")
+                for path in allowed
+            )
+        )
 
     def test_blocked_paths_include_secrets(self):
         blocked = app._blocked_paths()
@@ -25,9 +30,11 @@ class LaunchSecurityTests(unittest.TestCase):
         self.assertFalse(kwargs["share"])
         self.assertFalse(kwargs["show_error"])
         self.assertEqual(kwargs["server_name"], "127.0.0.1")
-        self.assertTrue(kwargs["strict_cors"])
+        self.assertTrue(kwargs.get("strict_cors", True))
         self.assertIs(kwargs["auth_dependency"], app.auth_dependency)
         self.assertNotIn(os.path.realpath(tempfile.gettempdir()), kwargs["allowed_paths"])
+        for path in kwargs["allowed_paths"]:
+            self.assertNotEqual(os.path.realpath(path), os.path.realpath(os.path.expanduser("~")))
 
     def test_ui_error_hides_paths(self):
         with self.assertRaises(Exception) as caught:

@@ -1,0 +1,20 @@
+# Isolated conversion-engine venv (Intel Mac: no torch 2.11 wheel).
+torch==2.2.2
+torchaudio==2.2.2
+numpy>=1.26,<2
+faiss-cpu
+numba==0.60.0
+llvmlite==0.43.0
+librosa>=0.10,<0.11
+soxr
+soundfile
+scipy
+einops
+transformers>=4.40,<5
+torchcrepe
+torchfcpe
+pedalboard
+noisereduce
+wget
+tqdm
+av>=15.1.0,<16
