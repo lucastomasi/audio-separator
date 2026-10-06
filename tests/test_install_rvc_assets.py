@@ -118,8 +118,8 @@ class InstallRvcAssetsTests(unittest.TestCase):
         root = Path(tmp.name)
         with mock.patch.object(install_rvc_assets, "uvr_models_dir", return_value=root):
             missing = install_rvc_assets.missing_uvr_assets()
-        self.assertEqual(set(missing), set(install_rvc_assets.UVR_MODELS))
-        self.assertFalse(install_rvc_assets.uvr_assets_ready())
+            self.assertEqual(set(missing), set(install_rvc_assets.UVR_MODELS))
+            self.assertFalse(install_rvc_assets.uvr_assets_ready())
 
     def test_install_uvr_uses_can_and_skips_present(self):
         tmp = tempfile.TemporaryDirectory()
