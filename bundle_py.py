@@ -35,4 +35,5 @@ BUNDLE_PY = (
     "eleven_tts.py",
     "gemini_cover.py",
     "bundle_py.py",
+    "pwa_server.py",
 )

@@ -66,6 +66,17 @@ class LaunchSecurityTests(unittest.TestCase):
 class AuthTests(unittest.TestCase):
     def tearDown(self):
         os.environ.pop(app.TOKEN_ENV, None)
+        os.environ.pop("AUDIO_SEPARATOR_HOST", None)
+
+    def test_lan_stays_closed_until_the_host_is_opened(self):
+        os.environ[app.TOKEN_ENV] = "b" * 32
+        token = os.environ[app.TOKEN_ENV]
+        lan = self._request(host="192.168.1.20:7860", query={app.TOKEN_QUERY: token})
+        self.assertIsNone(app.auth_dependency(lan))
+        os.environ["AUDIO_SEPARATOR_HOST"] = "0.0.0.0"
+        self.assertEqual(app.auth_dependency(lan), "local")
+        self.assertIsNone(app.auth_dependency(self._request(host="192.168.1.20:7860")))
+        self.assertEqual(app.launch_kwargs()["server_name"], "0.0.0.0")
 
     def _request(self, host="127.0.0.1:7860", query=None, cookie=None, header=None, referer=None):
         request = mock.Mock()

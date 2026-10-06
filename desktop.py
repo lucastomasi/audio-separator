@@ -98,16 +98,13 @@ def _offline_env():
 
 def start_server(port):
     try:
-        from app import build_server, launch_kwargs
+        from app import launch_app
 
-        demo = build_server()
-        demo.launch(
-            **launch_kwargs(
-                prevent_thread_lock=True,
-                inbrowser=False,
-                server_name=HOST,
-                server_port=port,
-            )
+        launch_app(
+            prevent_thread_lock=True,
+            inbrowser=False,
+            server_name=HOST,
+            server_port=port,
         )
     except Exception:
         traceback.print_exc()
