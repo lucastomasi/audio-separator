@@ -52,6 +52,7 @@ from app_jobs import (
     READY_STATUS,
     demo_song_path,
     ensure_demo_voice,
+    servable_media,
     load_demo_bundle,
     install_rvc_job,
     audio_downloader,
@@ -67,6 +68,13 @@ from app_jobs import (
     remux_job,
     cover_job,
     lock_download_button,
+    lock_install_button,
+    lock_convert_button,
+    lock_train_button,
+    lock_join_button,
+    lock_tts_button,
+    lock_clip_button,
+    unlock_train_button,
     _gradio_path,
     _install_status_line,
 )
@@ -168,6 +176,7 @@ def _on_train(name, dataset, epochs, progress=gr.Progress()):
         files = [dataset]
     else:
         files = []
+    unlock = unlock_train_button()
     if not name_s or not files:
         from ui_status import KIND_ERROR, status_update
 
@@ -179,19 +188,26 @@ def _on_train(name, dataset, epochs, progress=gr.Progress()):
             text = "Subí al menos un audio de la voz a entrenar."
         rvc_upd, tts_upd = refresh_library_ui()
         btn_a, btn_b = _convert_interactive()
-        return rvc_upd, status_update(KIND_ERROR, text), tts_upd, btn_a, btn_b
-    rvc_upd, bar, tts_upd = train_rvc_job(
+        return (
+            rvc_upd,
+            status_update(KIND_ERROR, text),
+            tts_upd,
+            btn_a,
+            btn_b,
+            unlock,
+        )
+    rvc_upd, bar, tts_upd, train_btn = train_rvc_job(
         name_s, files, epochs, False, None, progress
     )
     btn_a, btn_b = _convert_interactive()
-    return rvc_upd, bar, tts_upd, btn_a, btn_b
+    return rvc_upd, bar, tts_upd, btn_a, btn_b, train_btn
 
 
 def get_gui():
     with gr.Blocks(
         title="Audio Separator",
         fill_width=True,
-        fill_height=False,
+        fill_height=True,
         delete_cache=(3200, 10800),
     ) as app:
         with gr.Row(elem_classes=["app-chrome"]):
@@ -231,11 +247,7 @@ def get_gui():
                                 elem_classes=["hint"],
                             )
                             aud = audio_conf()
-                            with gr.Row(elem_classes=["action-row"]):
-                                demo_btn = gr.Button(
-                                    "Cargar demo", variant="secondary"
-                                )
-                            with gr.Row():
+                            with gr.Row(elem_classes=["clip-row"], equal_height=False):
                                 clip_start = gr.Textbox(
                                     label="Inicio (m:ss)",
                                     placeholder="0:15",
@@ -249,7 +261,11 @@ def get_gui():
                                 clip_btn = gr.Button(
                                     "Recortar",
                                     variant="secondary",
-                                    scale=1,
+                                    scale=0,
+                                )
+                            with gr.Row(elem_classes=["action-row"]):
+                                demo_btn = gr.Button(
+                                    "Cargar demo", variant="secondary"
                                 )
                         with gr.Tab("YouTube"):
                             with gr.Row():
@@ -581,8 +597,9 @@ def get_gui():
                             install_log = gr.Textbox(
                                 label="Registro de instalación",
                                 interactive=False,
-                                lines=2,
-                                placeholder="Solo la primera vez / solo lo que falte.",
+                                lines=3,
+                                max_lines=6,
+                                placeholder="Acá se ve qué está bajando.",
                             )
                     with gr.Tab("Biblioteca"):
                         with gr.Group(elem_classes=["step"]):
@@ -662,6 +679,9 @@ def get_gui():
                             tts_audio = out_audio("Salida")
 
         install_btn.click(
+            lock_install_button,
+            outputs=[install_btn, status],
+        ).then(
             install_rvc_job,
             outputs=[
                 status,
@@ -670,8 +690,9 @@ def get_gui():
                 button_base,
                 rvc_pick,
                 tts_rvc_pick,
+                install_btn,
             ],
-            show_progress="minimal",
+            show_progress="full",
             concurrency_limit=1,
         )
         demo_btn.click(
@@ -685,7 +706,7 @@ def get_gui():
             audio_downloader,
             [url_media_gui, want_video],
             [aud, last_video, button_base, status, url_button_gui],
-            show_progress="minimal",
+            show_progress="full",
             concurrency_limit=1,
         )
         last_video.change(lambda p: p, last_video, remux_video_in)
@@ -743,19 +764,25 @@ def get_gui():
             ],
         )
         clip_btn.click(
+            lock_clip_button,
+            outputs=[clip_btn, status],
+        ).then(
             clip_for_clone,
             inputs=[aud, clip_start, clip_end],
-            outputs=[aud, status],
-            show_progress="minimal",
+            outputs=[aud, status, clip_btn],
+            show_progress="full",
         )
         refresh_lib_btn.click(
             refresh_library_ui, outputs=[rvc_pick, tts_rvc_pick]
         )
         tts_btn.click(
+            lock_tts_button,
+            outputs=[tts_btn, status],
+        ).then(
             tts_rvc_job,
             inputs=[tts_text, tts_rvc_pick, tts_edge, tts_pitch],
-            outputs=[tts_audio, remix_voice, status],
-            show_progress="minimal",
+            outputs=[tts_audio, remix_voice, status, tts_btn],
+            show_progress="full",
             concurrency_limit=1,
         )
         vocal_out.change(
@@ -779,7 +806,7 @@ def get_gui():
             remux_job,
             inputs=[remux_video_in, remux_audio_in],
             outputs=[remux_file, status],
-            show_progress="minimal",
+            show_progress="full",
             concurrency_limit=1,
         )
         cover_btn.click(
@@ -816,10 +843,13 @@ def get_gui():
             outputs=[rvc_in, status],
         )
         rvc_btn.click(
+            lock_convert_button,
+            outputs=[rvc_btn, status],
+        ).then(
             rvc_job,
             inputs=[rvc_in, rvc_pick, rvc_model, rvc_index, train_dataset, rvc_same],
-            outputs=[rvc_audio, remix_voice, status],
-            show_progress="minimal",
+            outputs=[rvc_audio, remix_voice, status, rvc_btn],
+            show_progress="full",
             concurrency_limit=1,
         )
         use_recent_btn.click(
@@ -832,21 +862,20 @@ def get_gui():
             outputs=[train_name, train_dataset, train_epochs, status],
         )
         train_btn.click(
+            lock_train_button,
+            outputs=[train_btn, status],
+        ).then(
             _on_train,
             inputs=[train_name, train_dataset, train_epochs],
-            outputs=[rvc_pick, status, tts_rvc_pick, rvc_btn, tts_btn],
+            outputs=[rvc_pick, status, tts_rvc_pick, rvc_btn, tts_btn, train_btn],
             show_progress="full",
             concurrency_limit=1,
         )
         def _boot_ui():
             import library
 
-            last_vid = library.get_session_meta().get("last_video_path")
-            if last_vid and not os.path.isfile(last_vid):
-                last_vid = None
-            last_audio = library.get_session_meta().get("last_audio_path")
-            if last_audio and not os.path.isfile(last_audio):
-                last_audio = None
+            last_vid = servable_media(library.get_session_meta().get("last_video_path"))
+            last_audio = servable_media(library.get_session_meta().get("last_audio_path"))
             ensure_demo_voice()
             rvc_upd, tts_upd = refresh_library_ui()
             song = last_audio or demo_song_path()
@@ -896,6 +925,9 @@ def get_gui():
             ],
         )
         remix_btn.click(
+            lock_join_button,
+            outputs=[remix_btn, status],
+        ).then(
             remix_job,
             inputs=[
                 remix_voice,
@@ -906,8 +938,8 @@ def get_gui():
                 remix_inst_db,
                 target_format_gui,
             ],
-            outputs=[remix_audio, remix_file, status],
-            show_progress="minimal",
+            outputs=[remix_audio, remix_file, status, remix_btn],
+            show_progress="full",
             concurrency_limit=1,
         )
         button_base.click(
@@ -928,7 +960,7 @@ def get_gui():
                 background_gain_db_gui, target_format_gui,
             ],
             outputs=[vocal_out, background_out, output_base, status, button_base],
-            show_progress="minimal",
+            show_progress="full",
             concurrency_limit=1,
         )
 

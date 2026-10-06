@@ -38,13 +38,30 @@ class RemixJobTests(unittest.TestCase):
             "app_jobs.copy_to_downloads",
             side_effect=lambda files, labels: (tmp.name, list(files)),
         ):
-            audio, archivo, status = app_jobs.remix_job(
+            audio, archivo, status, unlock = app_jobs.remix_job(
                 voice, inst, 0, False, 0, 0, "WAV"
             )
         self.assertTrue(audio)
         self.assertTrue(os.path.isfile(audio))
         self.assertIn("Pistas unidas", str(status))
         self.assertNotIn("No se pudo armar el remix", str(status))
+        self.assertEqual(unlock.get("value"), "Unir")
+        self.assertTrue(unlock.get("interactive", False))
+
+
+class BusyLockTests(unittest.TestCase):
+    def test_lock_convert_sets_run_status(self):
+        btn, status = app_jobs.lock_convert_button()
+        self.assertFalse(btn.get("interactive", True))
+        self.assertIn("Convirtiendo", btn.get("value", ""))
+        classes = status.get("elem_classes") or []
+        self.assertIn("is-run", classes)
+        self.assertIn("Convirtiendo", str(status.get("value", "")))
+
+    def test_lock_install_sets_run_status(self):
+        btn, status = app_jobs.lock_install_button()
+        self.assertFalse(btn.get("interactive", True))
+        self.assertIn("is-run", status.get("elem_classes") or [])
 
 
 if __name__ == "__main__":
