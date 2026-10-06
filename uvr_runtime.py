@@ -148,6 +148,19 @@ def ensure_uvr_model(filename, progress=None):
     dest = os.path.join(mdxnet_models_dir, filename)
     if os.path.isfile(dest) and os.path.getsize(dest) > 0:
         return dest
+    # Prefer the first-time install / local can before a mid-job download.
+    try:
+        from pathlib import Path
+
+        from install_rvc_assets import _link_or_copy, can_root
+
+        can_file = can_root() / "mdx_models" / filename
+        if can_file.is_file() and can_file.stat().st_size > 0:
+            _tick(progress, 0.05, f"Usando modelo UVR local: {filename}")
+            _link_or_copy(can_file, Path(dest))
+            return dest
+    except Exception:
+        pass
     _tick(progress, 0.05, f"Bajando modelo UVR (gratis, una vez): {filename}")
     download_manager(
         os.path.join(MDX_DOWNLOAD_LINK, filename), mdxnet_models_dir

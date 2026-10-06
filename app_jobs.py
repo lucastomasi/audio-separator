@@ -76,14 +76,17 @@ def load_demo_bundle():
 
 def _install_status_line():
     try:
-        from install_rvc_assets import missing_rvc_assets, rvc_assets_ready
+        from install_rvc_assets import (
+            first_install_ready,
+            missing_first_install_assets,
+        )
 
-        if rvc_assets_ready():
+        if first_install_ready():
             return IDLE_STATUS
-        missing = missing_rvc_assets()
+        missing = missing_first_install_assets()
         return (
-            f"Faltan pesos RVC ({len(missing)}). "
-            "Pulsá «Completar instalación» (una vez, ~700 MB públicos)."
+            f"Faltan {len(missing)} archivos (UVR y/o RVC). "
+            "Pulsá «Completar instalación» — solo baja lo que no tengas."
         )
     except Exception:
         return IDLE_STATUS
@@ -91,7 +94,10 @@ def _install_status_line():
 
 def install_rvc_job(progress=gr.Progress()):
     try:
-        from install_rvc_assets import install_rvc_assets, missing_rvc_assets
+        from install_rvc_assets import (
+            install_first_time_assets,
+            missing_first_install_assets,
+        )
 
         lines = []
 
@@ -102,7 +108,7 @@ def install_rvc_job(progress=gr.Progress()):
             except Exception:
                 pass
 
-        written = install_rvc_assets(log=_log)
+        written = install_first_time_assets(log=_log)
         try:
             from rvc_engine import ensure_vc_engine
 
@@ -112,7 +118,7 @@ def install_rvc_job(progress=gr.Progress()):
         except Exception as exc:
             _log("Motor: falló")
             raise
-        left = missing_rvc_assets()
+        left = missing_first_install_assets()
         if left:
             return (
                 status_update(
@@ -127,7 +133,8 @@ def install_rvc_job(progress=gr.Progress()):
             )
         song, run, rvc_upd, tts_upd, demo_status = load_demo_bundle()
         note = (
-            f"Listo ({len(written)} archivos). Ya podés Entrenar / Convertir."
+            f"Listo ({len(written)} archivos). "
+            "Ya podés Separar / Entrenar / Convertir."
         )
         log = "\n".join(lines[-12:]) or note
         return _ok(note), log, song, run, rvc_upd, tts_upd

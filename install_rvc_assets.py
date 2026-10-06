@@ -1,12 +1,18 @@
-"""Download public RVC support weights into library/models/rvc/ (lite install).
+"""Download public support weights for first-time install (RVC + UVR).
 
-Sources: Hugging Face lj1995/VoiceConversionWebUI (public).
-Does not upload anything; only downloads.
+Sources:
+- RVC: Hugging Face lj1995/VoiceConversionWebUI (public)
+- UVR: GitHub TRvlvr/model_repo (public ONNX)
+
+Prefers a local can (/opt/audio-separator-models) or files already on disk.
+Does not upload anything.
 """
 from __future__ import annotations
 
 import os
 import shutil
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from library import ensure_dirs, rvc_support_dir
@@ -15,6 +21,17 @@ REPO = "lj1995/VoiceConversionWebUI"
 WEBUI_GIT = (
     "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git"
 )
+UVR_DOWNLOAD_LINK = (
+    "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
+)
+UVR_MODELS = (
+    "UVR-MDX-NET-Voc_FT.onnx",
+    "UVR_MDXNET_KARA_2.onnx",
+    "Reverb_HQ_By_FoxJoy.onnx",
+    "UVR-MDX-NET-Inst_HQ_4.onnx",
+)
+CAN_ENV = "AUDIO_SEPARATOR_CAN"
+DEFAULT_CAN = "/opt/audio-separator-models"
 
 # Relative paths inside the HF repo → local names under library/models/rvc/
 # Each local name → candidate paths inside the HF repo (first that exists wins).
@@ -45,6 +62,29 @@ def _root() -> Path:
     return Path(rvc_support_dir())
 
 
+def uvr_models_dir() -> Path:
+    """Same folder UVR separation reads: package mdx_models/."""
+    return Path(__file__).resolve().parent / "mdx_models"
+
+
+def can_root() -> Path:
+    return Path(os.environ.get(CAN_ENV) or DEFAULT_CAN)
+
+
+def missing_uvr_assets() -> list[str]:
+    root = uvr_models_dir()
+    missing = []
+    for name in UVR_MODELS:
+        path = root / name
+        if not path.is_file() or path.stat().st_size == 0:
+            missing.append(name)
+    return missing
+
+
+def uvr_assets_ready() -> bool:
+    return not missing_uvr_assets()
+
+
 def missing_rvc_assets() -> list[str]:
     """Human-readable list of missing install pieces."""
     root = _root()
@@ -72,6 +112,14 @@ def missing_rvc_assets() -> list[str]:
 
 def rvc_assets_ready() -> bool:
     return not missing_rvc_assets()
+
+
+def missing_first_install_assets() -> list[str]:
+    return missing_uvr_assets() + missing_rvc_assets()
+
+
+def first_install_ready() -> bool:
+    return uvr_assets_ready() and rvc_assets_ready()
 
 
 def rvc_webui_root() -> Path:
@@ -144,6 +192,22 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     _link_or_copy(Path(cached), dest)
 
 
+def _http_download(url: str, dest: Path, log=None) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    if log:
+        log(f"Descargando {dest.name}…")
+    request = urllib.request.Request(url, headers={"User-Agent": "AudioSeparator"})
+    with urllib.request.urlopen(request, timeout=120) as response, open(
+        tmp, "wb"
+    ) as handle:
+        shutil.copyfileobj(response, handle)
+    if tmp.stat().st_size == 0:
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(f"Descarga vacía: {dest.name}")
+    tmp.replace(dest)
+
+
 def _torch_load(path: Path, weights_only: bool = True):
     import torch
 
@@ -191,8 +255,48 @@ def _ensure_safetensors(hubert_dir: Path) -> None:
     bin_path.unlink()
 
 
+def install_uvr_assets(log=None) -> list[str]:
+    """Put the four public UVR ONNX files into mdx_models/. Prefer local can.
+
+    Only fetches files that are missing. Already-present ONNX are left alone.
+    """
+    def _log(msg: str):
+        if log:
+            log(msg)
+
+    dest_dir = uvr_models_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    can_dir = can_root() / "mdx_models"
+    written: list[str] = []
+
+    for name in UVR_MODELS:
+        dest = dest_dir / name
+        if dest.is_file() and dest.stat().st_size > 0:
+            _log(f"OK {name}")
+            continue
+        can_file = can_dir / name
+        if can_file.is_file() and can_file.stat().st_size > 0:
+            _log(f"Usando lata local {name}")
+            _link_or_copy(can_file, dest)
+            written.append(name)
+            continue
+        url = UVR_DOWNLOAD_LINK + name
+        try:
+            _http_download(url, dest, log=_log)
+        except (urllib.error.URLError, OSError, RuntimeError) as exc:
+            raise RuntimeError(f"No se pudo instalar {name}: {exc}") from exc
+        _log(f"Listo {name} ({dest.stat().st_size} bytes)")
+        written.append(name)
+
+    left = missing_uvr_assets()
+    if left:
+        raise RuntimeError("Siguen faltando ONNX: " + ", ".join(left))
+    _log("Instalación de modelos UVR completa.")
+    return written
+
+
 def install_rvc_assets(log=None) -> list[str]:
-    """Download missing weights. Returns list of files written/updated."""
+    """Download missing RVC weights. Returns list of files written/updated."""
     def _log(msg: str):
         if log:
             log(msg)
@@ -302,12 +406,26 @@ def install_rvc_assets(log=None) -> list[str]:
     return written
 
 
+def install_first_time_assets(log=None) -> list[str]:
+    """One-shot first install: only what is missing (UVR ONNX then RVC)."""
+    written: list[str] = []
+    if missing_uvr_assets():
+        written.extend(install_uvr_assets(log=log))
+    elif log:
+        log("OK modelos UVR")
+    if missing_rvc_assets():
+        written.extend(install_rvc_assets(log=log))
+    elif log:
+        log("OK pesos RVC")
+    return written
+
+
 if __name__ == "__main__":
     def _print(msg):
         print(msg, flush=True)
 
-    if rvc_assets_ready():
-        print("Ya están todos los pesos RVC.")
+    if first_install_ready():
+        print("Ya están UVR y RVC.")
     else:
-        print("Faltan:", ", ".join(missing_rvc_assets()))
-        install_rvc_assets(log=_print)
+        print("Faltan:", ", ".join(missing_first_install_assets()))
+        install_first_time_assets(log=_print)

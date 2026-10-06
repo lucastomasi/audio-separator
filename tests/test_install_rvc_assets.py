@@ -112,6 +112,65 @@ class InstallRvcAssetsTests(unittest.TestCase):
         with mock.patch.object(install_rvc_assets, "rvc_webui_root", return_value=dest):
             self.assertIsNone(install_rvc_assets.ensure_rvc_webui())
 
+    def test_missing_uvr_when_empty(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        with mock.patch.object(install_rvc_assets, "uvr_models_dir", return_value=root):
+            missing = install_rvc_assets.missing_uvr_assets()
+        self.assertEqual(set(missing), set(install_rvc_assets.UVR_MODELS))
+        self.assertFalse(install_rvc_assets.uvr_assets_ready())
+
+    def test_install_uvr_uses_can_and_skips_present(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name) / "mdx"
+        can = Path(tmp.name) / "can" / "mdx_models"
+        dest.mkdir()
+        can.mkdir(parents=True)
+        present = install_rvc_assets.UVR_MODELS[0]
+        (dest / present).write_bytes(b"already")
+        for name in install_rvc_assets.UVR_MODELS[1:]:
+            (can / name).write_bytes(b"from-can-" + name.encode())
+        logs = []
+        with mock.patch.object(install_rvc_assets, "uvr_models_dir", return_value=dest):
+            with mock.patch.object(
+                install_rvc_assets, "can_root", return_value=can.parent
+            ):
+                with mock.patch.object(
+                    install_rvc_assets, "_http_download", side_effect=AssertionError("no net")
+                ):
+                    written = install_rvc_assets.install_uvr_assets(log=logs.append)
+        self.assertEqual(set(written), set(install_rvc_assets.UVR_MODELS[1:]))
+        self.assertEqual((dest / present).read_bytes(), b"already")
+        for name in install_rvc_assets.UVR_MODELS[1:]:
+            self.assertTrue((dest / name).is_file())
+            self.assertGreater((dest / name).stat().st_size, 0)
+
+    def test_first_install_only_fills_gaps(self):
+        logs = []
+        with mock.patch.object(
+            install_rvc_assets, "missing_uvr_assets", return_value=[]
+        ):
+            with mock.patch.object(
+                install_rvc_assets, "missing_rvc_assets", return_value=["rmvpe.pt"]
+            ):
+                with mock.patch.object(
+                    install_rvc_assets, "install_uvr_assets"
+                ) as uvr:
+                    with mock.patch.object(
+                        install_rvc_assets,
+                        "install_rvc_assets",
+                        return_value=["rmvpe.pt"],
+                    ) as rvc:
+                        written = install_rvc_assets.install_first_time_assets(
+                            log=logs.append
+                        )
+        uvr.assert_not_called()
+        rvc.assert_called_once()
+        self.assertEqual(written, ["rmvpe.pt"])
+        self.assertTrue(any("OK modelos UVR" in line for line in logs))
+
 
 if __name__ == "__main__":
     unittest.main()

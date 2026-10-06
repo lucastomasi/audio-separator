@@ -57,7 +57,8 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("inputs=[rvc_in, rvc_pick", text)
         self.assertNotIn("inputs=[vocal_out, rvc_pick", text)
         self.assertNotIn("el resto corre offline", text.lower())
-        self.assertIn("hugging face", text.lower())
+        self.assertIn("modelos uvr", text.lower())
+        self.assertIn("solo baja lo que falte", text.lower())
         self.assertIn("Listo para unir", text)
         self.assertIn("Falta la voz y el instrumental", text)
 

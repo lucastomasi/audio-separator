@@ -215,11 +215,12 @@ def get_gui():
         _rvc_choices = _lib_ui.dropdown_choices(_lib_ui.list_rvc_voices())
         _rvc_value = _rvc_choices[0][1] if _rvc_choices else None
         try:
-            from install_rvc_assets import rvc_assets_ready as _rvc_ready
+            from install_rvc_assets import first_install_ready as _ready
 
-            _need_install = not _rvc_ready()
+            _need_install = not _ready()
         except Exception:
             _need_install = True
+
 
         last_video = gr.State(value=None)
         with gr.Tabs(
@@ -484,7 +485,8 @@ def get_gui():
                     with gr.Tab("Instalación"):
                         with gr.Group(elem_classes=["step"]):
                             gr.Markdown(
-                                "Una vez: pesos públicos (~700 MB, Hugging Face).",
+                                "Una vez: modelos UVR (ONNX) y pesos RVC. "
+                                "Solo baja lo que falte; si ya están en disco, no toca.",
                                 elem_classes=["hint"],
                             )
                             install_btn = gr.Button(
@@ -496,7 +498,7 @@ def get_gui():
                                 label="Registro de instalación",
                                 interactive=False,
                                 lines=2,
-                                placeholder="Solo la primera vez.",
+                                placeholder="Solo la primera vez / solo lo que falte.",
                             )
                     with gr.Tab("Biblioteca"):
                         with gr.Group(elem_classes=["step"]):
