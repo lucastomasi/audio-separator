@@ -6,6 +6,8 @@ from unittest import mock
 
 import rvc_train
 
+_HAS_WEBUI = (rvc_train.RVC_ROOT / "train" / "train.py").is_file()
+
 
 class RvcTrainTests(unittest.TestCase):
     def test_missing_webui(self):
@@ -40,6 +42,7 @@ class RvcTrainTests(unittest.TestCase):
                 rvc_train.require_train_assets()
         self.assertIn("Transformers", str(ctx.exception))
 
+    @unittest.skipUnless(_HAS_WEBUI, "third_party/RVC-WebUI no está en el checkout")
     def test_config_template_40k_uses_v1(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -343,6 +346,7 @@ class RvcTrainTests(unittest.TestCase):
         self.assertIn("inference_weight_path(name)", text)
         self.assertNotIn('"assets/weights/%s.pth"', text)
 
+    @unittest.skipUnless(_HAS_WEBUI, "third_party/RVC-WebUI no está en el checkout")
     def test_inference_weights_dir_is_absolute(self):
         prev = os.getcwd()
         sys_path = list(sys.path)

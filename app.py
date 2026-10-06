@@ -958,7 +958,7 @@ def launch_kwargs(**overrides):
         strict_cors=True,
         enable_monitoring=False,
         mcp_server=False,
-        auth_dependency=app_security.auth_dependency,
+        auth_dependency=auth_dependency,
         app_kwargs={
             "docs_url": None,
             "redoc_url": None,

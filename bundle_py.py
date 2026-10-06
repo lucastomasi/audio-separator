@@ -3,6 +3,7 @@
 BUNDLE_PY = (
     "app.py",
     "app_env.py",
+    "app_security.py",
     "app_jobs.py",
     "desktop.py",
     "rvc_engine.py",
