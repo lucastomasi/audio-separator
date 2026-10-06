@@ -348,10 +348,13 @@ class RvcTrainTests(unittest.TestCase):
 
     @unittest.skipUnless(_HAS_WEBUI, "third_party/RVC-WebUI no está en el checkout")
     def test_inference_weights_dir_is_absolute(self):
+        rvc_train._ensure_savee_absolute()
         prev = os.getcwd()
         sys_path = list(sys.path)
         os.chdir(str(rvc_train.RVC_ROOT))
         sys.path.insert(0, str(rvc_train.RVC_ROOT))
+        sys.modules.pop("train.process_ckpt", None)
+        sys.modules.pop("train", None)
         try:
             from train.process_ckpt import inference_weights_dir
 
