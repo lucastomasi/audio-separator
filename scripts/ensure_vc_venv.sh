@@ -1,5 +1,6 @@
 #!/bin/bash
-# Create/refresh isolated conversion venv. No host-user paths. No uv if python exists.
+# Create/refresh isolated conversion venv. No host-user paths.
+# Bundled .app already ships venv-vc. Git checkout creates it from requirements-vc.txt.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REQ="$ROOT/requirements-vc.txt"
@@ -18,11 +19,16 @@ if [[ ! -f "$VC/infer_cli.py" ]]; then
 fi
 
 if [[ ! -x "${AUDIO_SEPARATOR_VC_PYTHON:-$VENV/bin/python}" ]]; then
-  if [[ ! -x "$VENV/bin/python" ]]; then
+  if [[ "$ROOT" == *".app/Contents/Resources"* ]]; then
     echo "este zip está incompleto: falta el motor de conversión (venv-vc)." >&2
-    echo "No instalo uv en el Mac de destino." >&2
+    echo "No instalo pip en el Mac de destino." >&2
     exit 1
   fi
+  PY_BOOT="$(command -v python3.12 || command -v python3)"
+  echo "Creando $VENV con $PY_BOOT…"
+  "$PY_BOOT" -m venv "$VENV"
+  "$VENV/bin/python" -m pip install --upgrade pip wheel
+  "$VENV/bin/python" -m pip install -r "$REQ"
 fi
 
 mkdir -p "$VC/rvc/models/predictors" "$VC/rvc/models/embedders/contentvec"

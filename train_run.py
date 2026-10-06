@@ -213,7 +213,9 @@ def _feed_progress(log: Path, offset: int, progress, total_epochs) -> int:
         last = line.strip()
         frac = None
         if total_epochs and last:
-            match = re.search(r"Training epoch:\s*(\d+)", last)
+            match = re.search(
+                r"(?:Training epoch:\s*|epoch=)(\d+)", last
+            )
             if match:
                 epoch = int(match.group(1))
                 frac = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)

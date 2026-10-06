@@ -64,6 +64,13 @@ class InstallRvcAssetsTests(unittest.TestCase):
                 self.assertEqual(install_rvc_assets.missing_rvc_assets(), [])
                 self.assertTrue(install_rvc_assets.rvc_assets_ready())
 
+    def test_hf_hub_download_is_hub1_compatible(self):
+        import inspect
+
+        src = inspect.getsource(install_rvc_assets._download)
+        self.assertNotIn("resume_download", src)
+        self.assertIn("hf_hub_download", src)
+
     def test_torch_load_requires_weights_only(self):
         with mock.patch("torch.load", return_value={"model": 1}) as loader:
             install_rvc_assets._torch_load(Path("/tmp/x.pt"))
@@ -92,23 +99,21 @@ class InstallRvcAssetsTests(unittest.TestCase):
             self.assertTrue(install_rvc_assets._hubert_pt_is_fairseq(path))
         loader.assert_called_once()
 
-    def test_ensure_rvc_webui_errors_when_git_fails(self):
+    def test_ensure_rvc_webui_errors_when_missing(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        dest = Path(tmp.name) / "RVC-WebUI"
-        fake = mock.Mock(returncode=1, stderr="network", stdout="")
+        dest = Path(tmp.name) / "vc"
         with mock.patch.object(install_rvc_assets, "rvc_webui_root", return_value=dest):
-            with mock.patch("subprocess.run", return_value=fake):
-                with self.assertRaises(RuntimeError) as ctx:
-                    install_rvc_assets.ensure_rvc_webui()
-        self.assertIn("Entrenar queda apagado", str(ctx.exception))
+            with self.assertRaises(RuntimeError) as ctx:
+                install_rvc_assets.ensure_rvc_webui()
+        self.assertIn("third_party/vc", str(ctx.exception))
 
     def test_ensure_rvc_webui_skips_if_present(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        dest = Path(tmp.name) / "RVC-WebUI"
-        (dest / "train").mkdir(parents=True)
-        (dest / "train" / "train.py").write_text("# train\n")
+        dest = Path(tmp.name) / "vc"
+        (dest / "rvc" / "train").mkdir(parents=True)
+        (dest / "rvc" / "train" / "train.py").write_text("# train\n")
         with mock.patch.object(install_rvc_assets, "rvc_webui_root", return_value=dest):
             self.assertIsNone(install_rvc_assets.ensure_rvc_webui())
 

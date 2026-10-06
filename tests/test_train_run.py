@@ -50,6 +50,19 @@ class TrainRunTests(unittest.TestCase):
         self.assertEqual(cmd[1:3], ["-m", "train_run"])
         self.assertEqual(cmd[3], "supervise")
 
+    def test_execute_train_uses_applio_scripts(self):
+        src = inspect.getsource(rvc_train.execute_train)
+        src += inspect.getsource(rvc_train.finish_train_publish)
+        self.assertIn('"preprocess.py"', src)
+        self.assertIn('"extract.py"', src)
+        self.assertIn('"train.py"', src)
+        self.assertIn('"extract_index.py"', src)
+        self.assertIn('"rvc"', src)
+        self.assertNotIn("train.dataset.extract_f0", src)
+        self.assertNotIn("train.dataset.extract_hubert_feature", src)
+        self.assertIn("_TRAIN_OK_CODES", inspect.getsource(rvc_train._run))
+        self.assertIn(2333333, rvc_train._TRAIN_OK_CODES)
+
     def test_execute_train_does_not_import_torch(self):
         src = inspect.getsource(rvc_train.execute_train)
         src += inspect.getsource(rvc_train.finish_train_publish)
