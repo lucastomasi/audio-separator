@@ -46,3 +46,5 @@ llvmlite==0.43.0
 safetensors
 soxr==1.1.0
 typeguard==4.2.0
+# librosa 0.9.1 imports pkg_resources; setuptools 81+ removed it.
+setuptools>=65,<81
