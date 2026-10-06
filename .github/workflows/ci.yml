@@ -21,5 +21,5 @@ jobs:
           "numpy<2" scipy soundfile gradio scikit-learn
           yt-dlp requests urllib3
           pedalboard picklescan safetensors pywebview
-          torch torchaudio
+          torch torchaudio onnxruntime
       - run: PYTHONPATH=. python -m unittest discover -s tests -q
