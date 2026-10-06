@@ -20,4 +20,6 @@ jobs:
           pip install
           "numpy<2" scipy soundfile gradio scikit-learn
           yt-dlp requests urllib3
+          pedalboard picklescan safetensors pywebview
+          torch torchaudio
       - run: PYTHONPATH=. python -m unittest discover -s tests -q

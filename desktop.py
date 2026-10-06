@@ -10,8 +10,6 @@ import traceback
 import urllib.error
 import urllib.request
 
-import webview
-
 from app_env import host as env_host, pick_port
 from app_security import TOKEN_ENV, TOKEN_HEADER, TOKEN_QUERY, ensure_token
 
@@ -191,6 +189,8 @@ def _report_launch_failure():
 
 
 def main():
+    import webview
+
     _attach_logs()
     _offline_env()
     token = ensure_token()
