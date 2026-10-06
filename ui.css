@@ -1,12 +1,52 @@
-/* macOS-like shell: SF stack, system blue, grouped panels */
+/* Native app shell: fill the pywebview window, no page scrollbar */
+
+html,
+body,
+#root,
+.gradio-app,
+.gradio-container,
+.gradio-container > .main,
+.gradio-container > .main > .wrap,
+.gradio-container .contain {
+  height: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+html,
+body {
+  background: #F2F2F7 !important;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.gradio-container::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
 
 .gradio-container {
-  max-width: 1040px !important;
-  padding: 10px 14px 32px !important;
+  max-width: none !important;
+  width: 100% !important;
+  padding: 8px 12px 8px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
     sans-serif !important;
   background: #F2F2F7 !important;
   color: #1D1D1F !important;
+}
+
+.gradio-container > .main,
+.gradio-container > div,
+.gradio-container .wrap {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 .gradio-container,
@@ -20,8 +60,32 @@ footer,
 .api-docs,
 button[aria-label="Use via API"],
 button[aria-label="Settings"],
+button[aria-label="settings"],
+button[aria-label="Log in"],
+button[aria-label="Login"],
 .built-with {
   display: none !important;
+}
+
+#rvc-btn button,
+#train-btn button,
+#join-btn button,
+#tts-rvc-btn button,
+#run-btn button,
+button.primary {
+  background: #007AFF !important;
+  color: #fff !important;
+}
+
+.clip-row {
+  align-items: flex-end !important;
+  gap: 8px !important;
+}
+
+.clip-row button {
+  min-height: 38px !important;
+  height: 38px !important;
+  align-self: flex-end !important;
 }
 
 .app-chrome {
@@ -64,17 +128,59 @@ div.progress-bar {
 #job-status {
   position: sticky;
   top: 0;
-  z-index: 20;
-  margin: 0 0 12px !important;
-  padding: 8px 12px !important;
+  z-index: 40;
+  flex: 0 0 auto;
+  margin: 0 0 8px !important;
+  padding: 9px 12px !important;
   border-radius: 10px !important;
-  background: rgba(255, 255, 255, 0.86) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   color: #1D1D1F !important;
-  font-size: 0.84rem !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+}
+
+#job-status.is-run::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #007AFF;
+  animation: as-pulse 1s ease-in-out infinite;
+  vertical-align: middle;
+}
+
+@keyframes as-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+#main-tabs {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#main-tabs > .tabitem,
+#main-tabs > div:not(.tab-nav):not(:first-child) {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 118px) !important;
+  padding-bottom: 8px !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 #job-status.is-error {
@@ -96,12 +202,45 @@ div.progress-bar {
 }
 
 .step {
-  margin-bottom: 10px !important;
-  padding: 12px 14px 14px !important;
+  margin-bottom: 8px !important;
+  padding: 10px 12px 12px !important;
   border-radius: 12px !important;
   border: 1px solid rgba(0, 0, 0, 0.06) !important;
   background: #FFFFFF !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+# Compact empty Gradio file/audio shells so the window fits without page scroll
+.step .empty,
+.step .upload-container,
+.step .file-preview {
+  min-height: 0 !important;
+  max-height: 96px !important;
+}
+
+.step .block.padded {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.step .icon-wrap,
+.step .or,
+.step .upload-text {
+  display: none !important;
+}
+
+.step .wrap.svelte-1ipelgc,
+.step [data-testid="block-info"] + div {
+  min-height: 48px !important;
+}
+
+.step textarea {
+  min-height: 64px !important;
+  max-height: 120px !important;
+}
+
+#job-status p {
+  margin: 0 !important;
 }
 
 #main-tabs > .tab-nav,
@@ -117,15 +256,22 @@ div.progress-bar {
   box-shadow: none !important;
 }
 
-#main-tabs button {
+#main-tabs > .tab-nav button,
+#main-tabs > div:first-child > button,
+#main-tabs > div:first-child button.selected,
+#main-tabs > .tab-nav button.selected {
   flex: 1 1 auto !important;
   min-height: 30px !important;
   border: none !important;
   border-radius: 8px !important;
-  background: transparent !important;
   box-shadow: none !important;
   font-size: 0.8rem !important;
   font-weight: 600 !important;
+}
+
+#main-tabs > .tab-nav button,
+#main-tabs > div:first-child > button {
+  background: transparent !important;
   color: #1D1D1F !important;
 }
 
@@ -190,9 +336,17 @@ div.progress-bar {
 #train-btn,
 #join-btn,
 #tts-rvc-btn,
-#run-btn {
+#run-btn,
+#install-btn,
+#rvc-btn button,
+#train-btn button,
+#join-btn button,
+#tts-rvc-btn button,
+#run-btn button,
+#install-btn button {
   background: #007AFF !important;
   color: #fff !important;
+  border: none !important;
 }
 
 .step .tab-nav button,
@@ -318,7 +472,12 @@ a[download],
 
 @media (max-width: 720px) {
   .gradio-container {
-    padding: 8px 8px 24px !important;
+    padding: 6px 8px 8px !important;
+  }
+
+  #main-tabs > .tabitem,
+  #main-tabs > div:not(.tab-nav):not(:first-child) {
+    max-height: calc(100vh - 108px) !important;
   }
 
   #run-btn,

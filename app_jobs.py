@@ -23,6 +23,13 @@ from ui_status import (
     MSG_TRAIN,
     MSG_TTS,
     READY as READY_STATUS,
+    RUN_CLIP,
+    RUN_CONVERT,
+    RUN_INSTALL,
+    RUN_REMIX,
+    RUN_REMUX,
+    RUN_TRAIN,
+    RUN_TTS,
     fail,
     status_update,
 )
@@ -40,7 +47,34 @@ def _err(where, exc, default):
 
 
 def demo_song_path():
-    return DEMO_SONG if os.path.isfile(DEMO_SONG) else None
+    """Serve the bundled demo from an allowed output folder, not the repo."""
+    if not os.path.isfile(DEMO_SONG):
+        return None
+    from app_env import data_dir
+    import shutil
+
+    dest_dir = os.path.join(data_dir(), "downloads")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, "test.mp3")
+    if (
+        not os.path.isfile(dest)
+        or os.path.getsize(dest) != os.path.getsize(DEMO_SONG)
+    ):
+        shutil.copy2(DEMO_SONG, dest)
+    return dest
+
+
+def servable_media(path):
+    """Drop repo-root files Gradio cannot cache (blocked_paths includes the app)."""
+    if not path or not os.path.isfile(str(path)):
+        return None
+    from app_env import package_dir
+
+    real = os.path.realpath(path)
+    code = os.path.realpath(package_dir())
+    if real == code or real.startswith(code + os.sep):
+        return None
+    return path
 
 
 def ensure_demo_voice():
@@ -86,13 +120,14 @@ def _install_status_line():
         missing = missing_first_install_assets()
         return (
             f"Faltan {len(missing)} archivos (UVR y/o RVC). "
-            "Pulsá «Completar instalación» — solo baja lo que no tengas."
+            "Pulsá Completar instalación. Solo baja lo que no tengas."
         )
     except Exception:
         return IDLE_STATUS
 
 
 def install_rvc_job(progress=gr.Progress()):
+    unlock = unlock_install_button()
     try:
         from install_rvc_assets import (
             install_first_time_assets,
@@ -130,6 +165,7 @@ def install_rvc_job(progress=gr.Progress()):
                 gr.update(),
                 gr.update(),
                 gr.update(),
+                unlock,
             )
         song, run, rvc_upd, tts_upd, demo_status = load_demo_bundle()
         note = (
@@ -137,7 +173,7 @@ def install_rvc_job(progress=gr.Progress()):
             "Ya podés Separar / Entrenar / Convertir."
         )
         log = "\n".join(lines[-12:]) or note
-        return _ok(note), log, song, run, rvc_upd, tts_upd
+        return _ok(note), log, song, run, rvc_upd, tts_upd, unlock
     except Exception as error:
         return (
             _err("install_rvc_job", error, MSG_INSTALL),
@@ -146,6 +182,7 @@ def install_rvc_job(progress=gr.Progress()):
             gr.update(),
             gr.update(),
             gr.update(),
+            unlock,
         )
 
 
@@ -159,6 +196,72 @@ def lock_download_button():
 
 def unlock_download_button():
     return gr.update(interactive=True, value="Descargar")
+
+
+def lock_install_button():
+    return (
+        gr.update(interactive=False, value="Instalando…"),
+        status_update(KIND_RUN, RUN_INSTALL),
+    )
+
+
+def unlock_install_button():
+    return gr.update(interactive=True, value="Completar instalación")
+
+
+def lock_convert_button():
+    return (
+        gr.update(interactive=False, value="Convirtiendo…"),
+        status_update(KIND_RUN, RUN_CONVERT),
+    )
+
+
+def unlock_convert_button():
+    return gr.update(interactive=True, value="Convertir voz")
+
+
+def lock_train_button():
+    return (
+        gr.update(interactive=False, value="Entrenando…"),
+        status_update(KIND_RUN, RUN_TRAIN),
+    )
+
+
+def unlock_train_button():
+    return gr.update(interactive=True, value="Entrenar")
+
+
+def lock_join_button():
+    return (
+        gr.update(interactive=False, value="Uniendo…"),
+        status_update(KIND_RUN, RUN_REMIX),
+    )
+
+
+def unlock_join_button():
+    return gr.update(interactive=True, value="Unir")
+
+
+def lock_tts_button():
+    return (
+        gr.update(interactive=False, value="Generando…"),
+        status_update(KIND_RUN, RUN_TTS),
+    )
+
+
+def unlock_tts_button():
+    return gr.update(interactive=True, value="Generar voz")
+
+
+def lock_clip_button():
+    return (
+        gr.update(interactive=False, value="Recortando…"),
+        status_update(KIND_RUN, RUN_CLIP),
+    )
+
+
+def unlock_clip_button():
+    return gr.update(interactive=True, value="Recortar")
 
 
 def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
@@ -229,16 +332,17 @@ def clip_for_clone(source_path, start, end):
     from exports import copy_to_downloads
     import library
 
+    unlock = unlock_clip_button()
     try:
         path = clip_audio(source_path, start, end)
         library.register("voices", path)
         _, copied = copy_to_downloads([path], ["ref_clon"])
         saved = copied[0] if copied else path
-        return saved, _ok(f"Recorte listo ({start}–{end}).")
+        return saved, _ok(f"Recorte listo ({start}–{end})."), unlock
     except ValueError as error:
-        return None, _err("clip_for_clone", error, "No pude recortar.")
+        return None, _err("clip_for_clone", error, "No pude recortar."), unlock
     except Exception as error:
-        return None, _err("clip_for_clone", error, "No pude recortar.")
+        return None, _err("clip_for_clone", error, "No pude recortar."), unlock
 
 
 def on_audio_ready(path):
@@ -365,6 +469,7 @@ def train_rvc_job(
     runpod_key=None,
     progress=gr.Progress(),
 ):
+    unlock = unlock_train_button()
     try:
         from rvc_train import train_voice
 
@@ -401,7 +506,7 @@ def train_rvc_job(
             note += " (+index)"
         note += ". Ya podés Convertir / Texto→RVC."
         bar = _ok(note)
-        return rvc_upd, bar, tts_upd
+        return rvc_upd, bar, tts_upd, unlock
     except ValueError as error:
         rvc_upd, tts_upd = refresh_library_ui()
         text = str(error)
@@ -409,11 +514,11 @@ def train_rvc_job(
             bar = status_update(KIND_RUN, text)
         else:
             bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd
+        return rvc_upd, bar, tts_upd, unlock
     except Exception as error:
         rvc_upd, tts_upd = refresh_library_ui()
         bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd
+        return rvc_upd, bar, tts_upd, unlock
 
 
 def rvc_job(
@@ -428,6 +533,7 @@ def rvc_job(
     import library
     from rvc_engine import convert_voice
 
+    unlock = unlock_convert_button()
     try:
         progress(0.08, desc="Preparando motor de conversión…")
     except Exception:
@@ -436,17 +542,22 @@ def rvc_job(
     audio_path = _gradio_path(audio_path)
     if not audio_path or not os.path.isfile(audio_path):
         msg = "Falta el audio a convertir. Cargalo en este tab."
-        return None, None, status_update(KIND_ERROR, msg)
+        return None, None, status_update(KIND_ERROR, msg), unlock
     train_paths = []
     for item in train_files or []:
         got = _gradio_path(item) or (item if isinstance(item, str) else None)
         if got:
             train_paths.append(os.path.abspath(got))
     if os.path.abspath(audio_path) in train_paths and not allow_same:
-        return None, None, status_update(
-            KIND_ERROR,
-            "Ese archivo está en Entrenar. Marcá "
-            "«Este archivo está en Entrenar» si es a propósito.",
+        return (
+            None,
+            None,
+            status_update(
+                KIND_ERROR,
+                "Ese archivo está en Entrenar. Marcá "
+                "«Este archivo está en Entrenar» si es a propósito.",
+            ),
+            unlock,
         )
 
     model_path = library_model
@@ -460,7 +571,7 @@ def rvc_job(
         model_path = library.place_voice_file(model_path, stem)
     if not model_path:
         msg = "Elegí un modelo en Convertir."
-        return None, None, status_update(KIND_ERROR, msg)
+        return None, None, status_update(KIND_ERROR, msg), unlock
     index_path = library.find_index_for_model(model_path) if model_path else None
     if index_file:
         uploaded_index = _gradio_path(index_file)
@@ -493,14 +604,16 @@ def rvc_job(
             _ok(
                 f"Melodía: {name}. Voz: {model_name}. Índice: {index_bit}."
             ),
+            unlock,
         )
     except ValueError as error:
-        return None, None, _err("rvc_job", error, MSG_CONVERT)
+        return None, None, _err("rvc_job", error, MSG_CONVERT), unlock
     except Exception as error:
-        return None, None, _err("rvc_job", error, MSG_CONVERT)
+        return None, None, _err("rvc_job", error, MSG_CONVERT), unlock
 
 
 def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
+    unlock = unlock_tts_button()
     try:
         from tts_rvc_engine import resolve_edge_voice, speak_with_rvc
 
@@ -526,11 +639,11 @@ def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
             progress(1.0, desc="Listo")
         except Exception:
             pass
-        return out, out, _ok(f"Listo ({src} → RVC).")
+        return out, out, _ok(f"Listo ({src} → RVC)."), unlock
     except ValueError as error:
-        return None, None, _err("tts_rvc_job", error, MSG_TTS)
+        return None, None, _err("tts_rvc_job", error, MSG_TTS), unlock
     except Exception as error:
-        return None, None, _err("tts_rvc_job", error, MSG_TTS)
+        return None, None, _err("tts_rvc_job", error, MSG_TTS), unlock
 
 
 def remix_job(
@@ -543,6 +656,7 @@ def remix_job(
     target_format,
     progress=gr.Progress(),
 ):
+    unlock = unlock_join_button()
     try:
         try:
             progress(0.3, desc="Uniendo pistas…")
@@ -569,11 +683,16 @@ def remix_job(
         export_dir, copied = copy_to_downloads([final], ["remix"])
         saved = copied[0] if copied else final
         fmt = (target_format or "WAV").upper()
-        return saved, saved, _ok(f"Pistas unidas ({fmt}). Archivo en {export_dir}")
+        return (
+            saved,
+            saved,
+            _ok(f"Pistas unidas ({fmt}). Archivo en {export_dir}"),
+            unlock,
+        )
     except ValueError as error:
-        return None, None, _err("remix_job", error, MSG_REMIX)
+        return None, None, _err("remix_job", error, MSG_REMIX), unlock
     except Exception as error:
-        return None, None, _err("remix_job", error, MSG_REMIX)
+        return None, None, _err("remix_job", error, MSG_REMIX), unlock
 
 
 def remux_job(video_path, audio_path, progress=gr.Progress()):

@@ -40,6 +40,11 @@ class UiStatusTests(unittest.TestCase):
         self.assertIn("Convertir", ui_status.RUN_TRAIN)
         self.assertIn("ventana", ui_status.RUN_TRAIN)
 
+    def test_run_convert_and_install_copy(self):
+        self.assertIn("Convirtiendo", ui_status.RUN_CONVERT)
+        self.assertIn("instalación", ui_status.RUN_INSTALL.lower())
+        self.assertIn("Uniendo", ui_status.RUN_REMIX)
+
     def test_status_idle_sets_class(self):
         idle = ui_status.status_update(ui_status.KIND_IDLE, "idle")
         self.assertIn("is-idle", idle.get("elem_classes") or idle["elem_classes"])

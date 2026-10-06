@@ -72,6 +72,11 @@ class AppEnvTests(unittest.TestCase):
         )
         self.assertIn('elem_classes=["app-chrome"]', text)
         self.assertIn('elem_classes=["panel-title"]', text)
+        self.assertIn("lock_convert_button", text)
+        self.assertIn("lock_train_button", text)
+        self.assertIn("lock_join_button", text)
+        self.assertIn("fill_height=True", text)
+        self.assertNotIn("fill_height=False", text)
 
     def test_rvc_job_missing_model_is_error(self):
         import inspect

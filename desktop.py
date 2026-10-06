@@ -209,10 +209,10 @@ def main():
         "Audio Separator",
         url if already else None,
         html=None if already else SPLASH,
-        width=1100,
-        height=820,
-        min_size=(720, 560),
-        text_select=True,
+        width=980,
+        height=760,
+        min_size=(760, 620),
+        text_select=False,
     )
 
     def on_loaded():

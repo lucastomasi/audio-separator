@@ -12,9 +12,15 @@ from datetime import datetime
 
 from utils import logger
 
-IDLE = "Canción → Separar → Convertir → Unir. Entrená si hace falta una voz nueva."
-RUN_SEPARATE = "Separando… en Intel puede tardar varios minutos. No cierres la ventana."
-RUN_TRAIN = "Entrenando… cerrar la ventana no lo corta. Separar y Convertir sí."
+IDLE = "Elegí una canción. Después: Separar → Convertir → Unir."
+RUN_SEPARATE = "Separando… puede tardar varios minutos. No cierres la ventana."
+RUN_TRAIN = "Entrenando… no cierres Separar ni Convertir; cerrar la ventana no lo corta."
+RUN_CONVERT = "Convirtiendo voz… puede tardar un rato."
+RUN_INSTALL = "Completando instalación… solo baja lo que falte."
+RUN_REMIX = "Uniendo voz e instrumental…"
+RUN_TTS = "Generando voz…"
+RUN_REMUX = "Pegando audio al video…"
+RUN_CLIP = "Recortando audio…"
 READY = "Audio listo. Elegí qué extraer y pulsá Separar."
 
 KIND_IDLE = "idle"
