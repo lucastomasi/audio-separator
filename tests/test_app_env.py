@@ -61,6 +61,17 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("solo baja lo que falte", text.lower())
         self.assertIn("Listo para unir", text)
         self.assertIn("Falta la voz y el instrumental", text)
+        self.assertNotIn("stepper-wrap", text)
+        self.assertGreater(
+            text.index('gr.Accordion("Opciones avanzadas"'),
+            text.index('gr.Tab("2 Separar", id="separar")'),
+        )
+        self.assertGreater(
+            text.index('gr.Tab("3 Convertir", id="convertir")'),
+            text.index('gr.Accordion("Opciones avanzadas"'),
+        )
+        self.assertIn('elem_classes=["app-chrome"]', text)
+        self.assertIn('elem_classes=["panel-title"]', text)
 
     def test_rvc_job_missing_model_is_error(self):
         import inspect

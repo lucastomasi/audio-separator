@@ -46,6 +46,11 @@ SPLASH = """<!DOCTYPE html>
       0% { transform: translateX(-120%); }
       100% { transform: translateX(320%); }
     }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1C1C1E; color: #F5F5F7; }
+      p { color: #98989D; }
+      .bar { background: #3A3A3C; }
+    }
   </style>
 </head>
 <body>
