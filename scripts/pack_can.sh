@@ -45,7 +45,7 @@ else
   fi
   cd "$ROOT"
   "$PYTHON" -c "from install_rvc_assets import install_rvc_assets; install_rvc_assets(log=print)"
-  rsync -a "$STAGING/Voces/models/rvc/" "$CAN/rvc/"
+  rsync -aL "$STAGING/Voces/models/rvc/" "$CAN/rvc/"
   rm -rf "$STAGING"
 fi
 

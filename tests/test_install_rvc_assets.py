@@ -28,6 +28,22 @@ class InstallRvcAssetsTests(unittest.TestCase):
         self.assertTrue(dest.is_file())
         self.assertEqual(dest.read_bytes(), b"hello-cache")
 
+    def test_link_or_copy_resolves_relative_blob_symlink(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        blobs = Path(tmp.name) / "blobs"
+        blobs.mkdir()
+        payload = blobs / "abc"
+        payload.write_bytes(b"real-weight")
+        snapshot = Path(tmp.name) / "snapshots" / "rev"
+        snapshot.mkdir(parents=True)
+        cached = snapshot / "rmvpe.pt"
+        cached.symlink_to("../../blobs/abc")
+        dest = Path(tmp.name) / "library" / "rmvpe.pt"
+        install_rvc_assets._link_or_copy(cached, dest)
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_bytes(), b"real-weight")
+
     def test_ready_when_present(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -52,6 +68,18 @@ class InstallRvcAssetsTests(unittest.TestCase):
         with mock.patch("torch.load", return_value={"model": 1}) as loader:
             install_rvc_assets._torch_load(Path("/tmp/x.pt"))
         self.assertTrue(loader.call_args.kwargs.get("weights_only") is True)
+
+    def test_ensure_safetensors_allows_full_bin(self):
+        with mock.patch.object(
+            install_rvc_assets, "_torch_load", return_value={"w": mock.Mock()}
+        ) as loader:
+            tmp = tempfile.TemporaryDirectory()
+            self.addCleanup(tmp.cleanup)
+            hubert = Path(tmp.name)
+            (hubert / "pytorch_model.bin").write_bytes(b"x")
+            with mock.patch("safetensors.torch.save_file"):
+                install_rvc_assets._ensure_safetensors(hubert)
+        self.assertEqual(loader.call_args.kwargs.get("weights_only"), False)
 
     def test_hubert_fairseq_does_not_unpickle(self):
         tmp = tempfile.TemporaryDirectory()

@@ -111,6 +111,7 @@ def _link_or_copy(src: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() or dest.is_symlink():
         dest.unlink()
+    src = src.resolve()
     try:
         os.link(src, dest)
     except OSError:
@@ -143,10 +144,10 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     _link_or_copy(Path(cached), dest)
 
 
-def _torch_load(path: Path):
+def _torch_load(path: Path, weights_only: bool = True):
     import torch
 
-    return torch.load(str(path), map_location="cpu", weights_only=True)
+    return torch.load(str(path), map_location="cpu", weights_only=weights_only)
 
 
 def _hubert_pt_is_fairseq(path: Path) -> bool:
@@ -178,7 +179,7 @@ def _ensure_safetensors(hubert_dir: Path) -> None:
         raise FileNotFoundError(bin_path)
     from safetensors.torch import save_file
 
-    state = _torch_load(bin_path, allow_unsafe=True)
+    state = _torch_load(bin_path, weights_only=False)
     if isinstance(state, dict) and "state_dict" in state and len(state) < 5:
         state = state["state_dict"]
     tensors = {
