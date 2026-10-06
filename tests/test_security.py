@@ -32,6 +32,8 @@ class LaunchSecurityTests(unittest.TestCase):
         self.assertEqual(kwargs["server_name"], "127.0.0.1")
         self.assertTrue(kwargs.get("strict_cors", True))
         self.assertIs(kwargs["auth_dependency"], app.auth_dependency)
+        self.assertIs(kwargs.get("theme"), app.APP_THEME)
+        self.assertEqual(kwargs.get("css"), app.UI_CSS)
         self.assertNotIn(os.path.realpath(tempfile.gettempdir()), kwargs["allowed_paths"])
         for path in kwargs["allowed_paths"]:
             self.assertNotEqual(os.path.realpath(path), os.path.realpath(os.path.expanduser("~")))

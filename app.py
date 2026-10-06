@@ -193,8 +193,6 @@ def get_gui():
         fill_width=True,
         fill_height=False,
         delete_cache=(3200, 10800),
-        theme=APP_THEME,
-        css=UI_CSS,
     ) as app:
         with gr.Row(elem_classes=["app-chrome"]):
             with gr.Column(scale=1, min_width=220):

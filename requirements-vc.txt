@@ -1,5 +1,7 @@
-# Isolated conversion-engine venv (Intel Mac: no torch 2.11 wheel).
-# No Gradio here, so huggingface-hub stays on 0.x with transformers 4.x.
+# Isolated conversion + train venv (Intel Mac: no torch 2.11 wheel).
+# Known-good with Applio (third_party/vc) and Python 3.12:
+# transformers 4.53.3 + huggingface-hub 0.36.2 (hub<1.0).
+# Keep this set out of the Gradio app venv — Gradio 6.20 needs hub>=1.2.
 # torchcrepe>=0.0.23 allows librosa 0.10 (0.0.20 pins librosa==0.9.1).
 torch==2.2.2
 torchvision==0.17.2
@@ -13,8 +15,8 @@ soxr
 soundfile
 scipy
 einops
-huggingface-hub>=0.34.0,<1.0
-transformers>=4.40,<5
+huggingface-hub==0.36.2
+transformers==4.53.3
 torchcrepe>=0.0.23
 torchfcpe
 pedalboard
@@ -22,3 +24,7 @@ noisereduce
 wget
 tqdm
 av>=15.1.0,<16
+scikit-learn
+matplotlib
+tensorboard
+safetensors

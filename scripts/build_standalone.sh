@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a standalone Mac Intel Audio Separator.app (full: venv + RVC-WebUI + support weights).
+# Build a standalone Mac Intel Audio Separator.app (full: venv + Applio + support weights).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -64,8 +64,8 @@ rsync -a --delete \
 if [[ ! -x "$VENV/bin/python" ]]; then
   "$RES/python/bin/python3.12" -m venv "$VENV"
 fi
-if [[ ! -d "$ROOT/third_party/RVC-WebUI/train" ]]; then
-  echo "ERROR: falta third_party/RVC-WebUI"
+if [[ ! -f "$ROOT/third_party/vc/rvc/train/train.py" ]]; then
+  echo "ERROR: falta third_party/vc"
   exit 1
 fi
 if [[ ! -d "$ROOT/library/models/rvc/hubert_base" ]]; then
@@ -141,36 +141,6 @@ if [[ -d "$ROOT/third_party/vc" ]]; then
     "$ROOT/third_party/vc/" "$APPDIR/third_party/vc/"
 fi
 
-echo "==> third_party/RVC-WebUI (sin logs de train ni .git)"
-mkdir -p "$APPDIR/third_party"
-rm -f "$APPDIR/third_party/RVC-WebUI" 2>/dev/null || true
-rm -rf "$APPDIR/third_party/RVC-WebUI"
-rsync -a \
-  --exclude '.git' \
-  --exclude '__pycache__' \
-  --exclude 'logs' \
-  --exclude 'assets/hubert_base' \
-  --exclude 'assets/rmvpe' \
-  --exclude 'assets/weights' \
-  "$ROOT/third_party/RVC-WebUI/" "$APPDIR/third_party/RVC-WebUI/"
-# mute samples required by some train paths
-if [[ -d "$ROOT/third_party/RVC-WebUI/logs/mute" ]]; then
-  mkdir -p "$APPDIR/third_party/RVC-WebUI/logs"
-  rsync -a "$ROOT/third_party/RVC-WebUI/logs/mute/" "$APPDIR/third_party/RVC-WebUI/logs/mute/"
-fi
-mkdir -p "$APPDIR/third_party/RVC-WebUI/assets/hubert_base"
-mkdir -p "$APPDIR/third_party/RVC-WebUI/assets/rmvpe"
-mkdir -p "$APPDIR/third_party/RVC-WebUI/assets/weights"
-mkdir -p "$APPDIR/third_party/RVC-WebUI/assets/indices"
-mkdir -p "$APPDIR/third_party/RVC-WebUI/assets/pretrained_v2"
-# Seed assets from library (train/_sync also refreshes these)
-cp -f "$APPDIR/library/models/rvc/rmvpe.pt" "$APPDIR/third_party/RVC-WebUI/assets/rmvpe/rmvpe.pt"
-cp -f "$APPDIR/library/models/rvc/f0G40k.pth" "$APPDIR/third_party/RVC-WebUI/assets/pretrained_v2/f0G40k.pth"
-cp -f "$APPDIR/library/models/rvc/f0D40k.pth" "$APPDIR/third_party/RVC-WebUI/assets/pretrained_v2/f0D40k.pth"
-rsync -a --exclude '*.bak' --exclude 'pytorch_model.bin' \
-  "$APPDIR/library/models/rvc/hubert_base/" \
-  "$APPDIR/third_party/RVC-WebUI/assets/hubert_base/"
-
 echo "==> Sync site-packages from working project .venv (avoid resolver fights)"
 if [[ ! -x "$VENV/bin/python" ]]; then
   echo "ERROR: bundle venv missing at $VENV"
@@ -213,7 +183,7 @@ cp -f "$FFMPEG_SRC" "$RES/bin/ffmpeg"
 cp -f "$FFPROBE_SRC" "$RES/bin/ffprobe"
 chmod +x "$RES/bin/ffmpeg" "$RES/bin/ffprobe"
 
-"$VENV/bin/python" -c "import av, gradio, torch; print('venv ok', av.__version__, torch.__version__)"
+"$VENV/bin/python" -c "import gradio, torch; print('venv ok', gradio.__version__, torch.__version__)"
 bash "$ROOT/scripts/relocate_venv.sh" "$VENV"
 
 echo "==> Isolated conversion venv"
@@ -221,6 +191,7 @@ if [[ -x "$ROOT/.venv-vc/bin/python" ]]; then
   mkdir -p "$RES/venv-vc"
   rsync -a --delete --exclude '__pycache__' "$ROOT/.venv-vc/" "$RES/venv-vc/"
   bash "$ROOT/scripts/relocate_venv.sh" "$RES/venv-vc"
+  "$RES/venv-vc/bin/python" -c "import torch, transformers, librosa; print('venv-vc ok', torch.__version__, transformers.__version__)"
 else
   echo "ERROR: falta $ROOT/.venv-vc (el zip full no puede crear uv en el Mac de destino)"
   exit 1

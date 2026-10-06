@@ -1,4 +1,4 @@
-"""Official RVC-WebUI training on CPU. Minimal + robust."""
+"""CPU training through the vendored Applio stack in third_party/vc."""
 import json
 import os
 import re
@@ -12,7 +12,7 @@ import train_run
 from library import ensure_dirs, rvc_support_dir
 
 APP_ROOT = Path(__file__).resolve().parent
-RVC_ROOT = APP_ROOT / "third_party" / "RVC-WebUI"
+RVC_ROOT = APP_ROOT / "third_party" / "vc"
 SR = "40k"
 SR_HZ = 40000
 VERSION = "v2"
@@ -21,15 +21,18 @@ VERSION = "v2"
 EPOCHS_DEFAULT = 10
 SAVE_EVERY_EPOCH = 5
 SAVE_EVERY_WEIGHTS = "1"
+# Applio layout (not official RVC-WebUI 0_gt_wavs / 3_feature768).
 _FEATURE_DIRS = (
-    "0_gt_wavs",
-    "1_16k_wavs",
-    "2a_f0",
-    "2b-f0nsf",
-    "3_feature768",
+    "sliced_audios",
+    "sliced_audios_16k",
+    "f0",
+    "f0_voiced",
+    "extracted",
 )
 BATCH = 1
 WORKERS = 2
+# Applio train.py uses os._exit(2333333) on a successful finish.
+_TRAIN_OK_CODES = {0, 2333333}
 
 
 def _epochs(override=None):
@@ -44,10 +47,24 @@ def _epochs(override=None):
 
 
 def require_rvc_webui():
-    if not (RVC_ROOT / "train" / "train.py").is_file():
+    """Train engine is the vendored Applio tree, not a git clone of RVC-WebUI."""
+    if not (RVC_ROOT / "rvc" / "train" / "train.py").is_file():
         raise ValueError(
-            "Falta third_party/RVC-WebUI (clone oficial de entrenamiento)."
+            "Falta third_party/vc (motor Applio de entrenamiento)."
         )
+
+
+def _engine_python() -> str:
+    """Prefer the isolated conversion venv; fall back to this interpreter."""
+    try:
+        from vc_runner import vc_python
+
+        py = vc_python()
+        if os.path.isfile(py) and os.access(py, os.X_OK):
+            return py
+    except Exception:
+        pass
+    return sys.executable
 
 
 def _is_transformers_hubert(path: Path) -> bool:
@@ -93,11 +110,11 @@ def require_train_assets():
 
 
 def _features_ready(exp_dir: Path) -> bool:
-    feat = exp_dir / "3_feature768"
+    feat = exp_dir / "extracted"
     if not feat.is_dir():
         return False
     try:
-        return any(feat.iterdir())
+        return any(path.suffix == ".npy" for path in feat.iterdir())
     except OSError:
         return False
 
@@ -188,14 +205,19 @@ def snapshot_checkpoints(exp_name: str, *, heavy: bool = False) -> list[Path]:
 
 
 def train_running(exp_name: str) -> str | None:
-    """Return a command line if train.train is alive for this experiment."""
+    """Return a command line if Applio train.py is alive for this experiment."""
     try:
         out = subprocess.check_output(["ps", "ax", "-o", "command="], text=True)
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return None
     needle = f"-e {exp_name} "
     for line in out.splitlines():
-        if "train.train" in line and needle in line:
+        parts = line.split()
+        applio = "rvc/train/train.py" in line or "rvc.train.train" in line
+        webui = "train.train" in line and needle in line
+        if applio and exp_name in parts:
+            return line.strip()
+        if webui:
             return line.strip()
     return None
 
@@ -240,7 +262,7 @@ def _run(
         log_path, offset, last, progress, frac, total_epochs, exp_name
     )
     code = proc.wait()
-    if code != 0:
+    if code not in _TRAIN_OK_CODES:
         err = last or ""
         raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
     if desc and progress is not None:
@@ -262,7 +284,9 @@ def _tail_train_log(log_path, offset, last, progress, frac, total_epochs, exp_na
         last = (line or "").strip()
         frac_now = frac
         if total_epochs and last:
-            match = re.search(r"Training epoch:\s*(\d+)", last)
+            match = re.search(
+                r"(?:Training epoch:\s*|epoch=)(\d+)", last
+            )
             if match:
                 epoch = int(match.group(1))
                 frac_now = 0.45 + 0.5 * min(epoch / max(int(total_epochs), 1), 1.0)
@@ -326,25 +350,31 @@ def ensure_rvc_outputs_outside() -> None:
 
 
 def _sync_assets(assets):
-    hubert_dst = RVC_ROOT / "assets" / "hubert_base"
-    rmvpe_dst = RVC_ROOT / "assets" / "rmvpe"
-    pre_dst = RVC_ROOT / "assets" / "pretrained_v2"
-    rmvpe_dst.mkdir(parents=True, exist_ok=True)
-    pre_dst.mkdir(parents=True, exist_ok=True)
+    """Point Applio at library HuBERT / RMVPE / f0G/D without copying bytes."""
+    pred = RVC_ROOT / "rvc" / "models" / "predictors"
+    emb = RVC_ROOT / "rvc" / "models" / "embedders" / "contentvec"
+    pred.mkdir(parents=True, exist_ok=True)
+    emb.mkdir(parents=True, exist_ok=True)
 
     hubert = Path(assets["hubert"])
-    _replace_with_link(hubert, hubert_dst)
-    if not (hubert_dst / "model.safetensors").is_file() and not (
-        hubert_dst / "pytorch_model.bin"
+    for name in (
+        "config.json",
+        "preprocessor_config.json",
+        "model.safetensors",
+        "pytorch_model.bin",
+    ):
+        src = hubert / name
+        if src.is_file():
+            _replace_with_link(src, emb / name)
+    if not (emb / "model.safetensors").is_file() and not (
+        emb / "pytorch_model.bin"
     ).is_file():
         raise RuntimeError(
-            "Tras sync no hay pesos HuBERT en assets/hubert_base "
+            "Tras sync no hay pesos HuBERT en embedders/contentvec "
             "(model.safetensors)."
         )
 
-    _replace_with_link(Path(assets["rmvpe"]), rmvpe_dst / "rmvpe.pt")
-    _replace_with_link(Path(assets["g"]), pre_dst / "f0G40k.pth")
-    _replace_with_link(Path(assets["d"]), pre_dst / "f0D40k.pth")
+    _replace_with_link(Path(assets["rmvpe"]), pred / "rmvpe.pt")
 
 
 _SAVEE_HELPER = '''
@@ -439,10 +469,10 @@ def _stem_set(folder: Path, pattern: str):
 
 
 def _write_filelist_and_config(exp_dir: Path):
-    gt = exp_dir / "0_gt_wavs"
-    feat = exp_dir / "3_feature768"
-    f0 = exp_dir / "2a_f0"
-    f0nsf = exp_dir / "2b-f0nsf"
+    gt = exp_dir / "sliced_audios"
+    feat = exp_dir / "extracted"
+    f0 = exp_dir / "f0"
+    f0nsf = exp_dir / "f0_voiced"
     for folder in (gt, feat, f0, f0nsf):
         if not folder.is_dir():
             raise RuntimeError(f"Falta carpeta tras preprocess: {folder.name}")
@@ -474,11 +504,7 @@ def _write_filelist_and_config(exp_dir: Path):
         lines.append(line)
     (exp_dir / "filelist.txt").write_text("\n".join(lines), encoding="utf-8")
 
-    # Match official WebUI: 40k always uses v1/{sr}.json template (no v2/40k.json).
-    if VERSION == "v1" or SR == "40k":
-        template = RVC_ROOT / "configs" / "v1" / f"{SR}.json"
-    else:
-        template = RVC_ROOT / "configs" / "v2" / f"{SR}.json"
+    template = RVC_ROOT / "rvc" / "configs" / f"{SR_HZ}.json"
     if not template.is_file():
         raise RuntimeError(f"No está el config {template.relative_to(RVC_ROOT)}")
     config = json.loads(template.read_text(encoding="utf-8"))
@@ -655,18 +681,15 @@ def finish_train_publish(exp_name, log_path, total, progress=None, py=None):
             pass
     indices_dir = RVC_ROOT / "assets" / "indices"
     indices_dir.mkdir(parents=True, exist_ok=True)
-    runner = py or sys.executable
+    runner = py or _engine_python()
+    exp_dir = RVC_ROOT / "logs" / exp_name
     try:
         _run(
             [
                 runner,
-                "-m",
-                "train.train_index",
-                exp_name,
-                VERSION,
-                str(indices_dir),
-                str(WORKERS),
-                "single",
+                str(RVC_ROOT / "rvc" / "train" / "process" / "extract_index.py"),
+                str(exp_dir),
+                "Auto",
             ],
             log_path,
             progress=progress,
@@ -845,7 +868,7 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
     from train_prep import discard_prep_copies
 
     discard_prep_copies()
-    py = sys.executable
+    py = _engine_python()
     if resume:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n[resume] features listas en {exp_dir}; no se borra.\n")
@@ -856,82 +879,62 @@ def execute_train(exp_name, dataset_files, epochs=None, progress=None):
         _run(
             [
                 py,
-                "-m",
-                "train.preprocess",
-            str(dataset_dir),
-            str(SR_HZ),
-            str(WORKERS),
-            str(exp_dir),
-            "True",
-            "3.7",
-        ],
-        log_path,
-        progress=progress,
-        frac=0.1,
+                str(RVC_ROOT / "rvc" / "train" / "preprocess" / "preprocess.py"),
+                str(exp_dir),
+                str(dataset_dir),
+                str(SR_HZ),
+                str(WORKERS),
+                "Automatic",
+                "True",
+                "False",
+                "0.5",
+                "3.0",
+                "0.3",
+                "none",
+            ],
+            log_path,
+            progress=progress,
+            frac=0.1,
             desc="Cortando audios…",
         )
         _run(
             [
                 py,
-                "-m",
-                "train.dataset.extract_f0",
-                "cpu",
+                str(RVC_ROOT / "rvc" / "train" / "extract" / "extract.py"),
                 str(exp_dir),
-                str(WORKERS),
                 "rmvpe",
-            ],
-            log_path,
-            progress=progress,
-            frac=0.25,
-            desc="Extrayendo F0…",
-        )
-        _run(
-            [
-                py,
-                "-m",
-                "train.dataset.extract_hubert_feature",
-                "cpu",
-                "1",
+                str(WORKERS),
+                "-",
+                str(SR_HZ),
+                "custom",
+                str(assets.get("hubert") or ""),
                 "0",
-                str(exp_dir),
-                VERSION,
-                "false",
             ],
             log_path,
             progress=progress,
-            frac=0.4,
-            desc="HuBERT…",
+            frac=0.3,
+            desc="F0 y HuBERT…",
         )
-    _write_filelist_and_config(exp_dir)
+    if not (exp_dir / "filelist.txt").is_file():
+        _write_filelist_and_config(exp_dir)
     _run(
         [
             py,
-            "-m",
-            "train.train",
-            "-e",
+            str(RVC_ROOT / "rvc" / "train" / "train.py"),
             exp_name,
-            "-sr",
-            SR,
-            "-f0",
-            "1",
-            "-bs",
-            str(BATCH),
-            "-te",
-            str(total),
-            "-se",
             str(SAVE_EVERY_EPOCH),
-            "-pg",
-            "assets/pretrained_v2/f0G40k.pth",
-            "-pd",
-            "assets/pretrained_v2/f0D40k.pth",
-            "-l",
-            "1",
-            "-c",
-            "0",
-            "-sw",
-            SAVE_EVERY_WEIGHTS,
-            "-v",
-            VERSION,
+            str(total),
+            str(assets.get("g") or ""),
+            str(assets.get("d") or ""),
+            "-",
+            str(BATCH),
+            str(SR_HZ),
+            "True",
+            "True",
+            "False",
+            "False",
+            "HiFiGAN",
+            "False",
         ],
         log_path,
         progress=progress,

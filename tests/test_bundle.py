@@ -20,6 +20,10 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertIn("el zip full es un enlatado", text)
         self.assertIn("no baja ONNX en el Mac de destino", text)
         self.assertIn("no baja RVC en el Mac de destino", text)
+        self.assertIn("third_party/vc", text)
+        self.assertNotIn("RVC-WebUI", text)
+        self.assertIn("import gradio, torch", text)
+        self.assertNotIn("import av, gradio, torch", text)
 
     def test_cloud_install_does_not_download_models(self):
         text = (ROOT / ".cursor" / "install.sh").read_text(encoding="utf-8")

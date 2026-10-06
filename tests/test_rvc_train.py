@@ -6,13 +6,13 @@ from unittest import mock
 
 import rvc_train
 
-_HAS_WEBUI = (rvc_train.RVC_ROOT / "train" / "train.py").is_file()
+_HAS_WEBUI = (rvc_train.RVC_ROOT / "rvc" / "train" / "train.py").is_file()
 
 
 class RvcTrainTests(unittest.TestCase):
     def test_missing_webui(self):
         with mock.patch.object(
-            rvc_train, "RVC_ROOT", rvc_train.Path("/no/such/RVC-WebUI")
+            rvc_train, "RVC_ROOT", rvc_train.Path("/no/such/vc")
         ):
             with self.assertRaises(ValueError):
                 rvc_train.require_rvc_webui()
@@ -42,17 +42,17 @@ class RvcTrainTests(unittest.TestCase):
                 rvc_train.require_train_assets()
         self.assertIn("Transformers", str(ctx.exception))
 
-    @unittest.skipUnless(_HAS_WEBUI, "third_party/RVC-WebUI no está en el checkout")
+    @unittest.skipUnless(_HAS_WEBUI, "third_party/vc no está en el checkout")
     def test_config_template_40k_uses_v1(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         exp = rvc_train.Path(tmp.name) / "exp"
-        for name in ("0_gt_wavs", "3_feature768", "2a_f0", "2b-f0nsf"):
+        for name in ("sliced_audios", "extracted", "f0", "f0_voiced"):
             (exp / name).mkdir(parents=True)
-        (exp / "0_gt_wavs" / "a.wav").write_bytes(b"x")
-        (exp / "3_feature768" / "a.npy").write_bytes(b"x")
-        (exp / "2a_f0" / "a.wav.npy").write_bytes(b"x")
-        (exp / "2b-f0nsf" / "a.wav.npy").write_bytes(b"x")
+        (exp / "sliced_audios" / "a.wav").write_bytes(b"x")
+        (exp / "extracted" / "a.npy").write_bytes(b"x")
+        (exp / "f0" / "a.wav.npy").write_bytes(b"x")
+        (exp / "f0_voiced" / "a.wav.npy").write_bytes(b"x")
         rvc_train._write_filelist_and_config(exp)
         config = (exp / "config.json").read_text(encoding="utf-8")
         self.assertIn("40000", config)
@@ -118,7 +118,7 @@ class RvcTrainTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         exp = rvc_train.Path(tmp.name)
         self.assertFalse(rvc_train._features_ready(exp))
-        feat = exp / "3_feature768"
+        feat = exp / "extracted"
         feat.mkdir(parents=True)
         self.assertFalse(rvc_train._features_ready(exp))
         (feat / "a.npy").write_bytes(b"x")
@@ -217,8 +217,8 @@ class RvcTrainTests(unittest.TestCase):
 
     def test_train_running_reads_ps_command_line(self):
         fake = (
-            "python -m train.train -e PELA1 -sr 40k -f0 1\n"
-            "python -m train.train -e other -sr 40k\n"
+            "python rvc/train/train.py PELA1 5 10 /tmp/f0G.pth /tmp/f0D.pth -\n"
+            "python rvc/train/train.py other 5 10 /tmp/f0G.pth /tmp/f0D.pth -\n"
         )
         with mock.patch("subprocess.check_output", return_value=fake):
             self.assertIn("PELA1", rvc_train.train_running("PELA1") or "")
@@ -346,25 +346,12 @@ class RvcTrainTests(unittest.TestCase):
         self.assertIn("inference_weight_path(name)", text)
         self.assertNotIn('"assets/weights/%s.pth"', text)
 
-    @unittest.skipUnless(_HAS_WEBUI, "third_party/RVC-WebUI no está en el checkout")
-    def test_inference_weights_dir_is_absolute(self):
-        rvc_train._ensure_savee_absolute()
-        prev = os.getcwd()
-        sys_path = list(sys.path)
-        os.chdir(str(rvc_train.RVC_ROOT))
-        sys.path.insert(0, str(rvc_train.RVC_ROOT))
-        sys.modules.pop("train.process_ckpt", None)
-        sys.modules.pop("train", None)
-        try:
-            from train.process_ckpt import inference_weights_dir
-
-            path = inference_weights_dir()
-        finally:
-            os.chdir(prev)
-            sys.path[:] = sys_path
-        self.assertTrue(os.path.isabs(path))
-        self.assertTrue(path.endswith(os.path.join("assets", "weights")))
-        self.assertTrue(os.path.isdir(path))
+    @unittest.skipUnless(_HAS_WEBUI, "third_party/vc no está en el checkout")
+    def test_applio_train_script_is_present(self):
+        train_py = rvc_train.RVC_ROOT / "rvc" / "train" / "train.py"
+        self.assertTrue(train_py.is_file())
+        text = train_py.read_text(encoding="utf-8")
+        self.assertIn("os._exit(2333333)", text)
 
     def test_find_small_weight_skips_G_checkpoints(self):
         tmp = tempfile.TemporaryDirectory()

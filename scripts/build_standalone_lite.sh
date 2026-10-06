@@ -19,13 +19,12 @@ mkdir -p "$RVC/hubert_base"
 : > "$RVC/.gitkeep"
 : > "$RVC/hubert_base/.gitkeep"
 
-# Strip seeded copies inside RVC-WebUI assets
-WEB="$APPDIR/third_party/RVC-WebUI/assets"
-rm -f "$WEB/rmvpe/rmvpe.pt" \
-      "$WEB/pretrained_v2/f0G40k.pth" \
-      "$WEB/pretrained_v2/f0D40k.pth"
-rm -rf "$WEB/hubert_base"
-mkdir -p "$WEB/hubert_base" "$WEB/rmvpe" "$WEB/pretrained_v2" "$WEB/weights" "$WEB/indices"
+# Strip Applio weight links; Completar instalación recreates them.
+PRED="$APPDIR/third_party/vc/rvc/models/predictors"
+EMB="$APPDIR/third_party/vc/rvc/models/embedders/contentvec"
+rm -f "$PRED/rmvpe.pt" "$EMB/config.json" "$EMB/model.safetensors" \
+      "$EMB/pytorch_model.bin" "$EMB/preprocessor_config.json"
+mkdir -p "$PRED" "$EMB"
 
 # Ensure installer module is in the bundle
 cp -f "$ROOT/install_rvc_assets.py" "$APPDIR/install_rvc_assets.py"

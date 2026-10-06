@@ -18,9 +18,6 @@ from pathlib import Path
 from library import ensure_dirs, rvc_support_dir
 
 REPO = "lj1995/VoiceConversionWebUI"
-WEBUI_GIT = (
-    "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git"
-)
 UVR_DOWNLOAD_LINK = (
     "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
 )
@@ -123,36 +120,20 @@ def first_install_ready() -> bool:
 
 
 def rvc_webui_root() -> Path:
-    return Path(__file__).resolve().parent / "third_party" / "RVC-WebUI"
+    return Path(__file__).resolve().parent / "third_party" / "vc"
 
 
 def ensure_rvc_webui(log=None) -> str | None:
-    """Clone official WebUI once (free git). Train needs it; app stays up if git fails."""
+    """Train uses vendored Applio (third_party/vc). No extra git clone."""
     dest = rvc_webui_root()
-    train_py = dest / "train" / "train.py"
+    train_py = dest / "rvc" / "train" / "train.py"
     if train_py.is_file():
         if log:
-            log("OK RVC-WebUI")
+            log("OK motor de entrenamiento")
         return None
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if log:
-        log("Clonando RVC-WebUI (gratis, una vez)…")
-    import subprocess
-
-    result = subprocess.run(
-        ["git", "clone", "--depth", "1", WEBUI_GIT, str(dest)],
-        capture_output=True,
-        text=True,
+    raise RuntimeError(
+        "Falta third_party/vc. Entrenar necesita el motor Applio vendido en el repo."
     )
-    if result.returncode != 0 or not train_py.is_file():
-        err = (result.stderr or result.stdout or "").strip()[:200]
-        raise RuntimeError(
-            "Sin red no pude clonar RVC-WebUI. Entrenar queda apagado "
-            "hasta que haya cupo o red. " + err
-        )
-    if log:
-        log("Listo RVC-WebUI")
-    return "RVC-WebUI"
 
 
 def _link_or_copy(src: Path, dest: Path) -> None:
@@ -186,7 +167,6 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
         repo_id=REPO,
         filename=repo_file,
         cache_dir=str(cache_dir) if cache_dir else None,
-        resume_download=True,
         token=token or None,
     )
     _link_or_copy(Path(cached), dest)
@@ -372,30 +352,10 @@ def install_rvc_assets(log=None) -> list[str]:
     if (hubert_dir / "model.safetensors").is_file():
         written.append("hubert_base/model.safetensors")
 
-    # mute samples for train (small)
     try:
-        from pathlib import Path as P
-
-        rvc_root = P(__file__).resolve().parent / "third_party" / "RVC-WebUI"
-        mute_dir = rvc_root / "logs" / "mute"
-        if rvc_root.is_dir() and not mute_dir.is_dir():
-            _log("Descargando mute.zip…")
-            import zipfile
-
-            zpath = cache / "mute.zip"
-            if not zpath.is_file():
-                _download("mute.zip", zpath, cache)
-            mute_dir.parent.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(zpath) as zf:
-                zf.extractall(mute_dir.parent)
-            written.append("logs/mute")
-    except Exception as exc:
-        _log(f"mute opcional omitido: {exc}")
-
-    try:
-        got_webui = ensure_rvc_webui(log=_log)
-        if got_webui:
-            written.append(got_webui)
+        got_engine = ensure_rvc_webui(log=_log)
+        if got_engine:
+            written.append(got_engine)
     except Exception as exc:
         _log(str(exc))
 

@@ -1,7 +1,7 @@
 """Thin Python API over the vendored RVC stack. No pip rvc / rvc-python.
 
 Uses library/models/rvc_voices/ only (same as Convertir in the app).
-Mac Intel: infer_rvc_python BaseLoader with only_cpu=True.
+Mac Intel: isolated Applio worker (third_party/vc) with only CPU.
 """
 from __future__ import annotations
 

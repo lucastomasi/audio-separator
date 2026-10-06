@@ -5,8 +5,7 @@ Los modelos y bibliotecas de terceros **no** son MIT de Lucas Tomasi.
 
 | Pieza | Uso | Origen |
 |---|---|---|
-| RVC-WebUI | Entrenar | Retrieval-based-Voice-Conversion-WebUI |
-| `third_party/vc` | Convertir | Applio / RVC |
+| `third_party/vc` | Convertir y entrenar | Applio / RVC |
 | HuBERT, RMVPE, f0G/D 40k | Entrenar / convertir | Hugging Face `lj1995/VoiceConversionWebUI` (gratis) |
 | UVR MDX ONNX | Separar | TRvlvr `all_public_uvr_models` (gratis, GitHub Releases) |
 | yt-dlp | YouTube | yt-dlp |
