@@ -7,7 +7,7 @@ import re
 import secrets
 from urllib.parse import parse_qs, urlparse
 
-from app_env import data_dir, home, package_dir
+from app_env import data_dir, home, host, package_dir
 
 TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
 TOKEN_COOKIE = "as_token"
@@ -25,7 +25,7 @@ _HEAD_TOKEN_JS = """
   var params = new URLSearchParams(window.location.search);
   var token = params.get("access_token");
   if (token) {
-    document.cookie = "as_token=" + encodeURIComponent(token) + "; path=/; SameSite=Strict";
+    document.cookie = "as_token=" + encodeURIComponent(token) + "; path=/; SameSite=Strict; Max-Age=31536000";
   }
 })();
 </script>
@@ -61,9 +61,16 @@ def _token_from_referer(request, token):
     return values[0] if _token_ok(values[0], token) else None
 
 
+def _phone_access_enabled():
+    """LAN is open only when the server was explicitly bound past loopback."""
+    return host().strip().lower() not in {"", "127.0.0.1", "localhost", "::1"}
+
+
 def auth_dependency(request):
     token = os.environ.get(TOKEN_ENV, "")
-    if not token or not _loopback_host(request):
+    if not token:
+        return None
+    if not _loopback_host(request) and not _phone_access_enabled():
         return None
     provided = (
         request.headers.get(TOKEN_HEADER)

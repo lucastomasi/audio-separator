@@ -98,6 +98,8 @@ while IFS= read -r f; do
   cp -f "$ROOT/$f" "$APPDIR/$f"
 done < <("$SRC_VENV/bin/python" -c "from bundle_py import BUNDLE_PY; print('\\n'.join(BUNDLE_PY))")
 cp -f "$ROOT/ui.css" "$APPDIR/ui.css"
+mkdir -p "$APPDIR/pwa"
+cp -f "$ROOT"/pwa/* "$APPDIR/pwa/"
 cp -f "$ROOT/convert_rvc.sh" "$APPDIR/convert_rvc.sh"
 cp -f "$ROOT/requirements-macos.txt" "$APPDIR/requirements-macos.txt"
 [[ -f "$ROOT/test.mp3" ]] && cp -f "$ROOT/test.mp3" "$APPDIR/test.mp3"

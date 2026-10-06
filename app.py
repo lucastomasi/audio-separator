@@ -993,6 +993,7 @@ def launch_kwargs(**overrides):
         theme=APP_THEME,
         css=UI_CSS,
         head=app_security._HEAD_TOKEN_JS,
+        favicon_path=os.path.join(os.path.dirname(__file__), "pwa", "icon-192.png"),
         footer_links=[],
         inbrowser=False,
         server_name=__import__("app_env").host(),
@@ -1018,6 +1019,27 @@ def launch_kwargs(**overrides):
     return {key: value for key, value in settings.items() if key in supported}
 
 
+def launch_app(**overrides):
+    """Start Gradio with the tags Safari needs for Add to Home Screen."""
+    from pwa_server import launch_with_pwa
+
+    return launch_with_pwa(build_server(), launch_kwargs(**overrides))
+
+
+def _print_open_url(token):
+    from app_env import host as bind_host
+
+    bind = bind_host()
+    port = os.environ.get("AUDIO_SEPARATOR_PORT") or "7860"
+    if bind.lower() in {"0.0.0.0", "::"}:
+        print(
+            "Abrí esta URL en Safari del iPhone, con la IP de esta computadora:\n"
+            f"http://<ip>:{port}/?access_token={token}"
+        )
+        return
+    print(f"http://{bind}:{port}/?access_token={token}")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -1030,5 +1052,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.share:
         IS_COLAB = True
-    app_security.ensure_token()
-    build_server().launch(**launch_kwargs(inbrowser=args.open))
+    token = app_security.ensure_token()
+    _print_open_url(token)
+    launch_app(inbrowser=args.open)

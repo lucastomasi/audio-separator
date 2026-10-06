@@ -62,6 +62,22 @@ pip install -r requirements-macos.txt
 python desktop.py
 ```
 
+## iPhone (Safari, agregar a inicio)
+
+No es una app nativa ni un IPA. Es esta misma página en la pantalla de inicio.
+
+`desktop.py` abre la ventana en la Mac. Para llegar desde el iPhone, en la computadora que procesa el audio:
+
+```bash
+AUDIO_SEPARATOR_HOST=0.0.0.0 python app.py
+```
+
+La terminal imprime una URL con `access_token`. Esa URL es la llave: no la pases. En el iPhone, en la misma red, abrila en Safari usando la IP de esa computadora (no `127.0.0.1`). Después: Compartir → **Agregar a inicio**. El ícono abre Audio Separator sin la barra de Safari.
+
+Demucs y RVC, y la separación UVR, corren en esa computadora o en la GPU en la nube que hospeda el servidor. El teléfono solo muestra la interfaz. Sin `AUDIO_SEPARATOR_HOST`, el servidor sigue cerrado a localhost. Si el ícono abre un error, volvé a abrir la URL impresa en Safari y agregalo de nuevo.
+
+
+
 Tests:
 
 ```bash
