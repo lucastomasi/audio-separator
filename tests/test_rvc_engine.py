@@ -92,6 +92,7 @@ class ConvertVoiceTests(unittest.TestCase):
         except ValueError as exc:
             self.assertTrue(str(exc))
             self.assertNotIn(self.voice, str(exc))
+            self.assertNotIn("/Users/", str(exc))
             return
         self.assertNotEqual(os.path.abspath(result), os.path.abspath(self.voice))
         self.assertTrue(os.path.isfile(result))

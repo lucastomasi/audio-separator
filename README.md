@@ -14,15 +14,11 @@ Abrilo. La app está a la izquierda y Aplicaciones a la derecha. Arrastrá **Aud
 
 En Aplicaciones, **Control-clic** (clic derecho) sobre Audio Separator → **Abrir** → **Abrir**.
 
-macOS puede decir que no puede verificar al desarrollador. La app no está firmada. Ese Control-clic → Abrir es el paso normal.
+macOS puede decir que no puede verificar al desarrollador. La app no está firmada ni notarizada. Control-clic → Abrir es el paso normal.
 
-Si igual no abre, en Terminal:
+No uses `xattr` para sacar la cuarentena: eso apaga Gatekeeper para esa app. Si el Control-clic no alcanza, volvé a bajar el disco desde la release de este repo.
 
-```bash
-xattr -dr com.apple.quarantine "/Applications/Audio Separator.app"
-```
-
-Volvé a abrirla con Control-clic → Abrir. La primera ventana puede tardar uno o dos minutos. Si falla, el detalle queda en `~/Library/Logs/Audio Separator/launch.log`.
+La primera ventana puede tardar uno o dos minutos. Si falla, el detalle queda en `~/Library/Logs/Audio Separator/launch.log`.
 
 ### Modelos y procesador
 
@@ -60,8 +56,12 @@ En una Mac Intel, el mismo comando genera el disco para esa máquina. El enlace 
 ## Desarrollo
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install -r macos/requirements-bundle.txt
 .venv/bin/python desktop.py
 ```
+
+`requirements-macos.txt` no se instala como un solo set. No lo uses.
 
 ## Modelos RVC
 
@@ -74,4 +74,6 @@ Copiá estos archivos a `rvc_models/` antes de convertir. La app no los descarga
 
 Esos binarios quedan fuera de git. En la app: Actualizá los modelos y después Convertí la voz. El pitch es rmvpe; no hace falta pyworld.
 
-`infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si `pip install -r requirements-macos.txt` se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.
+`infer-rvc-python` pide `pyworld==0.3.4`, que no tiene wheel para Python 3.12. Si el install del bundle se cae ahí, instalá ese paquete con `--no-deps` después del resto. La app reemplaza pyworld por un stub y no lo llama.
+
+Un `.pth` o un índice de un desconocido es código. Copiá solo modelos de confianza.

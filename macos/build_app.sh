@@ -69,6 +69,7 @@ PY_NAME="cpython-${PYTHON_VERSION}+${PYTHON_TAG}-${PY_TRIPLE}-install_only.tar.g
 PY_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_TAG}/${PY_NAME}"
 echo "Bajando Python ${PYTHON_VERSION} (${PY_TRIPLE})..."
 curl -fL --retry 5 --retry-delay 2 -o "$TMP/python.tar.gz" "$PY_URL"
+bash "$ROOT/macos/verify_checksum.sh" "$TMP/python.tar.gz" "$PY_NAME"
 tar -xzf "$TMP/python.tar.gz" -C "$APP/Contents/Resources"
 PY="$APP/Contents/Resources/python/bin/python3"
 if [[ ! -x "$PY" ]]; then
@@ -81,6 +82,7 @@ for tool in ffmpeg ffprobe; do
   curl -fL --retry 5 --retry-delay 2 \
     -o "$TMP/${tool}.gz" \
     "https://github.com/eugeneware/ffmpeg-static/releases/download/${FFMPEG_TAG}/${tool}-darwin-${FF_ARCH}.gz"
+  bash "$ROOT/macos/verify_checksum.sh" "$TMP/${tool}.gz" "${tool}-darwin-${FF_ARCH}.gz"
   gzip -dc "$TMP/${tool}.gz" > "$APP/Contents/Resources/bin/${tool}"
   chmod +x "$APP/Contents/Resources/bin/${tool}"
 done
@@ -93,9 +95,6 @@ echo "Instalando dependencias. PyTorch es pesado; puede tardar varios minutos."
 "$PY" -m pip install --no-cache-dir -r "$ROOT/macos/requirements-bundle.txt"
 # pyworld==0.3.4 (dependencia de infer-rvc-python) no tiene wheel para 3.12.
 "$PY" -m pip install --no-cache-dir "infer-rvc-python==1.3.1" --no-deps
-if ! "$PY" -m pip install --no-cache-dir torchcrepe; then
-  echo "torchcrepe no se instaló. La conversión usa rmvpe y no lo necesita."
-fi
 
 if [[ -f "$ROOT/macos/AppIcon.png" ]]; then
   ICONSET="$TMP/AppIcon.iconset"

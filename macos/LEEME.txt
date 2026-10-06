@@ -7,11 +7,10 @@ En esta ventana la app está a la izquierda y Aplicaciones a la derecha.
 3. En Aplicaciones, Control-clic (clic derecho) sobre Audio Separator → Abrir → Abrir.
 
 macOS puede decir que no puede verificar al desarrollador. La app no está
-firmada. Abrirla con Control-clic es el paso normal.
+firmada ni notarizada. Abrirla con Control-clic es el paso normal.
 
-Si sigue sin abrir, pegá esto en Terminal y volvé a hacer Control-clic → Abrir:
-
-    xattr -dr com.apple.quarantine "/Applications/Audio Separator.app"
+No saques la cuarentena con xattr. Si el Control-clic no alcanza, volvé a
+bajar el disco desde la release de este repo.
 
 La primera ventana puede tardar uno o dos minutos.
 

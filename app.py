@@ -2,9 +2,11 @@
 import json
 import os
 import re
+import secrets
 import shutil
-import tempfile
+import threading
 import time
+from urllib.parse import parse_qs, urlparse
 
 import gradio as gr
 import numpy as np
@@ -12,10 +14,10 @@ import soundfile as sf
 from scipy.ndimage import uniform_filter
 from scipy.signal import istft, stft
 
-from app_paths import data_dir, source_dir
+from app_paths import data_dir, is_inside, source_dir
 from audio_io import get_duration, load
 from audio_text import STEM_AMBAS, STEM_SOLO_INST, STEM_SOLO_VOZ, stem_choice_to_list
-from exports import copy_to_downloads, exports_dir, open_exports_dir
+from exports import copy_to_downloads, exports_dir, is_exportable, open_exports_dir
 from remix import REMIX_DIR, SAMPLE_RATE, mix_stems
 from rvc_engine import RVC_DIR, convert_voice
 from youtube_lib import download_audio
@@ -26,6 +28,27 @@ MDX_DIR = os.path.join(data_dir(), "mdx_models")
 HOST = "127.0.0.1"
 PORT = 7860
 CSS_PATH = os.path.join(ROOT, "ui.css")
+TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
+TOKEN_COOKIE = "as_token"
+TOKEN_QUERY = "access_token"
+TOKEN_HEADER = "x-audio-separator-token"
+MAX_UPLOAD = "200mb"
+MAX_N_FFT = 16384
+MAX_DIM_F = 8192
+MAX_DIM_T = 2048
+MAX_HOP = 4096
+_JOB_LOCK = threading.Lock()
+_HEAD_TOKEN_JS = """
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get("access_token");
+  if (token) {
+    document.cookie = "as_token=" + encodeURIComponent(token) + "; path=/; SameSite=Strict";
+  }
+})();
+</script>
+"""
 
 STEM_CHOICES = [
     ("Solo la voz", STEM_SOLO_VOZ),
@@ -33,6 +56,48 @@ STEM_CHOICES = [
     ("Voz e instrumental", STEM_AMBAS),
 ]
 LOCAL_SEPARATION = "Separación local"
+
+
+def _token_ok(provided, token):
+    if not provided or not token or len(provided) != len(token):
+        return False
+    return secrets.compare_digest(provided, token)
+
+
+def _loopback_host(request):
+    host = request.headers.get("host") or ""
+    if host.startswith("["):
+        name = host.rsplit("]", 1)[0].lstrip("[")
+    else:
+        name = host.split(":")[0]
+    return name.lower() in {"127.0.0.1", "localhost", "::1"}
+
+
+def _token_from_referer(request, token):
+    referer = request.headers.get("referer") or ""
+    parsed = urlparse(referer)
+    host = (parsed.hostname or "").lower()
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        return None
+    values = parse_qs(parsed.query).get(TOKEN_QUERY) or []
+    if not values:
+        return None
+    return values[0] if _token_ok(values[0], token) else None
+
+
+def auth_dependency(request):
+    token = os.environ.get(TOKEN_ENV, "")
+    if not token or not _loopback_host(request):
+        return None
+    provided = (
+        request.headers.get(TOKEN_HEADER)
+        or request.query_params.get(TOKEN_QUERY)
+        or request.cookies.get(TOKEN_COOKIE)
+        or _token_from_referer(request, token)
+    )
+    if _token_ok(provided, token):
+        return "local"
+    return None
 
 
 def launch_kwargs(**overrides):
@@ -47,39 +112,81 @@ def launch_kwargs(**overrides):
         "server_port": PORT,
         "inbrowser": False,
         "share": False,
-        "show_error": True,
+        "show_error": False,
         "ssr_mode": False,
         "css": css,
+        "head": _HEAD_TOKEN_JS,
         "theme": gr.themes.Soft(),
         "allowed_paths": _allowed_paths(),
+        "blocked_paths": _blocked_paths(),
         "footer_links": [],
+        "max_file_size": MAX_UPLOAD,
+        "strict_cors": True,
+        "enable_monitoring": False,
+        "run_history": False,
+        "mcp_server": False,
+        "auth_dependency": auth_dependency,
+        "app_kwargs": {
+            "docs_url": None,
+            "redoc_url": None,
+            "openapi_url": None,
+        },
     }
     kwargs.update(overrides)
-    return kwargs
+    import inspect
+
+    supported = set(inspect.signature(gr.Blocks.launch).parameters)
+    return {key: value for key, value in kwargs.items() if key in supported}
+
+
+def _output_dirs():
+    return [
+        CLEAN_DIR,
+        REMIX_DIR,
+        os.path.join(data_dir(), "rvc_output"),
+        os.path.join(data_dir(), "downloads"),
+        exports_dir(),
+    ]
 
 
 def _allowed_paths():
-    paths = [
-        ROOT,
-        data_dir(),
-        CLEAN_DIR,
-        REMIX_DIR,
-        os.path.join(data_dir(), "downloads"),
-        exports_dir(),
-        tempfile.gettempdir(),
-    ]
+    paths = _output_dirs()
     for path in paths:
         os.makedirs(path, exist_ok=True)
     return paths
 
 
+def _blocked_paths():
+    blocked = [
+        os.path.expanduser("~/.ssh"),
+        os.path.expanduser("~/.gnupg"),
+        os.path.expanduser("~/.aws"),
+        "/etc",
+    ]
+    if os.path.realpath(data_dir()) != os.path.realpath(source_dir()):
+        blocked.append(source_dir())
+    else:
+        blocked.extend(
+            [
+                os.path.join(source_dir(), ".git"),
+                os.path.join(source_dir(), ".cursor"),
+                os.path.join(source_dir(), ".env"),
+            ]
+        )
+    return [path for path in blocked if path]
+
+
 def _inside(path, root):
-    path = os.path.abspath(path)
-    root = os.path.abspath(root)
+    return is_inside(path, root)
+
+
+def _run_job(work):
+    if not _JOB_LOCK.acquire(blocking=False):
+        raise gr.Error("Esperá a que termine lo que está corriendo.")
     try:
-        return os.path.commonpath([path, root]) == root
-    except ValueError:
-        return False
+        return work()
+    finally:
+        _JOB_LOCK.release()
 
 
 def _list_files(directory, extension):
@@ -249,7 +356,9 @@ def _mdx_config(model_path, session):
             loaded = json.load(handle)
         if not isinstance(loaded, dict):
             raise ValueError("El .json del modelo tiene que ser un objeto.")
-        config.update(loaded)
+        for key in ("hop", "overlap", "compensate", "dim_f", "dim_t", "n_fft"):
+            if key in loaded:
+                config[key] = loaded[key]
     shape = session.get_inputs()[0].shape
     if "dim_f" not in config:
         dim_f = _positive_dim(shape, 2)
@@ -270,6 +379,21 @@ def _mdx_config(model_path, session):
         config["n_fft"] = 7680 if dim_f == 3072 else dim_f * 2
     if int(config["n_fft"]) // 2 + 1 < int(config["dim_f"]):
         config["n_fft"] = int(config["dim_f"]) * 2
+    n_fft = int(config["n_fft"])
+    hop = int(config["hop"])
+    dim_f = int(config["dim_f"])
+    dim_t = int(config["dim_t"])
+    if (
+        n_fft > MAX_N_FFT
+        or hop > MAX_HOP
+        or dim_f > MAX_DIM_F
+        or dim_t > MAX_DIM_T
+        or hop < 1
+        or dim_t < 2
+        or dim_f < 1
+        or n_fft < 2
+    ):
+        raise ValueError("La configuración del modelo ONNX no es válida.")
     return config
 
 
@@ -498,7 +622,7 @@ def separate_to_files(src_path, mdx_choice=""):
         if model_path is None:
             note = (
                 "Usé la separación local (canal central). "
-                f"Si tenés un .onnx, dejalo en {MDX_DIR}."
+                "Si tenés un .onnx, dejalo en mdx_models."
             )
     stem = _safe_stem(src_path)
     vocal_path = _write_audio(CLEAN_DIR, stem, "voz", vocals, sample_rate)
@@ -508,20 +632,29 @@ def separate_to_files(src_path, mdx_choice=""):
     return vocal_path, instrumental_path, note
 
 
+def _public_message(text):
+    text = str(text)
+    if re.search(r"(?i)(/users/|/home/|/library/|/tmp/|/var/|:\\|audio_separator_home)", text):
+        return "Algo salió mal."
+    return text
+
+
 def _ui_error(exc):
     if isinstance(exc, gr.Error):
         raise exc
     if isinstance(exc, ValueError):
-        raise gr.Error(str(exc)) from exc
-    raise gr.Error(f"Algo salió mal: {exc}") from exc
+        raise gr.Error(_public_message(exc)) from exc
+    raise gr.Error("Algo salió mal.") from exc
 
 
 def on_download(url):
     url = (url or "").strip()
     if not url:
         raise gr.Error("Pegá un enlace de YouTube.")
+    def work():
+        return download_audio(url)
     try:
-        path, cached, _ignored = download_audio(url)
+        path, cached, _ignored = _run_job(work)
     except Exception as exc:
         _ui_error(exc)
     if cached:
@@ -534,11 +667,15 @@ def on_download(url):
 def on_separate(audio, url, _stem, mdx_choice):
     source = _audio_path(audio)
     try:
-        if source is None and (url or "").strip():
-            source, _cached, _ignored = download_audio(url)
-        if source is None:
-            raise ValueError("Subí un audio o pegá un enlace de YouTube.")
-        vocal_path, instrumental_path, note = separate_to_files(source, mdx_choice)
+        def work():
+            chosen = source
+            if chosen is None and (url or "").strip():
+                chosen, _cached, _ignored = download_audio(url)
+            if chosen is None:
+                raise ValueError("Subí un audio o pegá un enlace de YouTube.")
+            vocal_path, instrumental_path, note = separate_to_files(chosen, mdx_choice)
+            return chosen, vocal_path, instrumental_path, note
+        source, vocal_path, instrumental_path, note = _run_job(work)
     except Exception as exc:
         _ui_error(exc)
     message = f"Listo. Separé la voz y el instrumental{_duration_note(source)}. {note}"
@@ -550,12 +687,14 @@ def on_convert(vocal, model, index):
     try:
         if vocal_path is None:
             raise ValueError("Primero separá el audio para tener la voz.")
-        model_path = _resolve_rvc_model(model)
-        index_path = _resolve_index(index)
-        converted = convert_voice(vocal_path, model_path, index_path)
-        if not converted or not os.path.isfile(converted):
-            raise ValueError("La conversión no devolvió un audio.")
-        dest = _copied_stem(converted, _safe_stem(vocal_path), "voz-rvc")
+        def work():
+            model_path = _resolve_rvc_model(model)
+            index_path = _resolve_index(index)
+            converted = convert_voice(vocal_path, model_path, index_path)
+            if not converted or not os.path.isfile(converted):
+                raise ValueError("La conversión no devolvió un audio.")
+            return _copied_stem(converted, _safe_stem(vocal_path), "voz-rvc")
+        dest = _run_job(work)
     except Exception as exc:
         _ui_error(exc)
     return dest, None, "Listo. Convertí la voz con el modelo local."
@@ -566,7 +705,7 @@ def on_refresh():
     note = (
         "Actualicé la lista de modelos."
         if models
-        else f"No hay modelos .pth en {RVC_DIR}. Copiá el modelo ahí y actualizá de nuevo."
+        else "No hay modelos .pth en rvc_models. Copiá el modelo ahí y actualizá de nuevo."
     )
     return (*model_updates(), note)
 
@@ -589,16 +728,18 @@ def on_remix(vocal, instrumental, converted, use_converted, vocal_db, instrument
     try:
         if vocal_path is None or instrumental_path is None:
             raise ValueError("Primero separá el audio. Hacen falta la voz y el instrumental.")
-        dest = mix_stems(
-            vocal_path,
-            instrumental_path,
-            vocal_db=float(vocal_db),
-            instrumental_db=float(instrumental_db),
-            output_path=os.path.join(
-                REMIX_DIR,
-                f"{_safe_stem(vocal_path)}-remix-{time.strftime('%H%M%S')}.wav",
-            ),
-        )
+        def work():
+            return mix_stems(
+                vocal_path,
+                instrumental_path,
+                vocal_db=float(vocal_db),
+                instrumental_db=float(instrumental_db),
+                output_path=os.path.join(
+                    REMIX_DIR,
+                    f"{_safe_stem(vocal_path)}-remix-{time.strftime('%H%M%S')}.wav",
+                ),
+            )
+        dest = _run_job(work)
     except Exception as exc:
         _ui_error(exc)
     return (
@@ -615,37 +756,36 @@ def on_export(stem, vocal, instrumental, converted, remix, use_converted):
     instrumental_path = _audio_path(instrumental)
     converted_path = _audio_path(converted)
     remix_path = _audio_path(remix)
-    if "vocal" in wanted and vocal_path:
+    if "vocal" in wanted and vocal_path and is_exportable(vocal_path):
         files.append(vocal_path)
         labels.append("voz")
-    if "background" in wanted and instrumental_path:
+    if "background" in wanted and instrumental_path and is_exportable(instrumental_path):
         files.append(instrumental_path)
         labels.append("instrumental")
-    if "vocal" in wanted and use_converted and converted_path:
+    if "vocal" in wanted and use_converted and converted_path and is_exportable(converted_path):
         files.append(converted_path)
         labels.append("voz-convertida")
-    if remix_path:
+    if remix_path and is_exportable(remix_path):
         files.append(remix_path)
         labels.append("remix")
     if not files:
         raise gr.Error("Todavía no hay pistas para exportar. Separá un audio primero.")
     try:
-        directory, copied = copy_to_downloads(files, labels)
+        _directory, copied = copy_to_downloads(files, labels)
     except Exception as exc:
         _ui_error(exc)
     if not copied:
         raise gr.Error("No pude copiar los archivos a Descargas.")
     noun = "archivo" if len(copied) == 1 else "archivos"
-    return f"Exporté {len(copied)} {noun} en {directory}."
+    return f"Exporté {len(copied)} {noun} en Descargas."
 
 
 def on_open_folder():
-    directory = exports_dir()
     try:
         open_exports_dir()
     except OSError:
-        return f"No pude abrirla desde acá. La carpeta está en {directory}."
-    return f"Abrí la carpeta {directory}."
+        return "No pude abrirla desde acá. Buscá Descargas / Audio Separator."
+    return "Abrí la carpeta de Descargas."
 
 
 def build_server():
@@ -654,9 +794,9 @@ def build_server():
     indexes = rvc_index_choices()
     with gr.Blocks(title="Audio Separator", analytics_enabled=False) as demo:
         gr.Markdown(
-            f"""
+            """
 # Audio Separator
-Separá la voz del instrumental, convertí la voz con un modelo RVC de `{RVC_DIR}` y volvé a unir las pistas.
+Separá la voz del instrumental, convertí la voz con un modelo RVC de `rvc_models` y volvé a unir las pistas.
 
 Corre en tu Mac. No usa el Space de Hugging Face.
             """.strip()
@@ -685,7 +825,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
                 choices=separation,
                 value=_choice_value(separation, prefer_first_real=True),
                 label="Modelo de separación",
-                info=f"Si no hay un .onnx en {MDX_DIR}, queda la separación local.",
+                info="Si no hay un .onnx en mdx_models, queda la separación local.",
             )
         separate_btn = gr.Button("Separá", variant="primary")
         with gr.Row():
@@ -693,7 +833,7 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             instrumental = gr.Audio(label="Instrumental", type="filepath")
         gr.Markdown("### Convertir la voz")
         gr.Markdown(
-            f"Elegí un `.pth` de `{RVC_DIR}`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
+            "Elegí un `.pth` de `rvc_models`. Para convertir también hacen falta la carpeta `hubert_base` (con config.json) y `rmvpe.pt`."
         )
         with gr.Row():
             model = gr.Dropdown(
@@ -769,7 +909,11 @@ Corre en tu Mac. No usa el Space de Hugging Face.
             outputs=[status],
             api_name="exportar",
         )
-        open_btn.click(on_open_folder, outputs=[status], api_name="abrir_carpeta")
+        open_btn.click(
+            on_open_folder,
+            outputs=[status],
+            api_name=False,
+        )
         demo.load(
             model_updates,
             outputs=[model, index, mdx],
@@ -779,4 +923,8 @@ Corre en tu Mac. No usa el Space de Hugging Face.
 
 
 if __name__ == "__main__":
+    if not os.environ.get(TOKEN_ENV):
+        os.environ[TOKEN_ENV] = secrets.token_urlsafe(32)
+    token = os.environ[TOKEN_ENV]
+    print(f"http://127.0.0.1:{PORT}/?{TOKEN_QUERY}={token}")
     build_server().launch(**launch_kwargs())

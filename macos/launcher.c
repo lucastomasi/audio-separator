@@ -35,9 +35,10 @@ static void mkdir_p(const char *path) {
         }
         tmp[i] = '/';
     }
-    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+    if (mkdir(tmp, 0700) != 0 && errno != EEXIST) {
         return;
     }
+    chmod(tmp, 0700);
 }
 
 static int parent_dir(char *path) {
@@ -94,7 +95,7 @@ static int open_log(const char *log_dir) {
     if (snprintf(path, sizeof path, "%s/launch.log", log_dir) >= (int)sizeof path) {
         return -1;
     }
-    fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
     if (fd < 0) {
         return -1;
     }
@@ -115,7 +116,6 @@ int main(void) {
     char path_env[PATH_MAX * 2];
     char child[PATH_MAX];
     const char *home;
-    const char *old_path;
     uint32_t size = sizeof exe;
     int log_fd;
 
@@ -140,8 +140,10 @@ int main(void) {
     }
 
     home = getenv("HOME");
-    if (home == NULL || home[0] == '\0') {
-        home = "/tmp";
+    if (home == NULL || home[0] != '/' || strcmp(home, "/") == 0
+        || strcmp(home, "/tmp") == 0) {
+        tell_user_failed();
+        return 1;
     }
     if (snprintf(data, sizeof data, "%s/Library/Application Support/Audio Separator", home) >= (int)sizeof data ||
         snprintf(log_dir, sizeof log_dir, "%s/Library/Logs/Audio Separator", home) >= (int)sizeof log_dir) {
@@ -169,15 +171,21 @@ int main(void) {
         return 1;
     }
 
+    unsetenv("PYTHONPATH");
+    unsetenv("PYTHONHOME");
+    unsetenv("PYTHONSTARTUP");
+    unsetenv("PYTHONEXECUTABLE");
+    unsetenv("DYLD_INSERT_LIBRARIES");
+    unsetenv("DYLD_LIBRARY_PATH");
+    unsetenv("DYLD_FRAMEWORK_PATH");
     setenv("AUDIO_SEPARATOR_HOME", data, 1);
     setenv("PYTHONNOUSERSITE", "1", 1);
     setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
     setenv("PYTHONIOENCODING", "utf-8", 1);
-    old_path = getenv("PATH");
-    if (old_path == NULL) {
-        old_path = "/usr/bin:/bin";
-    }
-    snprintf(path_env, sizeof path_env, "%s:/opt/homebrew/bin:/usr/local/bin:%s", bin_dir, old_path);
+    setenv("HF_HUB_OFFLINE", "1", 1);
+    setenv("TRANSFORMERS_OFFLINE", "1", 1);
+    setenv("HF_DATASETS_OFFLINE", "1", 1);
+    snprintf(path_env, sizeof path_env, "%s:/usr/bin:/bin", bin_dir);
     setenv("PATH", path_env, 1);
 
     log_fd = open_log(log_dir);
