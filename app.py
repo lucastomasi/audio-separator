@@ -958,7 +958,7 @@ def launch_kwargs(**overrides):
 
     settings = dict(
         max_threads=4,
-        share=False if not IS_COLAB else True,
+        share=False,
         show_error=False,
         quiet=False,
         debug=IS_COLAB,
@@ -1018,13 +1018,10 @@ if __name__ == "__main__":
 
     import app_security
 
-    parser = argparse.ArgumentParser(description="Run the app with optional sharing")
-    parser.add_argument("--share", action="store_true")
+    parser = argparse.ArgumentParser(description="Run Audio Separator locally")
     parser.add_argument("--theme", type=str, default=None)
     parser.add_argument("--open", action="store_true")
     args = parser.parse_args()
-    if args.share:
-        IS_COLAB = True
     token = app_security.ensure_token()
     _print_open_url(token)
     launch_app(inbrowser=args.open)

@@ -126,3 +126,49 @@ class DesktopTests(unittest.TestCase):
             self.assertFalse(
                 desktop.our_server_ready("http://127.0.0.1:1/?access_token=x", "x", timeout=0.2)
             )
+
+    def test_resolve_server_skips_foreign_listener(self):
+        class ImmediateThread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+                self._target = target
+                self._args = args
+
+            def start(self):
+                if self._target:
+                    self._target(*self._args)
+
+        os.environ["AUDIO_SEPARATOR_PORT"] = "7860"
+        self.addCleanup(lambda: os.environ.pop("AUDIO_SEPARATOR_PORT", None))
+        with mock.patch("app_env.pick_port") as pick:
+            pick.side_effect = [7860, 7861]
+            with mock.patch.object(desktop, "port_open", side_effect=[True, False]):
+                with mock.patch.object(desktop, "our_server_ready", return_value=False):
+                    with mock.patch.object(desktop, "start_server") as start:
+                        with mock.patch.object(desktop.threading, "Thread", ImmediateThread):
+                            port, url, already = desktop.resolve_server(
+                                "tok", probe_timeout=0.1
+                            )
+        self.assertEqual(port, 7861)
+        self.assertFalse(already)
+        self.assertIn("7861", url)
+        start.assert_called_once_with(7861)
+
+    def test_resolve_server_reuses_when_token_ok(self):
+        os.environ["AUDIO_SEPARATOR_PORT"] = "7900"
+        self.addCleanup(lambda: os.environ.pop("AUDIO_SEPARATOR_PORT", None))
+        with mock.patch("app_env.pick_port", return_value=7900):
+            with mock.patch.object(desktop, "port_open", return_value=True):
+                with mock.patch.object(desktop, "our_server_ready", return_value=True):
+                    with mock.patch.object(desktop, "start_server") as start:
+                        port, url, already = desktop.resolve_server("tok", probe_timeout=0.1)
+        self.assertEqual(port, 7900)
+        self.assertTrue(already)
+        start.assert_not_called()
+
+    def test_share_flag_removed(self):
+        import inspect
+
+        source = inspect.getsource(app)
+        self.assertNotIn('--share', source)
+        self.assertNotIn('add_argument("--share"', source)
+        self.assertFalse(app.launch_kwargs()["share"])

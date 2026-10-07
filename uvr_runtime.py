@@ -547,7 +547,11 @@ def _sound_separate(
         raise ValueError("Elige voz, instrumental, o ambos.")
 
     hash_audio = str(get_hash(media_file))
-    media_dir = os.path.dirname(media_file)
+    # Effects + format conversion stay under Trabajos/Separar (exportable),
+    # never beside a Gradio temp upload.
+    song_key = hash_audio + ("mdx" if "vocal" in stem else "voiceless")
+    media_dir = os.path.join(output_dir, song_key)
+    os.makedirs(media_dir, exist_ok=True)
 
     outputs = []
     instrumentals_from_vocal = None
@@ -572,10 +576,10 @@ def _sound_separate(
             )
 
             if vocal_effects:
-                suffix = '_effects'
-                file_name, file_extension = os.path.splitext(os.path.abspath(vocal_audio))
-                out_effects = file_name + suffix + file_extension
-                out_effects_path = os.path.join(media_dir, out_effects)
+                stem_name, file_extension = os.path.splitext(os.path.basename(vocal_audio))
+                out_effects_path = os.path.join(
+                    media_dir, stem_name + "_effects" + file_extension
+                )
                 add_vocal_effects(vocal_audio, out_effects_path,
                                   reverb_room_size=vocal_reverb_room_size, reverb_damping=vocal_reverb_damping, vocal_reverb_dryness=vocal_reverb_dryness, reverb_wet_level=vocal_reverb_wet_level,
                                   delay_seconds=vocal_delay_seconds, delay_mix=vocal_delay_mix,
@@ -602,11 +606,10 @@ def _sound_separate(
             )
 
         if background_effects:
-            suffix = '_effects'
-            file_name, file_extension = os.path.splitext(os.path.abspath(background_audio))
-            out_effects = file_name + suffix + file_extension
-            out_effects_path = os.path.join(media_dir, out_effects)
-            # print(file_name, file_extension, out_effects, out_effects_path)
+            stem_name, file_extension = os.path.splitext(os.path.basename(background_audio))
+            out_effects_path = os.path.join(
+                media_dir, stem_name + "_effects" + file_extension
+            )
             add_instrumental_effects(background_audio, out_effects_path,
                                      highpass_freq=background_highpass_freq, lowpass_freq=background_lowpass_freq,
                                      reverb_room_size=background_reverb_room_size, reverb_damping=background_reverb_damping, reverb_wet_level=background_reverb_wet_level,
