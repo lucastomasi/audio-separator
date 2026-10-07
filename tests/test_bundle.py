@@ -45,6 +45,8 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertNotIn("curl ", text)
         self.assertIn("/opt/audio-separator-models", text)
         self.assertIn("No bajes nada", text)
+        self.assertIn("from app import build_server, launch_app", text)
+        self.assertIn("from remix import remix_to_wav", text)
 
 
 class BundlePyTests(unittest.TestCase):

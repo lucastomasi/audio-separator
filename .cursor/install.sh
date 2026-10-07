@@ -52,4 +52,7 @@ if [ -d "$CAN/rvc" ]; then
   fi
 fi
 
-echo "Audio Separator cloud environment ready."
+# Core entry modules (Gradio UI + Unir remix). Fail fast if checkout is incomplete.
+.venv/bin/python -c "from app import build_server, launch_app; from remix import remix_to_wav"
+
+echo "Audio Separator cloud environment ready (app.py, remix.py import OK)."
