@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -70,6 +71,59 @@ class InstallRvcAssetsTests(unittest.TestCase):
         src = inspect.getsource(install_rvc_assets._download)
         self.assertNotIn("resume_download", src)
         self.assertIn("hf_hub_download", src)
+        self.assertIn("_allow_hub_download", src)
+
+    def test_download_works_when_desktop_sets_hub_offline(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name) / "rmvpe.pt"
+        cached = Path(tmp.name) / "cached.pt"
+        cached.write_bytes(b"weight")
+        seen = {}
+
+        def fake_hub(**_kwargs):
+            import huggingface_hub.constants as hub_constants
+
+            seen["offline_flag"] = hub_constants.HF_HUB_OFFLINE
+            seen["env"] = os.environ.get("HF_HUB_OFFLINE")
+            return str(cached)
+
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HF_HUB_OFFLINE", None))
+        self.addCleanup(lambda: os.environ.pop("TRANSFORMERS_OFFLINE", None))
+
+        import huggingface_hub.constants as hub_constants
+
+        previous = hub_constants.HF_HUB_OFFLINE
+        hub_constants.HF_HUB_OFFLINE = True
+        self.addCleanup(lambda: setattr(hub_constants, "HF_HUB_OFFLINE", previous))
+
+        with mock.patch("huggingface_hub.hf_hub_download", side_effect=fake_hub):
+            install_rvc_assets._download("rmvpe.pt", dest, Path(tmp.name) / "cache")
+
+        self.assertFalse(seen["offline_flag"])
+        self.assertIsNone(seen["env"])
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_bytes(), b"weight")
+        self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+        self.assertTrue(hub_constants.HF_HUB_OFFLINE)
+
+    def test_allow_hub_download_restores_offline_after_error(self):
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HF_HUB_OFFLINE", None))
+        import huggingface_hub.constants as hub_constants
+
+        previous = hub_constants.HF_HUB_OFFLINE
+        hub_constants.HF_HUB_OFFLINE = True
+        self.addCleanup(lambda: setattr(hub_constants, "HF_HUB_OFFLINE", previous))
+
+        with self.assertRaises(RuntimeError):
+            with install_rvc_assets._allow_hub_download():
+                raise RuntimeError("hub down")
+
+        self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+        self.assertTrue(hub_constants.HF_HUB_OFFLINE)
 
     def test_torch_load_requires_weights_only(self):
         with mock.patch("torch.load", return_value={"model": 1}) as loader:
