@@ -38,6 +38,7 @@ for name in \
   audio_text.py \
   desktop.py \
   exports.py \
+  pwa.py \
   remix.py \
   rvc_engine.py \
   youtube_lib.py \
@@ -45,6 +46,8 @@ for name in \
 do
   cp "$ROOT/$name" "$APP/Contents/Resources/app/$name"
 done
+mkdir -p "$APP/Contents/Resources/app/pwa"
+cp "$ROOT/pwa/"* "$APP/Contents/Resources/app/pwa/"
 cp "$ROOT/macos/requirements-bundle.txt" "$APP/Contents/Resources/requirements-bundle.txt"
 cp "$ROOT/macos/LEEME.txt" "$APP/Contents/Resources/LEEME.txt"
 cp "$ROOT/macos/launcher.c" "$APP/Contents/Resources/launcher.c"

@@ -4,6 +4,7 @@ import asyncio
 import socket
 import time
 import unittest
+from pathlib import Path
 
 import httpx
 from PIL import Image
@@ -145,6 +146,14 @@ class IconTests(unittest.TestCase):
                     self.assertEqual(image.mode, "RGB")
         self.assertEqual(MANIFEST["icons"][0]["sizes"], "192x192")
         self.assertEqual(MANIFEST["icons"][2]["purpose"], "maskable")
+
+
+class BundleTests(unittest.TestCase):
+    def test_mac_app_copies_pwa_into_the_bundle(self):
+        script = Path(__file__).resolve().parents[1] / "macos" / "build_app.sh"
+        text = script.read_text(encoding="utf-8")
+        self.assertIn("pwa.py", text)
+        self.assertIn('"$ROOT/pwa/"*', text)
 
 
 class LaunchTests(unittest.TestCase):
