@@ -12,7 +12,7 @@ When invoked:
 
 Hard rules:
 - Core flows (Separar, Entrenar, Convertir, Unir) stay offline once weights are on disk. Completar instalación is the only UVR/RVC fetch. If weights are missing, fail and point at that button — never download mid-job (`ensure_uvr_model`, Applio `load_embedding`).
-- Keep YouTube and Edge/ElevenLabs as optional network helpers. Do not remove or expand them without asking.
+- Keep YouTube as an optional network helper. Do not add Edge/ElevenLabs TTS or other cloud TTS. Do not expand YouTube without asking.
 - Do not “fix” with cloud APIs, hosted inference, Hugging Face pulls into the app venv, RunPod/GPU hire, or new network-required stacks.
 - Do not treat Gradio’s localhost URL as the product surface.
 - Security: loopback + local token; export only output paths (`is_exportable`).

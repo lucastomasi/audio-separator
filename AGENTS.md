@@ -10,7 +10,7 @@ Audio Separator is a **local Mac desktop app**. Processing runs on the user’s 
 - The full standalone zip is **canned**: the destination Mac must not need to download weights.
 - Do **not** “fix” problems by adding cloud APIs, hosted inference, Hugging Face runtime pulls into the app venv, or new network-required stacks.
 - Do **not** treat Gradio’s localhost URL as the product surface for users or for UI QA.
-- Optional network helpers that already exist (YouTube fetch, Edge/ElevenLabs TTS, lite “Completar instalación”) are secondary. Never expand them, never make core flows depend on them, never reintroduce RunPod/GPU hire or similar.
+- Optional network helpers that already exist (YouTube fetch, lite “Completar instalación”) are secondary. Never expand them, never make core flows depend on them, never reintroduce Edge/ElevenLabs TTS, RunPod/GPU hire, or similar.
 - Completar instalación is the **only** place that may fetch missing UVR/RVC weights. Separar / Entrenar / Convertir must fail with that button — never download mid-job.
 
 ### UI testing (hard rule)

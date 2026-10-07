@@ -63,7 +63,6 @@ from app_jobs import (
     load_rvc_into_library,
     train_rvc_job,
     rvc_job,
-    tts_rvc_job,
     remix_job,
     remux_job,
     cover_job,
@@ -72,7 +71,6 @@ from app_jobs import (
     lock_convert_button,
     lock_train_button,
     lock_join_button,
-    lock_tts_button,
     lock_clip_button,
     unlock_train_button,
     _gradio_path,
@@ -106,7 +104,7 @@ def _convert_interactive():
 
     occ = snapshot()
     on = not (occ is not None and occ.holder == HOLD_TRAIN)
-    return gr.update(interactive=on), gr.update(interactive=on)
+    return gr.update(interactive=on)
 
 
 def _join_ready(voice, inst):
@@ -186,21 +184,19 @@ def _on_train(name, dataset, epochs, progress=gr.Progress()):
             text = "Poné un nombre para la voz."
         else:
             text = "Subí al menos un audio de la voz a entrenar."
-        rvc_upd, tts_upd = refresh_library_ui()
-        btn_a, btn_b = _convert_interactive()
+        rvc_upd = refresh_library_ui()
+        rvc_btn = _convert_interactive()
         return (
             rvc_upd,
             status_update(KIND_ERROR, text),
-            tts_upd,
-            btn_a,
-            btn_b,
+            rvc_btn,
             unlock,
         )
-    rvc_upd, bar, tts_upd, train_btn = train_rvc_job(
+    rvc_upd, bar, train_btn = train_rvc_job(
         name_s, files, epochs, False, None, progress
     )
-    btn_a, btn_b = _convert_interactive()
-    return rvc_upd, bar, tts_upd, btn_a, btn_b, train_btn
+    rvc_btn = _convert_interactive()
+    return rvc_upd, bar, rvc_btn, train_btn
 
 
 def get_gui():
@@ -638,45 +634,6 @@ def get_gui():
                                 refresh_lib_btn = gr.Button(
                                     "Actualizar listas", variant="secondary"
                                 )
-                    with gr.Tab("Texto"):
-                        with gr.Group(elem_classes=["step"]):
-                            gr.Markdown("Texto", elem_classes=["panel-title"])
-                            gr.Markdown(
-                                "ElevenLabs si hay key; si no, Edge (internet). "
-                                "Después aplica tu modelo de la biblioteca.",
-                                elem_classes=["hint"],
-                            )
-                            tts_text = gr.Textbox(
-                                label="Texto",
-                                lines=3,
-                                placeholder="Escribí lo que tiene que decir la voz…",
-                            )
-                            with gr.Row():
-                                import tts_rvc_engine as _tts_rvc_ui
-
-                                tts_edge = gr.Dropdown(
-                                    label="Voz Edge (idioma base)",
-                                    choices=_tts_rvc_ui.EDGE_VOICES,
-                                    value="es-AR-ElenaNeural",
-                                    allow_custom_value=False,
-                                )
-                                tts_pitch = gr.Slider(
-                                    -12, 12, value=0, step=1, label="Tono"
-                                )
-                            tts_rvc_pick = gr.Dropdown(
-                                label="Buscar modelo",
-                                choices=_rvc_choices,
-                                value=_rvc_value,
-                                info="El mismo que en Convertir.",
-                                elem_classes=["model-search"],
-                                filterable=True,
-                            )
-                            tts_btn = gr.Button(
-                                "Generar voz",
-                                variant="primary",
-                                elem_id="tts-rvc-btn",
-                            )
-                            tts_audio = out_audio("Salida")
 
         install_btn.click(
             lock_install_button,
@@ -689,7 +646,6 @@ def get_gui():
                 aud,
                 button_base,
                 rvc_pick,
-                tts_rvc_pick,
                 install_btn,
             ],
             show_progress="full",
@@ -697,7 +653,7 @@ def get_gui():
         )
         demo_btn.click(
             load_demo_bundle,
-            outputs=[aud, button_base, rvc_pick, tts_rvc_pick, status],
+            outputs=[aud, button_base, rvc_pick, status],
         )
         url_button_gui.click(
             lock_download_button,
@@ -759,8 +715,6 @@ def get_gui():
                 remix_file,
                 rvc_audio,
                 rvc_model,
-                tts_audio,
-                tts_text,
             ],
         )
         clip_btn.click(
@@ -773,17 +727,7 @@ def get_gui():
             show_progress="full",
         )
         refresh_lib_btn.click(
-            refresh_library_ui, outputs=[rvc_pick, tts_rvc_pick]
-        )
-        tts_btn.click(
-            lock_tts_button,
-            outputs=[tts_btn, status],
-        ).then(
-            tts_rvc_job,
-            inputs=[tts_text, tts_rvc_pick, tts_edge, tts_pitch],
-            outputs=[tts_audio, remix_voice, status, tts_btn],
-            show_progress="full",
-            concurrency_limit=1,
+            refresh_library_ui, outputs=[rvc_pick]
         )
         vocal_out.change(
             lambda path: (path, path),
@@ -822,7 +766,7 @@ def get_gui():
         load_rvc_btn.click(
             load_rvc_into_library,
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
-            outputs=[rvc_pick, tts_rvc_pick, status],
+            outputs=[rvc_pick, status],
         )
         def _pull_separated(vocal):
             from ui_status import KIND_ERROR, KIND_OK, status_update
@@ -867,7 +811,7 @@ def get_gui():
         ).then(
             _on_train,
             inputs=[train_name, train_dataset, train_epochs],
-            outputs=[rvc_pick, status, tts_rvc_pick, rvc_btn, tts_btn, train_btn],
+            outputs=[rvc_pick, status, rvc_btn, train_btn],
             show_progress="full",
             concurrency_limit=1,
         )
@@ -877,14 +821,14 @@ def get_gui():
             last_vid = servable_media(library.get_session_meta().get("last_video_path"))
             last_audio = servable_media(library.get_session_meta().get("last_audio_path"))
             ensure_demo_voice()
-            rvc_upd, tts_upd = refresh_library_ui()
+            rvc_upd = refresh_library_ui()
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
             from occupancy import HOLD_TRAIN, snapshot
             from ui_status import KIND_ERROR, KIND_OK, KIND_RUN, RUN_TRAIN, status_update
 
             occ = snapshot()
-            rvc_on, tts_on = _convert_interactive()
+            rvc_on = _convert_interactive()
             from train_run import boot_status
 
             persisted = boot_status()
@@ -900,28 +844,24 @@ def get_gui():
                 status_txt = status_update(KIND_OK, READY_STATUS)
             return (
                 rvc_upd,
-                tts_upd,
                 last_vid,
                 last_vid,
                 song,
                 run,
                 status_txt,
                 rvc_on,
-                tts_on,
             )
 
         app.load(
             _boot_ui,
             outputs=[
                 rvc_pick,
-                tts_rvc_pick,
                 last_video,
                 remux_video_in,
                 aud,
                 button_base,
                 status,
                 rvc_btn,
-                tts_btn,
             ],
         )
         remix_btn.click(

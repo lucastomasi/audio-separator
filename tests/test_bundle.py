@@ -58,10 +58,13 @@ class BundlePyTests(unittest.TestCase):
             "train_run.py",
             "ui_status.py",
             "gpu_secrets.py",
-            "eleven_tts.py",
             "desktop.py",
         ):
             self.assertIn(name, names)
+        self.assertNotIn("eleven_tts.py", names)
+        self.assertNotIn("tts_rvc_engine.py", names)
+        self.assertFalse((ROOT / "eleven_tts.py").exists())
+        self.assertFalse((ROOT / "tts_rvc_engine.py").exists())
 
     def test_covers_local_imports(self):
         names = set(BUNDLE_PY)

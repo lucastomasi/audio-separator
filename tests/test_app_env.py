@@ -22,13 +22,14 @@ class AppEnvTests(unittest.TestCase):
         src = inspect.getsource(app_env)
         self.assertNotIn("lucastomasi", src)
 
-    def test_ui_copy_admits_youtube_and_edge(self):
+    def test_ui_copy_keeps_youtube_drops_tts(self):
         from pathlib import Path
 
         src = Path(__file__).resolve().parents[1] / "app.py"
         text = src.read_text(encoding="utf-8")
         self.assertIn("YouTube", text)
-        self.assertIn("Edge", text)
+        self.assertNotIn("Edge", text)
+        self.assertNotIn("ElevenLabs", text)
         self.assertNotIn("sin subir audio", text.lower())
         self.assertNotIn("Alquilar GPU RunPod", text)
         self.assertNotIn("RunPod", text)
@@ -49,7 +50,9 @@ class AppEnvTests(unittest.TestCase):
             text.index('gr.Tab("Entrenar", id="entrenar")'),
             text.index('gr.Tab("Ajustes", id="ajustes")'),
         )
-        self.assertIn('gr.Tab("Texto")', text)
+        self.assertNotIn('gr.Tab("Texto")', text)
+        self.assertNotIn("lock_tts_button", text)
+        self.assertNotIn("tts_rvc_job", text)
         self.assertNotIn('gr.Tab("2 Extraer")', text)
         self.assertNotIn('gr.Tab("3 Resultado")', text)
         self.assertNotIn('gr.Tab("4 Voz")', text)
@@ -89,7 +92,7 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("Completar instalación", text)
         self.assertIn("never download mid-job", text.lower())
         self.assertIn("YouTube", text)
-        self.assertIn("Edge/ElevenLabs", text)
+        self.assertIn("never reintroduce Edge/ElevenLabs", text)
 
     def test_rvc_job_missing_model_is_error(self):
         import inspect

@@ -102,9 +102,9 @@ class RvcEngineTests(unittest.TestCase):
         fake = os.path.join(tmp.name, "voice.pth")
         with open(fake, "wb") as handle:
             handle.write(b"x")
-        with mock.patch("app_jobs.refresh_library_ui", return_value=([], [])):
+        with mock.patch("app_jobs.refresh_library_ui", return_value=[]):
             with mock.patch("library.register") as register:
-                _a, _b, status = load_rvc_into_library(
+                _a, status = load_rvc_into_library(
                     fake, None, None, None
                 )
         register.assert_not_called()

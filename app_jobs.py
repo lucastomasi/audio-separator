@@ -21,7 +21,6 @@ from ui_status import (
     MSG_REMIX,
     MSG_REMUX,
     MSG_TRAIN,
-    MSG_TTS,
     READY as READY_STATUS,
     RUN_CLIP,
     RUN_CONVERT,
@@ -29,7 +28,6 @@ from ui_status import (
     RUN_REMIX,
     RUN_REMUX,
     RUN_TRAIN,
-    RUN_TTS,
     fail,
     status_update,
 )
@@ -101,11 +99,11 @@ def ensure_demo_voice():
 def load_demo_bundle():
     """Preload demo song + refresh RVC lists. Never disables other inputs."""
     ensure_demo_voice()
-    rvc_upd, tts_upd = refresh_library_ui()
+    rvc_upd = refresh_library_ui()
     song = demo_song_path()
     run = unlock_run_button() if song else gr.update()
     status = _ok(DEMO_STATUS if song else IDLE_STATUS)
-    return song, run, rvc_upd, tts_upd, status
+    return song, run, rvc_upd, status
 
 
 def _install_status_line():
@@ -165,22 +163,20 @@ def install_rvc_job(progress=gr.Progress()):
                 None,
                 gr.update(),
                 gr.update(),
-                gr.update(),
                 unlock,
             )
-        song, run, rvc_upd, tts_upd, demo_status = load_demo_bundle()
+        song, run, rvc_upd, _demo_status = load_demo_bundle()
         note = (
             f"Listo ({len(written)} archivos). "
             "Ya podés Separar / Entrenar / Convertir."
         )
         log = "\n".join(lines[-12:]) or note
-        return _ok(note), log, song, run, rvc_upd, tts_upd, unlock
+        return _ok(note), log, song, run, rvc_upd, unlock
     except Exception as error:
         return (
             _err("install_rvc_job", error, MSG_INSTALL),
             MSG_INSTALL,
             None,
-            gr.update(),
             gr.update(),
             gr.update(),
             unlock,
@@ -241,17 +237,6 @@ def lock_join_button():
 
 def unlock_join_button():
     return gr.update(interactive=True, value="Unir")
-
-
-def lock_tts_button():
-    return (
-        gr.update(interactive=False, value="Generando…"),
-        status_update(KIND_RUN, RUN_TTS),
-    )
-
-
-def unlock_tts_button():
-    return gr.update(interactive=True, value="Generar voz")
 
 
 def lock_clip_button():
@@ -367,8 +352,6 @@ def reset_job():
         None,
         None,
         None,
-        None,
-        "",
     )
 
 
@@ -381,8 +364,7 @@ def refresh_library():
 
 
 def refresh_library_ui():
-    rvc_upd = refresh_library()
-    return rvc_upd, rvc_upd
+    return refresh_library()
 
 
 def _gradio_path(file_obj):
@@ -448,14 +430,13 @@ def load_rvc_into_library(
         library.place_named(index, stem, ".index")
         loaded.append(".index")
     rvc_engine._converter = None
-    rvc_upd, tts_upd = refresh_library_ui()
+    rvc_upd = refresh_library_ui()
     if not loaded:
-        return rvc_upd, tts_upd, _ok("Elegí archivos y pulsá Cargar.")
+        return rvc_upd, _ok("Elegí archivos y pulsá Cargar.")
     hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
     rmvpe_ok = "sí" if rvc_engine.local_rmvpe_path() else "no"
     return (
         rvc_upd,
-        tts_upd,
         _ok(
             f"Cargado: {', '.join(loaded)}. Soporte → hubert: {hubert_ok}, rmvpe: {rmvpe_ok}."
         ),
@@ -497,7 +478,7 @@ def train_rvc_job(
         )
         import library
 
-        rvc_upd, tts_upd = refresh_library_ui()
+        rvc_upd = refresh_library_ui()
         rvc_upd = gr.update(
             choices=library.dropdown_choices(library.list_rvc_voices()),
             value=pth,
@@ -505,21 +486,21 @@ def train_rvc_job(
         note = f"Modelo listo: {os.path.basename(pth)}"
         if index:
             note += " (+index)"
-        note += ". Ya podés Convertir / Texto→RVC."
+        note += ". Ya podés Convertir."
         bar = _ok(note)
-        return rvc_upd, bar, tts_upd, unlock
+        return rvc_upd, bar, unlock
     except ValueError as error:
-        rvc_upd, tts_upd = refresh_library_ui()
+        rvc_upd = refresh_library_ui()
         text = str(error)
         if "sigue entrenando" in text or "Convertir está bloqueado" in text:
             bar = status_update(KIND_RUN, text)
         else:
             bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd, unlock
+        return rvc_upd, bar, unlock
     except Exception as error:
-        rvc_upd, tts_upd = refresh_library_ui()
+        rvc_upd = refresh_library_ui()
         bar = _err("train_rvc_job", error, MSG_TRAIN)
-        return rvc_upd, bar, tts_upd, unlock
+        return rvc_upd, bar, unlock
 
 
 def rvc_job(
@@ -611,40 +592,6 @@ def rvc_job(
         return None, None, _err("rvc_job", error, MSG_CONVERT), unlock
     except Exception as error:
         return None, None, _err("rvc_job", error, MSG_CONVERT), unlock
-
-
-def tts_rvc_job(text, rvc_model, edge_voice, pitch, progress=gr.Progress()):
-    unlock = unlock_tts_button()
-    try:
-        from tts_rvc_engine import resolve_edge_voice, speak_with_rvc
-
-        from tts_rvc_engine import tts_backend_label
-
-        try:
-            progress(0.15, desc=f"{tts_backend_label()}…")
-        except Exception:
-            pass
-
-        voice_id = resolve_edge_voice(edge_voice)
-        try:
-            progress(0.45, desc="Convirtiendo con RVC…")
-        except Exception:
-            pass
-        out, src = speak_with_rvc(
-            text,
-            rvc_model,
-            edge_voice=voice_id,
-            pitch=int(pitch or 0),
-        )
-        try:
-            progress(1.0, desc="Listo")
-        except Exception:
-            pass
-        return out, out, _ok(f"Listo ({src} → RVC)."), unlock
-    except ValueError as error:
-        return None, None, _err("tts_rvc_job", error, MSG_TTS), unlock
-    except Exception as error:
-        return None, None, _err("tts_rvc_job", error, MSG_TTS), unlock
 
 
 def remix_job(
