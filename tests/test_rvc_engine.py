@@ -116,7 +116,8 @@ class RvcEngineTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         hubert = os.path.join(tmp.name, "hubert_base")
         os.makedirs(hubert)
-        (open(os.path.join(hubert, "config.json"), "w")).write("{}")
+        with open(os.path.join(hubert, "config.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}")
         with open(os.path.join(hubert, "model.safetensors"), "wb") as handle:
             handle.write(b"w")
         rmvpe = os.path.join(tmp.name, "rmvpe.pt")
