@@ -31,3 +31,15 @@ Audio Separator is a **native desktop window** (`desktop.py` / pywebview), not a
 
 - Gradio only exists as the content inside pywebview.
 - Security assumes loopback + local token in that window, not a shared webpage.
+
+### Entry modules (`app.py`, `remix.py`)
+
+Both files are **tracked on `main`** (`desktop.py` imports `app.launch_app`; `app_jobs` imports `remix.remix_to_wav`). If imports fail, refresh the checkout (`git fetch origin main && git checkout main`) before reimplementing anything.
+
+On Linux cloud VMs, pywebview usually lacks GTK/Qt, so **`python desktop.py` is not a reliable smoke test**. After `.cursor/install.sh`, verify with:
+
+```bash
+.venv/bin/python -c "from app import build_server, launch_app; from remix import remix_to_wav"
+```
+
+Optional headless Gradio check (loopback + token): start `launch_app(prevent_thread_lock=True, …)` in a thread and poll `/` with `x-audio-separator-token` (same as `desktop.py`).
