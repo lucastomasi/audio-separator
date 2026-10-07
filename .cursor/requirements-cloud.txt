@@ -3,11 +3,11 @@
 # The app targets macOS (see requirements-macos.txt). That file is now
 # satisfiable: the Gradio app venv no longer pins transformers, and the
 # conversion/train stack lives in requirements-vc.txt.
-numpy<2
+numpy<3
 # This file installs the coherent, importable subset that every committed module
 # actually uses, plus the torch base and the Gradio web framework the app UI is
 # built on. torch/torchaudio are installed from the CPU index in install.sh.
-numpy<2
+numpy<3
 soundfile
 scipy
 picklescan
