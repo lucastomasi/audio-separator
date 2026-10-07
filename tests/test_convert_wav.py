@@ -144,6 +144,84 @@ class ConvertWavTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(out_v))
         self.assertTrue(os.path.abspath(out_v).startswith(os.path.abspath(downloads)))
 
+    def test_separate_non_wav_writes_under_output_dir(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = os.path.join(tmp.name, "Trabajos", "Separar")
+        uploads = os.path.join(tmp.name, "gradio_tmp")
+        downloads = os.path.join(tmp.name, "Downloads")
+        os.makedirs(root)
+        os.makedirs(uploads)
+        os.makedirs(downloads)
+        src = os.path.join(uploads, "in.wav")
+        vocal = os.path.join(root, "songmdx", "clip_Vocals.wav")
+        os.makedirs(os.path.dirname(vocal))
+        audio = np.zeros((2048, 2), dtype=np.float32)
+        sf.write(src, audio, 44100)
+        sf.write(vocal, audio, 44100)
+
+        converted_paths = []
+
+        def fake_convert(paths, media_dir, target_format):
+            converted_paths.append(media_dir)
+            self.assertTrue(
+                os.path.realpath(media_dir).startswith(os.path.realpath(root))
+            )
+            self.assertNotEqual(
+                os.path.realpath(media_dir), os.path.realpath(uploads)
+            )
+            out = os.path.join(media_dir, "clip_Vocals_converted.flac")
+            shutil.copy2(paths[0], out)
+            return [out]
+
+        def fake_copy(paths, labels):
+            dest = os.path.join(downloads, "voz.flac")
+            shutil.copy2(paths[0], dest)
+            return downloads, [dest]
+
+        with mock.patch.object(uvr_runtime, "output_dir", root):
+            with mock.patch.object(uvr_runtime, "get_hash", return_value="song"):
+                with mock.patch.object(
+                    uvr_runtime,
+                    "process_uvr_task",
+                    return_value=(vocal, None, None, vocal, vocal),
+                ):
+                    with mock.patch.object(
+                        uvr_runtime, "convert_format", side_effect=fake_convert
+                    ):
+                        with mock.patch(
+                            "uvr_runtime.copy_to_downloads", side_effect=fake_copy
+                        ):
+                            with mock.patch.object(
+                                uvr_runtime.librosa, "get_duration", return_value=1.0
+                            ):
+                                with mock.patch("library.set_session_meta"):
+                                    out_v, _bg, _files, status, _btn = (
+                                        uvr_runtime._sound_separate(
+                                            src,
+                                            "solo_voz",
+                                            False,
+                                            False,
+                                            False,
+                                            False,
+                                            0, 0, 0, 0,
+                                            0, 0,
+                                            0, 0, 0, 0,
+                                            0,
+                                            0, 0,
+                                            0, 0, 0,
+                                            0, 0, 0,
+                                            0,
+                                            0,
+                                            "FLAC",
+                                        )
+                                    )
+        self.assertEqual(len(converted_paths), 1)
+        self.assertTrue(os.path.isfile(out_v))
+        self.assertIn(downloads, status)
+
     def test_separate_hides_torch_nameerror(self):
         import uvr_runtime
 
