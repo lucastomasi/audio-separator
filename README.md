@@ -9,7 +9,7 @@ Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin intern
 - macOS 13+
 - CPU x86_64 o Rosetta 2
 - Python 3.12 (python.org o Homebrew) — lo usa el `.app` del clone la primera vez
-- ffmpeg (`brew install ffmpeg`) si abrís el clone; el zip full ya lo trae
+- ffmpeg: el zip full ya lo copia. En un clone, `requirements-macos.txt` instala `imageio-ffmpeg` (no hace falta `brew`) si no hay un ffmpeg en el PATH
 - ~3 GB libres para el `.app` standalone
 
 ## Arranque con un clic (sin Terminal)
@@ -74,8 +74,8 @@ Hay **dos venvs a propósito**. Un solo environment no puede satisfacer Gradio 6
 
 | Archivo | Para | Pins que importan |
 |---|---|---|
-| `requirements-macos.txt` | UI / UVR / desktop | `torch==2.2.2`, `gradio==6.20.0`, `huggingface-hub>=1.2,<2`. Sin transformers, coqui-tts ni infer-rvc-python. |
-| `requirements-vc.txt` | Convertir + Entrenar (`third_party/vc`) | `torch==2.2.2`, `transformers==4.53.3`, `huggingface-hub==0.36.2`, `librosa>=0.10,<0.11` |
+| `requirements-macos.txt` | UI / UVR / desktop | `torch==2.2.2`, `gradio==6.20.0`, `huggingface-hub>=1.2,<2`, `imageio-ffmpeg`. Sin transformers, coqui-tts ni infer-rvc-python. |
+| `requirements-vc.txt` | Convertir + Entrenar (`third_party/vc`) | `torch==2.2.2`, `transformers==4.53.3`, `huggingface-hub==0.36.2`, `librosa>=0.10,<0.11`, `faiss-cpu==1.10.0` (wheel x86_64 macOS 13), `imageio-ffmpeg` |
 | `requirements.txt` | Space/Linux | `torch==2.9.1` (no lo uses en el Mac Intel) |
 
 `torch==2.2.2` es el último wheel x86_64 de macOS. Coqui/XTTS no entra en el venv de la app; el TTS de la UI es Edge/ElevenLabs → RVC.

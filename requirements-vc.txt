@@ -7,12 +7,16 @@ torch==2.2.2
 torchvision==0.17.2
 torchaudio==2.2.2
 numpy>=1.26,<2
+# 1.10.0 ships macosx_10_14 x86_64 cp312 wheels (macOS 13). Newer faiss
+# wheels are macosx_14+/15+ and would not install on Ventura.
 faiss-cpu==1.10.0
 numba==0.60.0
 llvmlite==0.43.0
 librosa>=0.10,<0.11
 soxr
 soundfile
+# Same vendored ffmpeg as the app venv, so convert/train find a binary without brew.
+imageio-ffmpeg
 scipy
 einops
 huggingface-hub==0.36.2

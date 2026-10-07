@@ -23,6 +23,7 @@ class MacosRequirementsTests(unittest.TestCase):
         self.assertIn("torchaudio==2.2.2", pins)
         self.assertIn("gradio==6.20.0", pins)
         self.assertIn("scikit-learn", pins)
+        self.assertIn("imageio-ffmpeg", pins)
         self.assertTrue(any(p.startswith("huggingface-hub") for p in pins))
 
     def test_app_venv_does_not_pin_conflicting_ml_stack(self):
@@ -40,6 +41,8 @@ class MacosRequirementsTests(unittest.TestCase):
         self.assertIn("transformers==4.53.3", pins)
         self.assertIn("huggingface-hub==0.36.2", pins)
         self.assertIn("torchcrepe==0.0.24", pins)
+        self.assertIn("faiss-cpu==1.10.0", pins)
+        self.assertIn("imageio-ffmpeg", pins)
         self.assertTrue(any(p.startswith("librosa") for p in pins))
 
     def test_space_pins_untouched(self):
