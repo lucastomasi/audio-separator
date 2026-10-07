@@ -116,7 +116,6 @@ fi
 echo "==> library skeleton + RVC support weights"
 mkdir -p "$APPDIR/library/models/rvc/hubert_base"
 mkdir -p "$APPDIR/library/models/rvc_voices"
-mkdir -p "$APPDIR/library/models/xtts"
 mkdir -p "$APPDIR/library/models/uvr"
 mkdir -p "$APPDIR/library/voices"
 # Support weights (full standalone)

@@ -25,6 +25,11 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertIn("import gradio, torch", text)
         self.assertNotIn("import av, gradio, torch", text)
         self.assertIn("bootstrap_macos.sh", text)
+        self.assertNotIn("xtts", text)
+        self.assertNotIn("clone_engine", text)
+        self.assertNotIn("eleven_tts", text)
+        self.assertNotIn("tts_rvc_engine", text)
+        self.assertNotIn("edge-tts", text)
 
     def test_applio_embedder_does_not_wget(self):
         text = (ROOT / "third_party" / "vc" / "rvc" / "lib" / "utils.py").read_text(
@@ -63,8 +68,10 @@ class BundlePyTests(unittest.TestCase):
             self.assertIn(name, names)
         self.assertNotIn("eleven_tts.py", names)
         self.assertNotIn("tts_rvc_engine.py", names)
+        self.assertNotIn("clone_engine.py", names)
         self.assertFalse((ROOT / "eleven_tts.py").exists())
         self.assertFalse((ROOT / "tts_rvc_engine.py").exists())
+        self.assertFalse((ROOT / "clone_engine.py").exists())
 
     def test_covers_local_imports(self):
         names = set(BUNDLE_PY)

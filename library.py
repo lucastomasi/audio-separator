@@ -24,7 +24,6 @@ def _apply_paths():
     PATHS = {
         "uvr": os.path.join(ROOT, "models", "uvr"),
         "rvc": os.path.join(ROOT, "models", "rvc"),
-        "xtts": os.path.join(ROOT, "models", "xtts"),
         "rvc_voices": os.path.join(ROOT, "models", "rvc_voices"),
         "voices": os.path.join(ROOT, "voices"),
     }
@@ -52,12 +51,79 @@ def seed_support_weights():
     shutil.copytree(src, dst, dirs_exist_ok=True)
 
 
+_LEGACY_TTS_DIRNAMES = frozenset({"xtts", "xtts_models", "tts_rvc_work"})
+
+
+def _legacy_tts_candidates():
+    """Known leftover TTS folders from older installs / clones."""
+    data = data_home()
+    roots = [ROOT, os.path.dirname(ROOT), data]
+    try:
+        from app_env import home, package_dir
+
+        roots.extend([home(), package_dir()])
+    except Exception:
+        pass
+    seen = set()
+    for base in roots:
+        if not base:
+            continue
+        for path in (
+            os.path.join(base, "models", "xtts"),
+            os.path.join(base, "xtts_models"),
+            os.path.join(base, "library", "models", "xtts"),
+            os.path.join(base, "library", "tts_rvc_work"),
+            os.path.join(base, "Voces", "models", "xtts"),
+        ):
+            abs_path = os.path.abspath(path)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            yield abs_path
+
+
+def prune_legacy_tts_dirs():
+    """Remove leftover XTTS / TTS-RVC folders so a local checkout matches the app."""
+    for path in _legacy_tts_candidates():
+        if os.path.basename(path) not in _LEGACY_TTS_DIRNAMES:
+            continue
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def _scrub_xtts_index():
+    if not os.path.isfile(INDEX):
+        return
+    try:
+        with open(INDEX, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    items = data.get("items") or []
+    cleaned = [
+        item
+        for item in items
+        if isinstance(item, dict)
+        and item.get("kind") != "xtts"
+        and "/models/xtts/" not in str(item.get("path") or "").replace("\\", "/")
+    ]
+    if len(cleaned) == len(items):
+        return
+    data["items"] = cleaned
+    _save(data)
+
+
 def ensure_dirs():
     seed_support_weights()
+    prune_legacy_tts_dirs()
     for path in PATHS.values():
         os.makedirs(path, exist_ok=True)
     if not os.path.isfile(INDEX):
         _save({"items": []})
+    else:
+        _scrub_xtts_index()
 
 
 def _save(data):
@@ -313,11 +379,6 @@ def dropdown_choices(items):
 def rvc_support_dir():
     ensure_dirs()
     return PATHS["rvc"]
-
-
-def xtts_dir():
-    ensure_dirs()
-    return PATHS["xtts"]
 
 
 def uvr_dir():
