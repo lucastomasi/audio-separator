@@ -78,6 +78,19 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("fill_height=True", text)
         self.assertNotIn("fill_height=False", text)
 
+    def test_agents_md_locks_offline_core(self):
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Product (hard rule)", text)
+        self.assertIn("offline", text.lower())
+        self.assertIn("Completar instalación", text)
+        self.assertIn("never download mid-job", text.lower())
+        self.assertIn("YouTube", text)
+        self.assertIn("Edge/ElevenLabs", text)
+
     def test_rvc_job_missing_model_is_error(self):
         import inspect
 

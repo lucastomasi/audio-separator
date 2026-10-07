@@ -25,6 +25,7 @@ class RvcEngineTests(unittest.TestCase):
                 with self.assertRaises(ValueError) as ctx:
                     rvc_engine.require_support_models()
         self.assertIn("Faltan los modelos locales", str(ctx.exception))
+        self.assertIn("Completar instalación", str(ctx.exception))
 
     def test_convert_blocked_during_train(self):
         import occupancy
@@ -51,16 +52,18 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch.object(rvc_engine, "_scan_model"):
-            with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
-                with mock.patch.object(
-                    rvc_engine,
-                    "copy_to_downloads",
-                    return_value=(tmp.name, [out]),
-                ):
-                    result = rvc_engine.convert_voice(
-                        audio, model, index_path="/tmp/model.index"
-                    )
+        with mock.patch.object(rvc_engine, "require_support_models"):
+            with mock.patch.object(rvc_engine, "sync_support_into_applio"):
+                with mock.patch.object(rvc_engine, "_scan_model"):
+                    with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
+                        with mock.patch.object(
+                            rvc_engine,
+                            "copy_to_downloads",
+                            return_value=(tmp.name, [out]),
+                        ):
+                            result = rvc_engine.convert_voice(
+                                audio, model, index_path="/tmp/model.index"
+                            )
         self.assertEqual(result, out)
         infer.assert_called_once()
         self.assertEqual(infer.call_args[0][0], audio)
@@ -74,16 +77,18 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch.object(rvc_engine, "_scan_model"):
-            with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
-                rvc_engine.convert_voice(
-                    audio,
-                    model,
-                    pitch=2,
-                    index_rate=0.8,
-                    f0_method="rmvpe",
-                    copy_downloads=False,
-                )
+        with mock.patch.object(rvc_engine, "require_support_models"):
+            with mock.patch.object(rvc_engine, "sync_support_into_applio"):
+                with mock.patch.object(rvc_engine, "_scan_model"):
+                    with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
+                        rvc_engine.convert_voice(
+                            audio,
+                            model,
+                            pitch=2,
+                            index_rate=0.8,
+                            f0_method="rmvpe",
+                            copy_downloads=False,
+                        )
         kwargs = infer.call_args.kwargs
         self.assertEqual(kwargs["pitch"], 2)
         self.assertEqual(kwargs["index_rate"], 0.8)
@@ -105,6 +110,34 @@ class RvcEngineTests(unittest.TestCase):
         register.assert_not_called()
         text = status.get("value", status) if isinstance(status, dict) else status
         self.assertIn("hubert ignorado", str(text))
+
+    def test_sync_support_into_applio_links_local_files(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        hubert = os.path.join(tmp.name, "hubert_base")
+        os.makedirs(hubert)
+        (open(os.path.join(hubert, "config.json"), "w")).write("{}")
+        with open(os.path.join(hubert, "model.safetensors"), "wb") as handle:
+            handle.write(b"w")
+        rmvpe = os.path.join(tmp.name, "rmvpe.pt")
+        with open(rmvpe, "wb") as handle:
+            handle.write(b"r")
+        vc = os.path.join(tmp.name, "vc")
+        with mock.patch.object(rvc_engine, "local_hubert_path", return_value=hubert):
+            with mock.patch.object(rvc_engine, "local_rmvpe_path", return_value=rmvpe):
+                with mock.patch.object(rvc_engine, "vc_root", return_value=vc):
+                    rvc_engine.sync_support_into_applio()
+        dest = os.path.join(vc, "rvc", "models", "embedders", "contentvec", "config.json")
+        self.assertTrue(os.path.lexists(dest))
+        pred = os.path.join(vc, "rvc", "models", "predictors", "rmvpe.pt")
+        self.assertTrue(os.path.lexists(pred))
+
+    def test_convert_source_requires_local_weights(self):
+        import inspect
+
+        src = inspect.getsource(rvc_engine.convert_voice)
+        self.assertIn("require_support_models", src)
+        self.assertIn("sync_support_into_applio", src)
 
 
 if __name__ == "__main__":

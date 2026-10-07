@@ -145,10 +145,11 @@ def install_rvc_job(progress=gr.Progress()):
 
         written = install_first_time_assets(log=_log)
         try:
-            from rvc_engine import ensure_vc_engine
+            from rvc_engine import ensure_vc_engine, sync_support_into_applio
 
             _log("Preparando motor de conversión…")
             ensure_vc_engine()
+            sync_support_into_applio()
             written.append("motor")
         except Exception as exc:
             _log("Motor: falló")

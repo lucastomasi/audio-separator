@@ -1,5 +1,6 @@
 """Voice conversion: validate paths, scan .pth, run isolated engine."""
 import os
+import shutil
 
 from picklescan.scanner import scan_file_path
 
@@ -54,8 +55,53 @@ def require_support_models():
         missing.append("library/models/rvc/rmvpe.pt")
     if missing:
         raise ValueError(
-            "Faltan los modelos locales de RVC: " + ", ".join(missing)
+            "Faltan los modelos locales de RVC. Pulsá Completar instalación: "
+            + ", ".join(missing)
         )
+    return hubert, rmvpe
+
+
+def _replace_with_link(src, dest):
+    """Point dest at src (symlink). Copy only if the OS refuses links."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    src = os.path.realpath(src)
+    if os.path.isdir(dest) and not os.path.islink(dest):
+        shutil.rmtree(dest)
+    elif os.path.lexists(dest):
+        os.unlink(dest)
+    try:
+        os.symlink(src, dest)
+        return
+    except OSError:
+        pass
+    if os.path.isdir(src):
+        shutil.copytree(src, dest)
+    else:
+        shutil.copy2(src, dest)
+
+
+def sync_support_into_applio():
+    """Point Applio at library HuBERT / RMVPE. Never download."""
+    hubert, rmvpe = require_support_models()
+    root = vc_root()
+    pred = os.path.join(root, "rvc", "models", "predictors")
+    emb = os.path.join(root, "rvc", "models", "embedders", "contentvec")
+    os.makedirs(pred, exist_ok=True)
+    os.makedirs(emb, exist_ok=True)
+    for name in (
+        "config.json",
+        "preprocessor_config.json",
+        "model.safetensors",
+        "pytorch_model.bin",
+    ):
+        src = os.path.join(hubert, name)
+        if os.path.isfile(src):
+            _replace_with_link(src, os.path.join(emb, name))
+    if not os.path.isfile(os.path.join(emb, "model.safetensors")) and not os.path.isfile(
+        os.path.join(emb, "pytorch_model.bin")
+    ):
+        raise ValueError("Faltan pesos locales. Pulsá Completar instalación.")
+    _replace_with_link(rmvpe, os.path.join(pred, "rmvpe.pt"))
     return hubert, rmvpe
 
 
@@ -99,6 +145,8 @@ def convert_voice(
 
     occupancy.acquire(occupancy.HOLD_CONVERT)
     try:
+        require_support_models()
+        sync_support_into_applio()
         _scan_model(str(model_path))
         produced = run_vc_infer(
             str(audio_path),

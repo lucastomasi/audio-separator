@@ -27,6 +27,7 @@ class RvcTrainTests(unittest.TestCase):
                 with self.assertRaises(ValueError) as ctx:
                     rvc_train.require_train_assets()
         self.assertIn("Faltan pesos para entrenar", str(ctx.exception))
+        self.assertIn("Completar instalación", str(ctx.exception))
         self.assertIn("hubert_base/", str(ctx.exception))
 
     def test_classic_hubert_pt_not_enough_for_train(self):
