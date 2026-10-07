@@ -24,7 +24,6 @@ def _apply_paths():
     PATHS = {
         "uvr": os.path.join(ROOT, "models", "uvr"),
         "rvc": os.path.join(ROOT, "models", "rvc"),
-        "xtts": os.path.join(ROOT, "models", "xtts"),
         "rvc_voices": os.path.join(ROOT, "models", "rvc_voices"),
         "voices": os.path.join(ROOT, "voices"),
     }
@@ -313,11 +312,6 @@ def dropdown_choices(items):
 def rvc_support_dir():
     ensure_dirs()
     return PATHS["rvc"]
-
-
-def xtts_dir():
-    ensure_dirs()
-    return PATHS["xtts"]
 
 
 def uvr_dir():

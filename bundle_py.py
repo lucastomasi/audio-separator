@@ -11,7 +11,6 @@ BUNDLE_PY = (
     "rvc_api.py",
     "vc_runner.py",
     "library.py",
-    "clone_engine.py",
     "exports.py",
     "remix.py",
     "diarize.py",
