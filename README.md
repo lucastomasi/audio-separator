@@ -1,8 +1,8 @@
 # Audio Separator
 
-App local para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. El audio queda en disco.
+App **local** para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. Todo el audio se procesa en esta máquina; el resultado queda en disco. **No es un servicio online.**
 
-YouTube, Edge TTS y Completar instalación (Hugging Face / pesos) usan red. Separar, Entrenar y Convertir van offline solo si los modelos ya están en disco.
+Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin internet**. YouTube, Edge TTS y Completar instalación (solo el zip lite) son opcionales y sí usan red.
 
 ## Requisitos
 
@@ -31,12 +31,13 @@ Los zip **no** van en git. Se arman con:
 
 ## Flujo
 
-1. **Canción** — archivo o YouTube  
-2. **Extraer** — voz / instrumental (minutos en Intel)  
+1. **Canción** — archivo local (YouTube es opcional y usa red)  
+2. **Separar** — voz / instrumental en este Mac  
 3. **Resultado** — `~/Downloads/Audio Separator`  
 4. **Voz (RVC)** — Entrenar (cada epoch se guarda) → Convertir  
 5. **Unir**  
-6. **Texto → habla** — Edge (internet) → tu `.pth` RVC  
+6. **Texto → habla** — opcional: Edge/ElevenLabs (internet) → tu `.pth` RVC  
+
 
 Cerrar la ventana no corta un train ya largado. No relances el mismo nombre si sigue corriendo.
 

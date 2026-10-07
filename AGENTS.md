@@ -2,6 +2,16 @@
 
 ## Cursor Cloud specific instructions
 
+### Product (hard rule)
+
+Audio Separator is a **local Mac desktop app**. Processing runs on the user’s machine. It is **not** a cloud product, not a website, and not an online service.
+
+- Core flows (Separar, Entrenar, Convertir, Unir) must work **offline** once models are on disk.
+- The full standalone zip is **canned**: the destination Mac must not need to download weights.
+- Do **not** “fix” problems by adding cloud APIs, hosted inference, Hugging Face runtime pulls into the app venv, or new network-required stacks.
+- Do **not** treat Gradio’s localhost URL as the product surface for users or for UI QA.
+- Optional network helpers that already exist (YouTube fetch, Edge/ElevenLabs TTS, lite “Completar instalación”) are secondary. Never expand them, never make core flows depend on them, never reintroduce RunPod/GPU hire or similar.
+
 ### UI testing (hard rule)
 
 Audio Separator is a **native desktop window** (`desktop.py` / pywebview), not a website.
