@@ -70,7 +70,6 @@ button[aria-label="Login"],
 #rvc-btn button,
 #train-btn button,
 #join-btn button,
-#tts-rvc-btn button,
 #run-btn button,
 button.primary {
   background: #007AFF !important;
@@ -335,15 +334,11 @@ div.progress-bar {
 #rvc-btn,
 #train-btn,
 #join-btn,
-#tts-rvc-btn,
 #run-btn,
-#install-btn,
 #rvc-btn button,
 #train-btn button,
 #join-btn button,
-#tts-rvc-btn button,
-#run-btn button,
-#install-btn button {
+#run-btn button {
   background: #007AFF !important;
   color: #fff !important;
   border: none !important;
@@ -377,8 +372,7 @@ div.progress-bar {
 #run-btn,
 #rvc-btn,
 #train-btn,
-#join-btn,
-#tts-rvc-btn {
+#join-btn {
   min-height: 36px !important;
   border-radius: 8px !important;
   font-size: 0.9rem !important;
@@ -484,7 +478,6 @@ a[download],
   #train-btn,
   #rvc-btn,
   #join-btn,
-  #tts-rvc-btn,
   #install-btn {
     position: sticky;
     bottom: 8px;

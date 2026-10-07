@@ -714,7 +714,10 @@ def get_gui():
                 remix_audio,
                 remix_file,
                 rvc_audio,
+                rvc_in,
                 rvc_model,
+                join_ready,
+                remix_btn,
             ],
         )
         clip_btn.click(
@@ -825,7 +828,7 @@ def get_gui():
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
             from occupancy import HOLD_TRAIN, snapshot
-            from ui_status import KIND_ERROR, KIND_OK, KIND_RUN, RUN_TRAIN, status_update
+            from ui_status import KIND_OK, KIND_RUN, RUN_TRAIN, status_update
 
             occ = snapshot()
             rvc_on = _convert_interactive()

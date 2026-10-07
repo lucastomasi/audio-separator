@@ -352,6 +352,9 @@ def reset_job():
         None,
         None,
         None,
+        None,
+        "Falta la voz y el instrumental.",
+        gr.update(interactive=False, value="Unir"),
     )
 
 
