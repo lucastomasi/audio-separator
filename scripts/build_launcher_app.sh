@@ -55,5 +55,5 @@ fi
 
 echo "Listo: $DEST"
 echo "En el Mac Intel: doble clic (primera vez clic derecho → Abrir)."
-echo "Hace falta Python 3.12. ffmpeg (brew) si vas a separar/entrenar desde el clone."
+echo "Hace falta Python 3.12. ffmpeg: imageio-ffmpeg del venv, o brew, o el zip full."
 echo "Zip full enlatado: ./scripts/build_standalone.sh"

@@ -95,6 +95,7 @@ ensure_venv() {
 
   if probe "$venv/bin/python" "$marker"; then
     log "OK $label ($venv)"
+    link_ffmpeg "$venv"
     return 0
   fi
   if [[ ! -f "$req" ]]; then
@@ -110,7 +111,33 @@ ensure_venv() {
   if ! probe "$venv/bin/python" "$marker"; then
     die "No pude importar $label después de pip install -r $(basename "$req")."
   fi
+  link_ffmpeg "$venv"
   log "Listo $label"
+}
+
+# imageio-ffmpeg ships a binary not named "ffmpeg". Symlink so PATH finds it.
+link_ffmpeg() {
+  local venv="$1"
+  "$venv/bin/python" - <<'PY' || true
+import os, sys
+try:
+    import imageio_ffmpeg
+except ImportError:
+    raise SystemExit(0)
+exe = imageio_ffmpeg.get_ffmpeg_exe()
+dest = os.path.join(sys.prefix, "bin", "ffmpeg")
+if not exe or not os.path.isfile(exe):
+    raise SystemExit(0)
+try:
+    if os.path.lexists(dest):
+        if os.path.islink(dest):
+            os.remove(dest)
+        else:
+            raise SystemExit(0)
+    os.symlink(exe, dest)
+except OSError:
+    pass
+PY
 }
 
 [[ -f "$ROOT/desktop.py" ]] || die "No encuentro desktop.py en $ROOT"

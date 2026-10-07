@@ -53,6 +53,14 @@ def ffmpeg_binary():
     home = os.path.expanduser("~/.local/bin/ffmpeg")
     if os.path.isfile(home):
         return home
+    try:
+        import imageio_ffmpeg
+
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.isfile(exe):
+            return exe
+    except Exception:
+        pass
     return None
 
 

@@ -18,6 +18,8 @@ class LauncherScriptTests(unittest.TestCase):
         self.assertIn("python3.12", text)
         self.assertIn("import gradio, torch, webview", text)
         self.assertIn("import torch, transformers, librosa", text)
+        self.assertIn("link_ffmpeg", text)
+        self.assertIn("imageio_ffmpeg", text)
         mode = (ROOT / "scripts" / "bootstrap_macos.sh").stat().st_mode
         self.assertTrue(mode & stat.S_IXUSR)
 
@@ -88,7 +90,7 @@ if [[ "$(basename "$HERE")" == "MacOS" ]]; then
 fi
 """ % script.parent
         out = subprocess.check_output(["bash", "-c", snippet], text=True)
-        self.assertEqual(out.strip(), str(repo.resolve()))
+        self.assertEqual(os.path.realpath(out.strip()), os.path.realpath(repo))
 
 
 class DesktopWarmupTests(unittest.TestCase):

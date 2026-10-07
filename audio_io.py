@@ -1,11 +1,34 @@
 """Local audio helpers so we don't need librosa (and its numba/llvmlite stack)."""
 import json
 import math
+import os
+import shutil
 import subprocess
 
 import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
+
+
+def _ffmpeg_cmd():
+    try:
+        from youtube_lib import ffmpeg_binary
+
+        exe = ffmpeg_binary()
+        if exe:
+            return exe
+    except Exception:
+        pass
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
+def _ffprobe_cmd():
+    ffmpeg = _ffmpeg_cmd()
+    if ffmpeg and ffmpeg != "ffmpeg":
+        sibling = os.path.join(os.path.dirname(ffmpeg), "ffprobe")
+        if os.path.isfile(sibling) and os.access(sibling, os.X_OK):
+            return sibling
+    return shutil.which("ffprobe") or "ffprobe"
 
 
 def get_duration(filename=None, path=None):
@@ -16,7 +39,7 @@ def get_duration(filename=None, path=None):
     except Exception:
         probe = subprocess.check_output(
             [
-                "ffprobe",
+                _ffprobe_cmd(),
                 "-v",
                 "error",
                 "-show_entries",
@@ -57,7 +80,7 @@ def load(path, mono=False, sr=44100):
         stereo_path = f"{path}.decoded.wav"
         subprocess.check_call(
             [
-                "ffmpeg",
+                _ffmpeg_cmd(),
                 "-y",
                 "-loglevel",
                 "error",

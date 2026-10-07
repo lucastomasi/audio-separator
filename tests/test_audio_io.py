@@ -93,14 +93,40 @@ class AudioIoTests(unittest.TestCase):
 
     def test_duration_ffprobe_fallback(self):
         payload = json.dumps({"format": {"duration": "12.5"}}).encode()
-        with mock.patch.object(audio_io.sf, "SoundFile", side_effect=OSError("no")):
-            with mock.patch.object(
-                audio_io.subprocess, "check_output", return_value=payload
-            ) as probe:
-                duration = audio_io.get_duration(filename="missing.m4a")
+        with mock.patch.object(audio_io, "_ffprobe_cmd", return_value="ffprobe"):
+            with mock.patch.object(audio_io.sf, "SoundFile", side_effect=OSError("no")):
+                with mock.patch.object(
+                    audio_io.subprocess, "check_output", return_value=payload
+                ) as probe:
+                    duration = audio_io.get_duration(filename="missing.m4a")
         self.assertEqual(duration, 12.5)
         probe.assert_called_once()
         self.assertIn("ffprobe", probe.call_args[0][0])
+
+    def test_load_ffmpeg_fallback_uses_resolved_binary(self):
+        path = str(self.dir / "clip.m4a")
+        Path(path).write_bytes(b"not-wav")
+        wav = str(self.dir / "clip.m4a.decoded.wav")
+        real_read = sf.read
+
+        def fake_call(cmd):
+            self.assertEqual(cmd[0], "/tmp/imageio-ffmpeg")
+            n = int(44100 * 0.05)
+            sf.write(wav, np.zeros((n, 2), dtype=np.float32), 44100)
+
+        def read_side_effect(p, always_2d=True):
+            if str(p).endswith(".decoded.wav"):
+                return real_read(p, always_2d=always_2d)
+            raise OSError("no")
+
+        with mock.patch.object(audio_io, "_ffmpeg_cmd", return_value="/tmp/imageio-ffmpeg"):
+            with mock.patch.object(audio_io.sf, "read", side_effect=read_side_effect):
+                with mock.patch.object(
+                    audio_io.subprocess, "check_call", side_effect=fake_call
+                ):
+                    wave, sr = audio_io.load(path, mono=False, sr=44100)
+        self.assertEqual(sr, 44100)
+        self.assertEqual(wave.shape[0], 2)
 
 
 if __name__ == "__main__":

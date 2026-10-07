@@ -116,9 +116,14 @@ def _to_wav(src: Path, dest_wav: Path) -> Path:
     """Edge saves MPEG; convert to real WAV for RVC."""
     import subprocess
 
+    from youtube_lib import ffmpeg_binary
+
     dest_wav.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg = ffmpeg_binary()
+    if not ffmpeg:
+        raise RuntimeError("No encuentro ffmpeg.")
     cmd = [
-        "ffmpeg",
+        ffmpeg,
         "-y",
         "-loglevel",
         "error",

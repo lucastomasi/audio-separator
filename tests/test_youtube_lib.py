@@ -8,6 +8,7 @@ from youtube_lib import (
     download_audio,
     extract_audio_from_media,
     extract_youtube_id,
+    ffmpeg_binary,
     identity_line,
     parse_seconds,
     probe_youtube,
@@ -180,6 +181,17 @@ class DownloadAudioTests(unittest.TestCase):
             identity_line(ident["channel"], ident["title"], ident["id"]),
             "DotDager — CFK ERA DE DERECHA (abcdefghijk)",
         )
+
+    def test_ffmpeg_binary_falls_back_to_imageio(self):
+        fake = "/tmp/imageio-ffmpeg-bin"
+        imageio = mock.Mock()
+        imageio.get_ffmpeg_exe.return_value = fake
+        with mock.patch("youtube_lib.shutil.which", return_value=None):
+            with mock.patch(
+                "youtube_lib.os.path.isfile", side_effect=lambda p: p == fake
+            ):
+                with mock.patch.dict("sys.modules", {"imageio_ffmpeg": imageio}):
+                    self.assertEqual(ffmpeg_binary(), fake)
 
     def test_options_are_audio_only(self):
         opts = ydl_options(self.dir)

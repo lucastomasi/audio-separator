@@ -102,8 +102,13 @@ def convert_to_stereo_and_wav(audio_path):
     os.makedirs(output_dir, exist_ok=True)
     stereo_name = f"{os.path.splitext(os.path.basename(audio_path))[0]}_44100_stereo.wav"
     stereo_path = os.path.join(output_dir, stereo_name)
+    from youtube_lib import ffmpeg_binary
+
+    ffmpeg = ffmpeg_binary()
+    if not ffmpeg:
+        raise ValueError("No encuentro ffmpeg.")
     command = [
-        "ffmpeg",
+        ffmpeg,
         "-y",
         "-loglevel",
         "error",
