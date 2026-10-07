@@ -31,4 +31,3 @@ urllib3
 pywebview
 picklescan
 safetensors
-edge-tts

@@ -103,7 +103,7 @@ class TrainJobGateTests(unittest.TestCase):
                     ) as train:
                         with mock.patch(
                             "app_jobs.refresh_library_ui",
-                            return_value=(mock.Mock(), mock.Mock()),
+                            return_value=mock.Mock(),
                         ):
                             with mock.patch("library.dropdown_choices", return_value=[]):
                                 with mock.patch("library.list_rvc_voices", return_value=[]):

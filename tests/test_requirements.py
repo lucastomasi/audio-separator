@@ -32,6 +32,7 @@ class MacosRequirementsTests(unittest.TestCase):
         self.assertNotIn("transformers==", joined)
         self.assertNotIn("infer-rvc-python", joined)
         self.assertNotIn("coqui-tts", joined)
+        self.assertNotIn("edge-tts", joined)
 
     def test_vc_venv_keeps_known_good_transformers(self):
         pins = _pins(ROOT / "requirements-vc.txt")

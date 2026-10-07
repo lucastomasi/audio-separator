@@ -2,7 +2,7 @@
 
 App **local** para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. Todo el audio se procesa en esta máquina; el resultado queda en disco. **No es un servicio online.**
 
-Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin internet**. YouTube, Edge TTS y Completar instalación (solo el zip lite o un clone) son opcionales y sí usan red.
+Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin internet**. YouTube y Completar instalación (solo el zip lite o un clone) son opcionales y sí usan red.
 
 ## Requisitos
 
@@ -50,8 +50,7 @@ Los zip **no** van en git. Se arman en un Mac Intel (o Rosetta) que ya tenga Pyt
 2. **Separar** — voz / instrumental en este Mac  
 3. **Resultado** — `~/Downloads/Audio Separator`  
 4. **Voz (RVC)** — Entrenar (cada epoch se guarda) → Convertir  
-5. **Unir**  
-6. **Texto → habla** — opcional: Edge/ElevenLabs (internet) → tu `.pth` RVC  
+5. **Unir**
 
 Cerrar la ventana no corta un train ya largado. No relances el mismo nombre si sigue corriendo.
 
@@ -78,7 +77,7 @@ Hay **dos venvs a propósito**. Un solo environment no puede satisfacer Gradio 6
 | `requirements-vc.txt` | Convertir + Entrenar (`third_party/vc`) | `torch==2.2.2`, `transformers==4.53.3`, `huggingface-hub==0.36.2`, `librosa>=0.10,<0.11`, `faiss-cpu==1.10.0` (wheel x86_64 macOS 13), `imageio-ffmpeg` |
 | `requirements.txt` | Space/Linux | `torch==2.9.1` (no lo uses en el Mac Intel) |
 
-`torch==2.2.2` es el último wheel x86_64 de macOS. Coqui/XTTS no entra en el venv de la app; el TTS de la UI es Edge/ElevenLabs → RVC.
+`torch==2.2.2` es el último wheel x86_64 de macOS. Coqui/XTTS y Edge/ElevenLabs no entran: no hay Texto → habla en la app.
 
 ### Lo que no viene en el clone
 

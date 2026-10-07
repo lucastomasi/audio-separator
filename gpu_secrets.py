@@ -9,8 +9,6 @@ from app_env import data_dir
 
 KEYS = (
     "RUNPOD_API_KEY",
-    "ELEVENLABS_API_KEY",
-    "ELEVENLABS_VOICE_ID",
     "GEMINI_API_KEY",
     "HF_TOKEN",
     "RUNPOD_POD_ID",
