@@ -201,6 +201,23 @@ def _report_launch_failure():
         pass
 
 
+def resolve_server(token, probe_timeout=1.5):
+    """Pick a port we own. Never attach to a foreign local listener."""
+    from app_env import pick_port
+
+    for _ in range(32):
+        port = pick_port()
+        url = f"http://{HOST}:{port}/?{TOKEN_QUERY}={token}"
+        if not port_open(port):
+            threading.Thread(target=start_server, args=(port,), daemon=True).start()
+            return port, url, False
+        # Port answers: only reuse if it accepts our token.
+        if our_server_ready(url, token, timeout=probe_timeout):
+            return port, url, True
+        os.environ["AUDIO_SEPARATOR_PORT"] = str(port + 1)
+    raise RuntimeError("No hay puerto local libre para la app.")
+
+
 def main():
     import webview
 
@@ -210,11 +227,7 @@ def main():
     if not os.environ.get(TOKEN_ENV):
         os.environ[TOKEN_ENV] = secrets.token_urlsafe(32)
         token = os.environ[TOKEN_ENV]
-    port = pick_port()
-    url = f"http://{HOST}:{port}/?{TOKEN_QUERY}={token}"
-    already = port_open(port)
-    if not already:
-        threading.Thread(target=start_server, args=(port,), daemon=True).start()
+    port, url, already = resolve_server(token)
     threading.Thread(target=warmup_vc_worker, daemon=True).start()
 
     window = webview.create_window(
