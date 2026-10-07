@@ -18,7 +18,6 @@ class LibraryTests(unittest.TestCase):
             PATHS={
                 "uvr": os.path.join(self.root, "models", "uvr"),
                 "rvc": os.path.join(self.root, "models", "rvc"),
-                "xtts": os.path.join(self.root, "models", "xtts"),
                 "rvc_voices": os.path.join(self.root, "models", "rvc_voices"),
                 "voices": os.path.join(self.root, "voices"),
             },
@@ -29,6 +28,10 @@ class LibraryTests(unittest.TestCase):
     def test_empty_lists(self):
         self.assertEqual(library.list_rvc_voices(), [])
         self.assertEqual(library.list_voices(), [])
+
+    def test_paths_have_no_xtts(self):
+        self.assertNotIn("xtts", library.PATHS)
+        self.assertFalse(hasattr(library, "xtts_dir"))
 
     def test_register_and_list_voice(self):
         src = os.path.join(self.tmp.name, "clip.wav")
