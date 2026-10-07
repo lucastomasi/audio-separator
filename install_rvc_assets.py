@@ -9,6 +9,7 @@ Does not upload anything.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import urllib.error
@@ -150,6 +151,46 @@ def _link_or_copy(src: Path, dest: Path) -> None:
             shutil.copy2(src, dest)
 
 
+_DESKTOP_OFFLINE_ENV = (
+    "HF_HUB_OFFLINE",
+    "TRANSFORMERS_OFFLINE",
+    "HF_DATASETS_OFFLINE",
+)
+
+
+def _env_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "no"}
+
+
+@contextlib.contextmanager
+def _allow_hub_download():
+    """Completar instalación may fetch Hub weights. desktop.py sets HF offline."""
+    saved = {key: os.environ.get(key) for key in _DESKTOP_OFFLINE_ENV}
+    had_offline = _env_truthy(saved.get("HF_HUB_OFFLINE")) or _env_truthy(
+        saved.get("TRANSFORMERS_OFFLINE")
+    )
+    for key in _DESKTOP_OFFLINE_ENV:
+        os.environ.pop(key, None)
+    hub_constants = None
+    previous = None
+    try:
+        import huggingface_hub.constants as hub_constants
+
+        previous = hub_constants.HF_HUB_OFFLINE
+        hub_constants.HF_HUB_OFFLINE = False
+        yield
+    finally:
+        if hub_constants is not None:
+            hub_constants.HF_HUB_OFFLINE = True if had_offline else previous
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
     from huggingface_hub import hf_hub_download
 
@@ -163,12 +204,13 @@ def _download(repo_file: str, dest: Path, cache_dir: Path) -> None:
         token = _secret("HF_TOKEN")
     except Exception:
         token = None
-    cached = hf_hub_download(
-        repo_id=REPO,
-        filename=repo_file,
-        cache_dir=str(cache_dir) if cache_dir else None,
-        token=token or None,
-    )
+    with _allow_hub_download():
+        cached = hf_hub_download(
+            repo_id=REPO,
+            filename=repo_file,
+            cache_dir=str(cache_dir) if cache_dir else None,
+            token=token or None,
+        )
     _link_or_copy(Path(cached), dest)
 
 
