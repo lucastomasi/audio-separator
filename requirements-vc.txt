@@ -17,8 +17,9 @@ scipy
 einops
 huggingface-hub==0.36.2
 transformers==4.53.3
-torchcrepe>=0.0.23
+torchcrepe==0.0.24
 torchfcpe
+local-attention==1.10.0
 pedalboard
 noisereduce
 wget

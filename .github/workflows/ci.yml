@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Resolver pins (Intel Mac files must be internally satisfiable)
+        run: |
+          python -m pip install -U pip
+          python -m pip install --dry-run -r requirements-macos.txt
+          python -m pip install --dry-run -r requirements-vc.txt
       - run: >
           pip install
           "numpy<2" scipy soundfile gradio scikit-learn

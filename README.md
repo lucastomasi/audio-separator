@@ -2,16 +2,29 @@
 
 App **local** para Mac **Intel** (o Apple Silicon con Rosetta): separar voz/instrumental, entrenar y convertir voz con RVC, unir pistas. Todo el audio se procesa en esta máquina; el resultado queda en disco. **No es un servicio online.**
 
-Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin internet**. YouTube, Edge TTS y Completar instalación (solo el zip lite) son opcionales y sí usan red.
+Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin internet**. YouTube, Edge TTS y Completar instalación (solo el zip lite o un clone) son opcionales y sí usan red.
 
 ## Requisitos
 
 - macOS 13+
 - CPU x86_64 o Rosetta 2
-- Python 3.12 para desarrollo
+- Python 3.12 (python.org o Homebrew) — lo usa el `.app` del clone la primera vez
+- ffmpeg (`brew install ffmpeg`) si abrís el clone; el zip full ya lo trae
 - ~3 GB libres para el `.app` standalone
 
-## App empaquetada
+## Arranque con un clic (sin Terminal)
+
+El repo trae `Audio Separator.app` al lado de `desktop.py`. En el Finder: clic derecho → **Abrir**.
+
+Ese `.app` hace todo solo: crea `.venv` y `.venv-vc` si faltan, instala `requirements-macos.txt` + `requirements-vc.txt`, arranca el worker de conversión y abre la ventana nativa. El primer clic baja PyTorch 2.2.2 y puede tardar varios minutos. El log queda en `~/Library/Logs/Audio Separator/launch.log`.
+
+Para regenerar el `.app` (no hace falta en un clone normal):
+
+```bash
+./scripts/build_launcher_app.sh
+```
+
+## App empaquetada (zip full / lite)
 
 | Zip | Qué trae |
 |---|---|
@@ -22,12 +35,14 @@ Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin intern
 
 El alias de desarrollo en `~/grok` **no** es el producto.
 
-Los zip **no** van en git. Se arman con:
+Los zip **no** van en git. Se arman en un Mac Intel (o Rosetta) que ya tenga Python 3.12, ffmpeg y los pesos:
 
 ```bash
-./scripts/build_standalone.sh
+./scripts/build_standalone.sh        # si faltan .venv / .venv-vc, los crea
 ./scripts/build_standalone_lite.sh
 ```
+
+`build_standalone.sh` copia los venvs al `.app`. `macos_launcher.sh` (el ejecutable del `.app`) vuelve a instalar deps si el zip llegó incompleto y el Mac tiene Python 3.12.
 
 ## Flujo
 
@@ -40,7 +55,7 @@ Los zip **no** van en git. Se arman con:
 
 Cerrar la ventana no corta un train ya largado. No relances el mismo nombre si sigue corriendo.
 
-## Desarrollo
+## Desarrollo (manual, equivalente al .app)
 
 ```bash
 git clone https://github.com/lucastomasi/audio-separator.git
@@ -50,7 +65,20 @@ source .venv/bin/activate
 pip install -r requirements-macos.txt
 python3.12 -m venv .venv-vc
 .venv-vc/bin/pip install -r requirements-vc.txt
+python desktop.py
 ```
+
+O: `bash scripts/macos_launcher.sh` (mismo bootstrap que el `.app`).
+
+Hay **dos venvs a propósito**. Un solo environment no puede satisfacer Gradio 6.20 y el stack Applio a la vez:
+
+| Archivo | Para | Pins que importan |
+|---|---|---|
+| `requirements-macos.txt` | UI / UVR / desktop | `torch==2.2.2`, `gradio==6.20.0`, `huggingface-hub>=1.2,<2`. Sin transformers, coqui-tts ni infer-rvc-python. |
+| `requirements-vc.txt` | Convertir + Entrenar (`third_party/vc`) | `torch==2.2.2`, `transformers==4.53.3`, `huggingface-hub==0.36.2`, `librosa>=0.10,<0.11` |
+| `requirements.txt` | Space/Linux | `torch==2.9.1` (no lo uses en el Mac Intel) |
+
+`torch==2.2.2` es el último wheel x86_64 de macOS. Coqui/XTTS no entra en el venv de la app; el TTS de la UI es Edge/ElevenLabs → RVC.
 
 ### Lo que no viene en el clone
 
@@ -58,10 +86,6 @@ python3.12 -m venv .venv-vc
 |---|---|
 | Pesos RVC (HuBERT, RMVPE, f0G/D) | App → **Completar instalación**, o `library/models/rvc/` |
 | ONNX UVR | `mdx_models/*.onnx` (no se suben). El zip **full** es un enlatado: los copia del Mac de build. Sin esos archivos `build_standalone.sh` aborta. |
-
-```bash
-python desktop.py
-```
 
 ## iPhone (Safari, agregar a inicio)
 
