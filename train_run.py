@@ -232,8 +232,18 @@ def export_weight(exp_name: str, log: Path, epochs) -> str | None:
     root = Path(__file__).resolve().parent
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    runner = sys.executable
+    try:
+        import rvc_train
+
+        runner = rvc_train._engine_python()
+        env["PYTHONPATH"] = str(rvc_train.RVC_ROOT) + os.pathsep + env.get(
+            "PYTHONPATH", ""
+        )
+    except Exception:
+        pass
     cmd = [
-        sys.executable,
+        runner,
         "-m",
         "train_run",
         "export",

@@ -63,6 +63,11 @@ class TrainRunTests(unittest.TestCase):
         self.assertIn("_TRAIN_OK_CODES", inspect.getsource(rvc_train._run))
         self.assertIn(2333333, rvc_train._TRAIN_OK_CODES)
 
+    def test_export_weight_prefers_vc_python(self):
+        src = inspect.getsource(train_run.export_weight)
+        self.assertIn("_engine_python", src)
+        self.assertIn("PYTHONPATH", src)
+
     def test_execute_train_does_not_import_torch(self):
         src = inspect.getsource(rvc_train.execute_train)
         src += inspect.getsource(rvc_train.finish_train_publish)

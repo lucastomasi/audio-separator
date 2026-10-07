@@ -55,7 +55,7 @@ def require_rvc_webui():
 
 
 def _engine_python() -> str:
-    """Prefer the isolated conversion venv; fall back to this interpreter."""
+    """Prefer the isolated conversion/train venv (transformers + librosa)."""
     try:
         from vc_runner import vc_python
 
@@ -516,7 +516,7 @@ def _write_filelist_and_config(exp_dir: Path):
 
 
 def _is_infer_weight(path: Path) -> bool:
-    """True for extracted inference .pth (~50–80 MB). Never G_/D_ train dumps."""
+    """True for extracted inference .pth. Never G_/D_ train dumps."""
     name = path.name.lower()
     if name.startswith("g_") or name.startswith("d_"):
         return False
@@ -524,11 +524,13 @@ def _is_infer_weight(path: Path) -> bool:
         mb = path.stat().st_size / (1024 * 1024)
     except OSError:
         return False
+    if re.search(r"_\d+e_\d+s\.pth$", name) and mb >= 8:
+        return mb <= 200
     return 20 <= mb <= 150
 
 
 def _find_small_weight(exp_name):
-    """Prefer assets/weights (~50–80 MB). Never return G_*.pth / D_*.pth."""
+    """Prefer Applio `{exp}_{epoch}e_{step}s.pth`. Never return G_*.pth / D_*.pth."""
     search = []
     weights = RVC_ROOT / "assets" / "weights"
     logs = RVC_ROOT / "logs" / exp_name
@@ -536,11 +538,27 @@ def _find_small_weight(exp_name):
         search.extend(weights.glob("*.pth"))
     if logs.is_dir():
         search.extend(logs.glob("*.pth"))
+        search.extend(logs.glob(f"{exp_name}_*e_*s.pth"))
     if not search:
         return None
     exp = exp_name.lower()
-    named = [p for p in search if _is_infer_weight(p) and exp in p.name.lower()]
-    pool = named or [p for p in search if _is_infer_weight(p)]
+    unique = []
+    seen = set()
+    for path in search:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    applio = [
+        p
+        for p in unique
+        if _is_infer_weight(p) and re.search(rf"{re.escape(exp_name)}_\d+e_\d+s\.pth$", p.name, re.I)
+    ]
+    if applio:
+        return max(applio, key=lambda p: p.stat().st_mtime)
+    named = [p for p in unique if _is_infer_weight(p) and exp in p.name.lower()]
+    pool = named or [p for p in unique if _is_infer_weight(p)]
     if not pool:
         return None
     return max(pool, key=lambda p: p.stat().st_mtime)
@@ -572,19 +590,18 @@ def _find_index(exp_name):
 def _ensure_inference_weight(
     exp_name, log_path: Path | None = None, epochs=None
 ):
-    """Prefer assets/weights/<exp>.pth; else extract from G_*.pth via savee."""
+    """Prefer Applio extract `{exp}_*e_*s.pth`; else extract from G_*.pth."""
     def _log(msg: str):
         if log_path is None:
             return
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(msg.rstrip() + "\n")
 
-    expected = RVC_ROOT / "assets" / "weights" / f"{exp_name}.pth"
     existing = _find_small_weight(exp_name)
     if existing is not None:
         _log(f"[weight] usando {existing} ({existing.stat().st_size} bytes)")
         return existing
-    _log(f"[weight] no está {expected}; fallback desde G_*.pth")
+    _log(f"[weight] no está infer .pth; fallback Applio extract_model desde G_*.pth")
     logs = RVC_ROOT / "logs" / exp_name
     g_candidates = sorted(
         logs.glob("G_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True
@@ -596,15 +613,10 @@ def _ensure_inference_weight(
     if not config_path.is_file():
         _log("[weight] falta config.json para fallback")
         return None
-    weights_dir = RVC_ROOT / "assets" / "weights"
-    weights_dir.mkdir(parents=True, exist_ok=True)
+    logs.mkdir(parents=True, exist_ok=True)
     import torch
     from rvc_engine import _scan_model
-    from train.process_ckpt import savee
-    from train.utils import HParams
 
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    hps = HParams(**config)
     try:
         _scan_model(str(g_candidates[0]))
     except ValueError as exc:
@@ -620,17 +632,35 @@ def _ensure_inference_weight(
             "No pude leer el checkpoint de train de forma segura."
         ) from exc
     weight = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+    out = logs / f"{exp_name}_{epochs or _epochs()}e_0s.pth"
     prev = os.getcwd()
+    sys_path = list(sys.path)
     try:
         os.chdir(str(RVC_ROOT))
+        if str(RVC_ROOT) not in sys.path:
+            sys.path.insert(0, str(RVC_ROOT))
+        from rvc.train.process.extract_model import extract_model
+        from rvc.train.utils import HParams
+
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        hps = HParams(**config)
         _log(f"[weight] fallback cwd={os.getcwd()} from {g_candidates[0].name}")
-        msg = savee(weight, SR, 1, exp_name, epochs or _epochs(), VERSION, hps)
-        _log(f"[weight] savee: {msg}")
+        extract_model(
+            ckpt=weight,
+            sr=SR_HZ,
+            name=exp_name,
+            model_path=str(out),
+            epoch=epochs or _epochs(),
+            step=0,
+            hps=hps,
+            vocoder="HiFiGAN",
+        )
+        _log(f"[weight] extract_model -> {out}")
     finally:
         os.chdir(prev)
-    out = weights_dir / f"{exp_name}.pth"
+        sys.path[:] = sys_path
     if not out.is_file():
-        raise RuntimeError(f"No se pudo exportar weight de inferencia: {msg}")
+        raise RuntimeError(f"No se pudo exportar weight de inferencia: {out}")
     _log(f"[weight] escrito {out} ({out.stat().st_size} bytes)")
     return out
 

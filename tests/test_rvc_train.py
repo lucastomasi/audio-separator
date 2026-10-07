@@ -370,6 +370,19 @@ class RvcTrainTests(unittest.TestCase):
             found = rvc_train._find_small_weight("demo")
         self.assertEqual(found, small)
 
+    def test_find_small_weight_prefers_applio_extract(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        logs = root / "logs" / "demo"
+        logs.mkdir(parents=True)
+        (logs / "G_2333333.pth").write_bytes(b"x" * (400 * 1024 * 1024))
+        extracted = logs / "demo_10e_99s.pth"
+        extracted.write_bytes(b"y" * (40 * 1024 * 1024))
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            found = rvc_train._find_small_weight("demo")
+        self.assertEqual(found, extracted)
+
     def test_ensure_inference_weight_no_pickle_fallback(self):
         import inspect
         import types
@@ -378,6 +391,8 @@ class RvcTrainTests(unittest.TestCase):
         self.assertIn("weights_only=True", src)
         self.assertNotIn("weights_only=False", src)
         self.assertIn("de forma segura", src)
+        self.assertIn("extract_model", src)
+        self.assertNotIn("from train.process_ckpt import savee", src)
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
