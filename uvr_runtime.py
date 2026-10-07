@@ -39,7 +39,6 @@ import soundfile as sf
 from utils import (
     remove_directory_contents,
     create_directories,
-    download_manager,
 )
 import random
 from utils import logger
@@ -61,7 +60,6 @@ from mdx_model import (
     _MODEL_HASHES,
 )
 
-MDX_DOWNLOAD_LINK = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
 UVR_MODELS = [
     "UVR-MDX-NET-Voc_FT.onnx",
     "UVR_MDXNET_KARA_2.onnx",
@@ -145,10 +143,10 @@ def get_hash(filepath):
 
 
 def ensure_uvr_model(filename, progress=None):
+    """Use ONNX already on disk or in the local can. Never download mid-job."""
     dest = os.path.join(mdxnet_models_dir, filename)
     if os.path.isfile(dest) and os.path.getsize(dest) > 0:
         return dest
-    # Prefer the first-time install / local can before a mid-job download.
     try:
         from pathlib import Path
 
@@ -161,11 +159,9 @@ def ensure_uvr_model(filename, progress=None):
             return dest
     except Exception:
         pass
-    _tick(progress, 0.05, f"Bajando modelo UVR (gratis, una vez): {filename}")
-    download_manager(
-        os.path.join(MDX_DOWNLOAD_LINK, filename), mdxnet_models_dir
+    raise ValueError(
+        f"Falta el modelo UVR ({filename}). Pulsá Completar instalación."
     )
-    return dest
 
 
 def random_sleep():

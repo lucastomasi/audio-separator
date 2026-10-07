@@ -6,7 +6,6 @@ import soundfile as sf
 import numpy as np
 import re
 import unicodedata
-import wget
 from torch import nn
 
 import logging
@@ -114,24 +113,6 @@ def load_embedding(embedder_model, custom_embedder=None):
         "korean-hubert-base": os.path.join(embedder_root, "korean_hubert_base"),
     }
 
-    online_embedders = {
-        "contentvec": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/contentvec/pytorch_model.bin",
-        "spin": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin/pytorch_model.bin",
-        "spin-v2": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin-v2/pytorch_model.bin",
-        "chinese-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/chinese_hubert_base/pytorch_model.bin",
-        "japanese-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/japanese_hubert_base/pytorch_model.bin",
-        "korean-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean_hubert_base/pytorch_model.bin",
-    }
-
-    config_files = {
-        "contentvec": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/contentvec/config.json",
-        "spin": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin/config.json",
-        "spin-v2": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin-v2/config.json",
-        "chinese-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/chinese_hubert_base/config.json",
-        "japanese-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/japanese_hubert_base/config.json",
-        "korean-hubert-base": "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean_hubert_base/config.json",
-    }
-
     if embedder_model == "custom":
         if os.path.exists(custom_embedder):
             model_path = custom_embedder
@@ -145,13 +126,13 @@ def load_embedding(embedder_model, custom_embedder=None):
         safe_file = os.path.join(model_path, "model.safetensors")
         os.makedirs(model_path, exist_ok=True)
         if not os.path.exists(bin_file) and not os.path.exists(safe_file):
-            url = online_embedders[embedder_model]
-            print(f"Downloading {url} to {model_path}...")
-            wget.download(url, out=bin_file)
+            raise FileNotFoundError(
+                "Falta HuBERT local. Pulsá Completar instalación."
+            )
         if not os.path.exists(json_file):
-            url = config_files[embedder_model]
-            print(f"Downloading {url} to {model_path}...")
-            wget.download(url, out=json_file)
+            raise FileNotFoundError(
+                "Falta HuBERT local. Pulsá Completar instalación."
+            )
 
     use_safe = os.path.exists(os.path.join(model_path, "model.safetensors"))
     models = HubertModelWithFinalProj.from_pretrained(

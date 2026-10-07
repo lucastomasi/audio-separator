@@ -156,6 +156,57 @@ class ConvertWavTests(unittest.TestCase):
         self.assertTrue(hasattr(torch_mod, "cuda"))
         self.assertTrue(hasattr(ort_mod, "get_device"))
 
+    def test_ensure_uvr_model_uses_existing_file(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        name = "UVR-MDX-NET-Voc_FT.onnx"
+        path = os.path.join(tmp.name, name)
+        with open(path, "wb") as handle:
+            handle.write(b"onnx")
+        with mock.patch.object(uvr_runtime, "mdxnet_models_dir", tmp.name):
+            self.assertEqual(uvr_runtime.ensure_uvr_model(name), path)
+
+    def test_ensure_uvr_model_copies_from_can(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest_dir = os.path.join(tmp.name, "mdx")
+        can = os.path.join(tmp.name, "can")
+        os.makedirs(dest_dir)
+        os.makedirs(os.path.join(can, "mdx_models"))
+        name = "UVR-MDX-NET-Voc_FT.onnx"
+        with open(os.path.join(can, "mdx_models", name), "wb") as handle:
+            handle.write(b"from-can")
+        with mock.patch.object(uvr_runtime, "mdxnet_models_dir", dest_dir):
+            with mock.patch.dict(os.environ, {"AUDIO_SEPARATOR_CAN": can}):
+                out = uvr_runtime.ensure_uvr_model(name)
+        self.assertTrue(os.path.isfile(out))
+        with open(out, "rb") as handle:
+            self.assertEqual(handle.read(), b"from-can")
+
+    def test_ensure_uvr_model_does_not_download(self):
+        import inspect
+
+        import uvr_runtime
+
+        src = inspect.getsource(uvr_runtime.ensure_uvr_model)
+        self.assertNotIn("download_manager", src)
+        self.assertNotIn("Bajando modelo", src)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest_dir = os.path.join(tmp.name, "mdx")
+        can = os.path.join(tmp.name, "can")
+        os.makedirs(dest_dir)
+        os.makedirs(can)
+        with mock.patch.object(uvr_runtime, "mdxnet_models_dir", dest_dir):
+            with mock.patch.dict(os.environ, {"AUDIO_SEPARATOR_CAN": can}):
+                with self.assertRaises(ValueError) as ctx:
+                    uvr_runtime.ensure_uvr_model("UVR-MDX-NET-Voc_FT.onnx")
+        self.assertIn("Completar instalación", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

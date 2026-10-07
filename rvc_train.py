@@ -103,7 +103,7 @@ def require_train_assets():
             missing.append(label)
     if missing:
         raise ValueError(
-            "Faltan pesos para entrenar. Cargalos en el paso Entrenar: "
+            "Faltan pesos para entrenar. Pulsá Completar instalación: "
             + ", ".join(missing)
         )
     return {"hubert": hubert, "rmvpe": rmvpe, "g": g, "d": d}

@@ -25,6 +25,19 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertIn("import gradio, torch", text)
         self.assertNotIn("import av, gradio, torch", text)
 
+    def test_applio_embedder_does_not_wget(self):
+        text = (ROOT / "third_party" / "vc" / "rvc" / "lib" / "utils.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("wget.download", text)
+        self.assertNotIn("huggingface.co/IAHispano", text)
+        self.assertIn("Completar instalación", text)
+
+    def test_separar_does_not_download_onnx(self):
+        text = (ROOT / "uvr_runtime.py").read_text(encoding="utf-8")
+        self.assertNotIn("MDX_DOWNLOAD_LINK", text)
+        self.assertIn("Pulsá Completar instalación", text)
+
     def test_cloud_install_does_not_download_models(self):
         text = (ROOT / ".cursor" / "install.sh").read_text(encoding="utf-8")
         self.assertNotIn("TRvlvr", text)
