@@ -187,6 +187,17 @@ def _ask(proc: subprocess.Popen, payload: dict, timeout: float = 3600) -> dict:
     raise ValueError("Timeout esperando al motor de conversión.")
 
 
+def _infer_output_path() -> str:
+    """Writable path under allowed/export roots (not system temp)."""
+    from app_env import data_dir
+
+    out_dir = os.path.join(data_dir(), "rvc_output")
+    os.makedirs(out_dir, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=out_dir)
+    handle.close()
+    return handle.name
+
+
 def run_vc_infer(
     audio_path: str,
     model_path: str,
@@ -198,12 +209,11 @@ def run_vc_infer(
     protect: float = 0.33,
     filter_radius: int = 0,
 ) -> str:
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp.close()
+    out_path = _infer_output_path()
     job = {
         "cmd": "infer",
         "input": os.path.abspath(audio_path),
-        "output": tmp.name,
+        "output": out_path,
         "pth": os.path.abspath(model_path),
         "index": os.path.abspath(index_path) if index_path and os.path.isfile(str(index_path)) else "",
         "pitch": int(pitch),
