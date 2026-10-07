@@ -154,6 +154,11 @@ def spawn_supervisor(job: Path) -> subprocess.Popen:
     env = os.environ.copy()
     env["RVC_TRAIN_SUPERVISOR"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
+    env.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    env.setdefault("OMP_NUM_THREADS", "1")
+    env.setdefault("MKL_NUM_THREADS", "1")
+    env.setdefault("USE_LIBUV", "0")
+    env.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     root = Path(__file__).resolve().parent
     exp = "run"
     try:

@@ -30,7 +30,8 @@ _FEATURE_DIRS = (
     "extracted",
 )
 BATCH = 1
-WORKERS = 2
+# macOS + librosa/numba in a ProcessPool is an OpenMP crash on Intel.
+WORKERS = 1 if sys.platform == "darwin" else 2
 # Applio train.py uses os._exit(2333333) on a successful finish.
 _TRAIN_OK_CODES = {0, 2333333}
 
@@ -236,6 +237,20 @@ def _run(
     env["PYTHONPATH"] = str(RVC_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["RVC_AUDIO_FORCE_CPU"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
+    env["USE_LIBUV"] = "0"
+    env["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+    env["OMP_NUM_THREADS"] = env.get("OMP_NUM_THREADS") or "1"
+    env["MKL_NUM_THREADS"] = env.get("MKL_NUM_THREADS") or "1"
+    env["TOKENIZERS_PARALLELISM"] = "false"
+    env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+    try:
+        from youtube_lib import ffmpeg_binary
+
+        ffmpeg = ffmpeg_binary()
+        if ffmpeg:
+            env["PATH"] = os.path.dirname(ffmpeg) + os.pathsep + env.get("PATH", "")
+    except Exception:
+        pass
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as log:
         log.write("\n$ " + " ".join(cmd) + "\n")

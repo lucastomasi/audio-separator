@@ -79,6 +79,19 @@ class TrainRunTests(unittest.TestCase):
         self.assertNotIn("subprocess.PIPE", src)
         self.assertIn("stdout=log", src)
 
+    def test_run_sets_intel_mac_train_env(self):
+        src = inspect.getsource(rvc_train._run)
+        self.assertIn("KMP_DUPLICATE_LIB_OK", src)
+        self.assertIn("USE_LIBUV", src)
+        self.assertIn("RVC_AUDIO_FORCE_CPU", src)
+        self.assertIn("OMP_NUM_THREADS", src)
+        self.assertIn("ffmpeg_binary", src)
+
+    def test_supervisor_inherits_openmp_env(self):
+        src = inspect.getsource(train_run.spawn_supervisor)
+        self.assertIn("KMP_DUPLICATE_LIB_OK", src)
+        self.assertIn("USE_LIBUV", src)
+
     def test_latest_job_is_the_newest(self):
         train_run.write_job("vieja", ["/tmp/a.wav"], 5)
         train_run.write_job("nueva", ["/tmp/b.wav"], 12)

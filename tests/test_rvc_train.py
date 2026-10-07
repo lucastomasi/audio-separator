@@ -528,6 +528,38 @@ class RvcTrainTests(unittest.TestCase):
         self.assertTrue((repo / "voz.pth").is_file())
         self.assertEqual(repo.resolve(), outside.resolve())
 
+    def test_applio_train_honors_force_cpu_and_libuv(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "train.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("RVC_AUDIO_FORCE_CPU", text)
+        self.assertIn("os.environ.setdefault", text)
+        self.assertIn("darwin", text)
+        self.assertIn("use_loader_workers", text)
+        self.assertIn('num_workers": 4 if use_loader_workers else 0', text)
+
+    def test_darwin_uses_single_preprocess_worker(self):
+        import inspect
+
+        src = inspect.getsource(rvc_train)
+        self.assertIn('WORKERS = 1 if sys.platform == "darwin" else 2', src)
+
+    def test_preprocess_skips_process_pool_on_darwin(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "preprocess" / "preprocess.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("in_process", text)
+        self.assertIn("darwin", text)
+
+    def test_extract_skips_process_pool_on_darwin(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "extract" / "extract.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("_in_process_extract", text)
+        self.assertIn("darwin", text)
+
+    def test_hubert_from_pretrained_is_local_only(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "lib" / "utils.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("local_files_only=True", text)
+
 
 if __name__ == "__main__":
     unittest.main()

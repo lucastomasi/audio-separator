@@ -1,7 +1,11 @@
 import os
 import sys
 
-os.environ["USE_LIBUV"] = "0" if sys.platform == "win32" else "1"
+# libuv gloo hangs on macOS CPU (Intel) and is off on Windows. Linux keeps libuv.
+os.environ.setdefault(
+    "USE_LIBUV",
+    "0" if sys.platform in ("win32", "darwin") else "1",
+)
 import datetime
 import glob
 import json
@@ -191,7 +195,12 @@ def main():
     else:
         print("No wav file found.")
 
-    if torch.cuda.is_available():
+    if os.environ.get("RVC_AUDIO_FORCE_CPU") == "1":
+        device = torch.device("cpu")
+        gpus = [0]
+        n_gpus = 1
+        print("Training with CPU, this will take a long time.")
+    elif torch.cuda.is_available():
         device = torch.device("cuda")
         gpus = [int(item) for item in gpus.split("-")]
         n_gpus = len(gpus)
@@ -336,16 +345,20 @@ def run(
         shuffle=True,
     )
 
-    train_loader = DataLoader(
-        train_dataset,
-        num_workers=4,
-        shuffle=False,
-        pin_memory=True,
-        collate_fn=collate_fn,
-        batch_sampler=train_sampler,
-        persistent_workers=True,
-        prefetch_factor=8,
-    )
+    # DataLoader workers + OpenMP/librosa crash on Intel Mac CPU.
+    use_loader_workers = device.type == "cuda" and sys.platform != "darwin"
+    loader_kwargs = {
+        "dataset": train_dataset,
+        "num_workers": 4 if use_loader_workers else 0,
+        "shuffle": False,
+        "pin_memory": use_loader_workers,
+        "collate_fn": collate_fn,
+        "batch_sampler": train_sampler,
+    }
+    if use_loader_workers:
+        loader_kwargs["persistent_workers"] = True
+        loader_kwargs["prefetch_factor"] = 8
+    train_loader = DataLoader(**loader_kwargs)
 
     # Validations
     if len(train_loader) < 3:

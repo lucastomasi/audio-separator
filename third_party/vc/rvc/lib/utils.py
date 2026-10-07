@@ -136,6 +136,6 @@ def load_embedding(embedder_model, custom_embedder=None):
 
     use_safe = os.path.exists(os.path.join(model_path, "model.safetensors"))
     models = HubertModelWithFinalProj.from_pretrained(
-        model_path, use_safetensors=use_safe
+        model_path, use_safetensors=use_safe, local_files_only=True
     )
     return models
