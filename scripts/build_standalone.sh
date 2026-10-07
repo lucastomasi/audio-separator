@@ -10,6 +10,10 @@ VENV="$RES/venv"
 SRC_VENV="$ROOT/.venv"
 
 echo "==> Root: $ROOT"
+if [[ ! -x "$SRC_VENV/bin/python" || ! -x "$ROOT/.venv-vc/bin/python" ]]; then
+  echo "==> Faltan venvs; bootstrap desde requirements-macos.txt / requirements-vc.txt"
+  bash "$ROOT/scripts/bootstrap_macos.sh" --root "$ROOT"
+fi
 if [[ ! -x "$SRC_VENV/bin/python" ]]; then
   echo "ERROR: falta $SRC_VENV (creá el venv de desarrollo primero)."
   exit 1
@@ -133,8 +137,10 @@ fi
 printf '%s\n' '{"items": []}' > "$APPDIR/library/library.json"
 mkdir -p "$APPDIR/scripts"
 cp -f "$ROOT/scripts/ensure_vc_venv.sh" "$APPDIR/scripts/ensure_vc_venv.sh"
+cp -f "$ROOT/scripts/bootstrap_macos.sh" "$APPDIR/scripts/bootstrap_macos.sh"
+cp -f "$ROOT/scripts/macos_launcher.sh" "$APPDIR/scripts/macos_launcher.sh"
 cp -f "$ROOT/requirements-vc.txt" "$APPDIR/requirements-vc.txt"
-chmod +x "$APPDIR/scripts/ensure_vc_venv.sh"
+chmod +x "$APPDIR/scripts/ensure_vc_venv.sh" "$APPDIR/scripts/bootstrap_macos.sh"
 if [[ -d "$ROOT/third_party/vc" ]]; then
   mkdir -p "$APPDIR/third_party"
   rsync -a --delete --exclude '__pycache__' --exclude '.venv-vc' \

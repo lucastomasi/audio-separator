@@ -11,6 +11,15 @@ import soundfile as sf
 
 
 class ConvertWavTests(unittest.TestCase):
+    def test_convert_uses_ffmpeg_binary_not_path_ffmpeg(self):
+        import inspect
+
+        import uvr_runtime
+
+        src = inspect.getsource(uvr_runtime.convert_to_stereo_and_wav)
+        self.assertIn("ffmpeg_binary", src)
+        self.assertNotIn('"ffmpeg"', src)
+
     def test_stereo_44100_wav_skips_ffmpeg(self):
         import uvr_runtime
 
@@ -42,8 +51,9 @@ class ConvertWavTests(unittest.TestCase):
             sf.write(dest, np.zeros((4410, 2), dtype=np.float32), 44100)
             return fake
 
-        with mock.patch.object(uvr_runtime.subprocess, "Popen", side_effect=popen):
-            out = uvr_runtime.convert_to_stereo_and_wav(path)
+        with mock.patch("youtube_lib.ffmpeg_binary", return_value="ffmpeg"):
+            with mock.patch.object(uvr_runtime.subprocess, "Popen", side_effect=popen):
+                out = uvr_runtime.convert_to_stereo_and_wav(path)
         self.assertNotEqual(out, path)
         self.assertIn("44100", os.path.basename(out))
 

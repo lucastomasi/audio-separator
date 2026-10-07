@@ -1,6 +1,6 @@
 #!/bin/bash
 # Create/refresh isolated conversion venv. No host-user paths.
-# Bundled .app already ships venv-vc. Git checkout creates it from requirements-vc.txt.
+# Git checkout and incomplete .app: pip install from requirements-vc.txt.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REQ="$ROOT/requirements-vc.txt"
@@ -18,17 +18,19 @@ if [[ ! -f "$VC/infer_cli.py" ]]; then
   exit 1
 fi
 
-if [[ ! -x "${AUDIO_SEPARATOR_VC_PYTHON:-$VENV/bin/python}" ]]; then
-  if [[ "$ROOT" == *".app/Contents/Resources"* ]]; then
-    echo "este zip está incompleto: falta el motor de conversión (venv-vc)." >&2
-    echo "No instalo pip en el Mac de destino." >&2
+PY="${AUDIO_SEPARATOR_VC_PYTHON:-$VENV/bin/python}"
+if [[ ! -x "$PY" ]] || ! "$PY" -c "import torch, transformers, librosa" >/dev/null 2>&1; then
+  BOOT="$ROOT/scripts/bootstrap_macos.sh"
+  if [[ ! -f "$BOOT" ]]; then
+    echo "Falta scripts/bootstrap_macos.sh" >&2
     exit 1
   fi
-  PY_BOOT="$(command -v python3.12 || command -v python3)"
-  echo "Creando $VENV con $PY_BOOT…"
-  "$PY_BOOT" -m venv "$VENV"
-  "$VENV/bin/python" -m pip install --upgrade pip wheel
-  "$VENV/bin/python" -m pip install -r "$REQ"
+  APP_VENV="$ROOT/.venv"
+  if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
+    APP_VENV="$VIRTUAL_ENV"
+  fi
+  bash "$BOOT" --root "$ROOT" --app-venv "$APP_VENV" --vc-venv "$VENV"
+  PY="${AUDIO_SEPARATOR_VC_PYTHON:-$VENV/bin/python}"
 fi
 
 mkdir -p "$VC/rvc/models/predictors" "$VC/rvc/models/embedders/contentvec"
@@ -46,6 +48,5 @@ if [[ -d "$LIB_RVC/hubert_base" ]]; then
   done
 fi
 
-PY="${AUDIO_SEPARATOR_VC_PYTHON:-$VENV/bin/python}"
 "$PY" -c "import torch; print('vc-venv', torch.__version__)"
 echo "ok $VENV"

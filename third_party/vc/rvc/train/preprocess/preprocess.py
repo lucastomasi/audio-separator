@@ -320,30 +320,37 @@ def preprocess_training_set(
         )
         sys.exit(1)
     audio_length = []
+    jobs = [
+        (
+            pp,
+            file,
+            cut_preprocess,
+            process_effects,
+            noise_reduction,
+            reduction_strength,
+            chunk_len,
+            overlap_len,
+            normalization_mode,
+        )
+        for file in files
+    ]
+    # ProcessPool + librosa/numba OpenMP crashes on Intel Mac even with 1 worker.
+    in_process = num_processes <= 1 or sys.platform == "darwin"
     with tqdm(total=len(files)) as pbar:
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=num_processes
-        ) as executor:
-            futures = [
-                executor.submit(
-                    process_audio_wrapper,
-                    (
-                        pp,
-                        file,
-                        cut_preprocess,
-                        process_effects,
-                        noise_reduction,
-                        reduction_strength,
-                        chunk_len,
-                        overlap_len,
-                        normalization_mode,
-                    ),
-                )
-                for file in files
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                audio_length.append(future.result())
+        if in_process:
+            for job in jobs:
+                audio_length.append(process_audio_wrapper(job))
                 pbar.update(1)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=num_processes
+            ) as executor:
+                futures = [
+                    executor.submit(process_audio_wrapper, job) for job in jobs
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    audio_length.append(future.result())
+                    pbar.update(1)
 
     audio_length = sum(audio_length)
     save_dataset_duration(

@@ -56,7 +56,7 @@ SPLASH = """<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>Audio Separator</h1>
-    <p>Arrancando… el primer inicio puede tardar uno o dos minutos.</p>
+    <p>Arrancando… la primera vez instala lo que falte y puede tardar varios minutos.</p>
     <div class="bar" aria-hidden="true"><i></i></div>
   </div>
 </body>
@@ -115,6 +115,17 @@ def start_server(port):
         traceback.print_exc()
 
 
+def warmup_vc_worker():
+    """Create the conversion venv if needed and start the worker process."""
+    try:
+        from vc_runner import _get_worker, ensure_vc_engine
+
+        ensure_vc_engine()
+        _get_worker()
+    except Exception:
+        traceback.print_exc()
+
+
 def our_server_ready(url, token, timeout=300):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -168,7 +179,7 @@ def attach_when_ready(window, url, token):
     if not our_server_ready(url, token):
         window.load_html(
             SPLASH.replace(
-                "Arrancando… el primer inicio puede tardar uno o dos minutos.",
+                "Arrancando… la primera vez instala lo que falte y puede tardar varios minutos.",
                 "No se pudo arrancar Audio Separator.",
             )
         )
@@ -204,6 +215,7 @@ def main():
     already = port_open(port)
     if not already:
         threading.Thread(target=start_server, args=(port,), daemon=True).start()
+    threading.Thread(target=warmup_vc_worker, daemon=True).start()
 
     window = webview.create_window(
         "Audio Separator",

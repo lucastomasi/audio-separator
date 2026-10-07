@@ -370,6 +370,19 @@ class RvcTrainTests(unittest.TestCase):
             found = rvc_train._find_small_weight("demo")
         self.assertEqual(found, small)
 
+    def test_find_small_weight_prefers_applio_extract(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = rvc_train.Path(tmp.name)
+        logs = root / "logs" / "demo"
+        logs.mkdir(parents=True)
+        (logs / "G_2333333.pth").write_bytes(b"x" * (400 * 1024 * 1024))
+        extracted = logs / "demo_10e_99s.pth"
+        extracted.write_bytes(b"y" * (40 * 1024 * 1024))
+        with mock.patch.object(rvc_train, "RVC_ROOT", root):
+            found = rvc_train._find_small_weight("demo")
+        self.assertEqual(found, extracted)
+
     def test_ensure_inference_weight_no_pickle_fallback(self):
         import inspect
         import types
@@ -378,6 +391,8 @@ class RvcTrainTests(unittest.TestCase):
         self.assertIn("weights_only=True", src)
         self.assertNotIn("weights_only=False", src)
         self.assertIn("de forma segura", src)
+        self.assertIn("extract_model", src)
+        self.assertNotIn("from train.process_ckpt import savee", src)
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -512,6 +527,38 @@ class RvcTrainTests(unittest.TestCase):
         self.assertEqual((outside / "voz.pth").read_bytes(), b"model")
         self.assertTrue((repo / "voz.pth").is_file())
         self.assertEqual(repo.resolve(), outside.resolve())
+
+    def test_applio_train_honors_force_cpu_and_libuv(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "train.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("RVC_AUDIO_FORCE_CPU", text)
+        self.assertIn("os.environ.setdefault", text)
+        self.assertIn("darwin", text)
+        self.assertIn("use_loader_workers", text)
+        self.assertIn('num_workers": 4 if use_loader_workers else 0', text)
+
+    def test_darwin_uses_single_preprocess_worker(self):
+        import inspect
+
+        src = inspect.getsource(rvc_train)
+        self.assertIn('WORKERS = 1 if sys.platform == "darwin" else 2', src)
+
+    def test_preprocess_skips_process_pool_on_darwin(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "preprocess" / "preprocess.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("in_process", text)
+        self.assertIn("darwin", text)
+
+    def test_extract_skips_process_pool_on_darwin(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "train" / "extract" / "extract.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("_in_process_extract", text)
+        self.assertIn("darwin", text)
+
+    def test_hubert_from_pretrained_is_local_only(self):
+        path = rvc_train.RVC_ROOT / "rvc" / "lib" / "utils.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("local_files_only=True", text)
 
 
 if __name__ == "__main__":

@@ -106,23 +106,32 @@ def process_files(files, f0_method, device, threads):
             pbar.update(1)
 
 
+def _in_process_extract(devices):
+    return sys.platform == "darwin" or len(devices) <= 1
+
+
 def run_pitch_extraction(files, devices, f0_method, threads):
     devices_str = ", ".join(devices)
     print(f"Starting pitch extraction on {devices_str} using {f0_method}...")
     start_time = time.time()
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
-        tasks = [
-            executor.submit(
-                process_files,
-                files[i :: len(devices)],
-                f0_method,
-                devices[i],
-                threads // len(devices),
-            )
-            for i in range(len(devices))
-        ]
-        concurrent.futures.wait(tasks)
+    workers = max(1, len(devices))
+    args = [
+        (
+            files[i::workers],
+            f0_method,
+            devices[i],
+            max(1, threads // workers),
+        )
+        for i in range(workers)
+    ]
+    # ProcessPool + librosa/numba OpenMP crashes on Intel Mac.
+    if _in_process_extract(devices):
+        for payload in args:
+            process_files(*payload)
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+            tasks = [executor.submit(process_files, *payload) for payload in args]
+            concurrent.futures.wait(tasks)
 
     print(f"Pitch extraction completed in {time.time() - start_time:.2f} seconds.")
 
@@ -163,20 +172,27 @@ def run_embedding_extraction(
         f"Starting embedding extraction with {num_processes} cores on {devices_str}..."
     )
     start_time = time.time()
-    with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
-        tasks = [
-            executor.submit(
-                process_file_embedding,
-                files[i :: len(devices)],
-                embedder_model,
-                embedder_model_custom,
-                i,
-                devices[i],
-                threads // len(devices),
-            )
-            for i in range(len(devices))
-        ]
-        concurrent.futures.wait(tasks)
+    workers = max(1, len(devices))
+    args = [
+        (
+            files[i::workers],
+            embedder_model,
+            embedder_model_custom,
+            i,
+            devices[i],
+            max(1, threads // workers),
+        )
+        for i in range(workers)
+    ]
+    if _in_process_extract(devices):
+        for payload in args:
+            process_file_embedding(*payload)
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+            tasks = [
+                executor.submit(process_file_embedding, *payload) for payload in args
+            ]
+            concurrent.futures.wait(tasks)
 
     print(f"Embedding extraction completed in {time.time() - start_time:.2f} seconds.")
 

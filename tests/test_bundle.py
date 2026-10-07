@@ -24,6 +24,7 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertNotIn("RVC-WebUI", text)
         self.assertIn("import gradio, torch", text)
         self.assertNotIn("import av, gradio, torch", text)
+        self.assertIn("bootstrap_macos.sh", text)
 
     def test_applio_embedder_does_not_wget(self):
         text = (ROOT / "third_party" / "vc" / "rvc" / "lib" / "utils.py").read_text(
