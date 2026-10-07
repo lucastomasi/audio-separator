@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -32,6 +33,38 @@ class LibraryTests(unittest.TestCase):
     def test_paths_have_no_xtts(self):
         self.assertNotIn("xtts", library.PATHS)
         self.assertFalse(hasattr(library, "xtts_dir"))
+
+    def test_ensure_dirs_prunes_legacy_xtts(self):
+        leftover = os.path.join(self.root, "models", "xtts")
+        os.makedirs(leftover)
+        with open(os.path.join(leftover, "old.bin"), "wb") as handle:
+            handle.write(b"x")
+        with mock.patch.object(library, "data_home", return_value=self.tmp.name):
+            with mock.patch.object(library, "seed_support_weights"):
+                library.ensure_dirs()
+        self.assertFalse(os.path.isdir(leftover))
+        self.assertTrue(os.path.isdir(library.PATHS["rvc"]))
+        self.assertTrue(os.path.isdir(library.PATHS["uvr"]))
+        self.assertTrue(os.path.isdir(library.PATHS["voices"]))
+
+    def test_ensure_dirs_drops_xtts_index_items(self):
+        os.makedirs(self.root, exist_ok=True)
+        with open(library.INDEX, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "items": [
+                        {"kind": "xtts", "name": "old", "path": "/tmp/models/xtts/a.pth"},
+                        {"kind": "voices", "name": "ok", "path": "/tmp/voices/ok.wav"},
+                    ]
+                },
+                handle,
+            )
+        with mock.patch.object(library, "data_home", return_value=self.tmp.name):
+            with mock.patch.object(library, "seed_support_weights"):
+                library.ensure_dirs()
+        with open(library.INDEX, encoding="utf-8") as handle:
+            data = json.load(handle)
+        self.assertEqual([item["kind"] for item in data["items"]], ["voices"])
 
     def test_register_and_list_voice(self):
         src = os.path.join(self.tmp.name, "clip.wav")
