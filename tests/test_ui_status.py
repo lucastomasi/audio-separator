@@ -44,6 +44,8 @@ class UiStatusTests(unittest.TestCase):
         self.assertIn("Convirtiendo", ui_status.RUN_CONVERT)
         self.assertIn("instalación", ui_status.RUN_INSTALL.lower())
         self.assertIn("Uniendo", ui_status.RUN_REMIX)
+        self.assertIn("acordes", ui_status.RUN_CHORDS.lower())
+        self.assertIn("Intel", ui_status.RUN_CHORDS)
 
     def test_status_idle_sets_class(self):
         idle = ui_status.status_update(ui_status.KIND_IDLE, "idle")

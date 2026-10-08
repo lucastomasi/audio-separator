@@ -26,6 +26,7 @@ BUNDLE_PY = (
     "album_cover.py",
     "video_remux.py",
     "occupancy.py",
+    "chords.py",
     "train_run.py",
     "train_prep.py",
     "gpu_secrets.py",

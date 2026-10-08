@@ -60,6 +60,7 @@ class BundlePyTests(unittest.TestCase):
         names = set(BUNDLE_PY)
         for name in (
             "occupancy.py",
+            "chords.py",
             "train_run.py",
             "ui_status.py",
             "gpu_secrets.py",
