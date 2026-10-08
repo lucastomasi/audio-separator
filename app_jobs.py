@@ -22,6 +22,8 @@ from ui_status import (
     MSG_REMUX,
     MSG_TRAIN,
     READY as READY_STATUS,
+    MSG_CHORDS,
+    RUN_CHORDS,
     RUN_CLIP,
     RUN_CONVERT,
     RUN_INSTALL,
@@ -103,7 +105,7 @@ def load_demo_bundle():
     song = demo_song_path()
     run = unlock_run_button() if song else gr.update()
     status = _ok(DEMO_STATUS if song else IDLE_STATUS)
-    return song, run, rvc_upd, status
+    return song, run, rvc_upd, status, _chords_button_for_audio(song)
 
 
 def _install_status_line():
@@ -164,14 +166,15 @@ def install_rvc_job(progress=gr.Progress()):
                 gr.update(),
                 gr.update(),
                 unlock,
+                gr.update(),
             )
-        song, run, rvc_upd, _demo_status = load_demo_bundle()
+        song, run, rvc_upd, _demo_status, chords_on = load_demo_bundle()
         note = (
             f"Listo ({len(written)} archivos). "
             "Ya podés Separar / Entrenar / Convertir."
         )
         log = "\n".join(lines[-12:]) or note
-        return _ok(note), log, song, run, rvc_upd, unlock
+        return _ok(note), log, song, run, rvc_upd, unlock, chords_on
     except Exception as error:
         return (
             _err("install_rvc_job", error, MSG_INSTALL),
@@ -180,6 +183,7 @@ def install_rvc_job(progress=gr.Progress()):
             gr.update(),
             gr.update(),
             unlock,
+            gr.update(),
         )
 
 
@@ -250,6 +254,23 @@ def unlock_clip_button():
     return gr.update(interactive=True, value="Recortar")
 
 
+def lock_chords_button():
+    return (
+        gr.update(interactive=False, value="Estimando…"),
+        status_update(KIND_RUN, RUN_CHORDS),
+    )
+
+
+def unlock_chords_button():
+    return gr.update(interactive=True, value="Estimar acordes")
+
+
+def _chords_button_for_audio(path):
+    if path:
+        return unlock_chords_button()
+    return gr.update(interactive=False, value="Estimar acordes")
+
+
 def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
     unlock = unlock_download_button()
     empty_video = None
@@ -261,6 +282,7 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
             gr.update(),
             _ok("YouTube no está disponible aquí."),
             unlock,
+            gr.update(),
         )
     from youtube_lib import download_media, identity_line, probe_youtube
 
@@ -283,9 +305,9 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
         except Exception:
             pass
     except ValueError as error:
-        return None, empty_video, gr.update(), _err("audio_downloader", error, "No pude descargar."), unlock
+        return None, empty_video, gr.update(), _err("audio_downloader", error, "No pude descargar."), unlock, gr.update()
     except Exception as error:
-        return None, empty_video, gr.update(), _err("audio_downloader", error, "No pude descargar."), unlock
+        return None, empty_video, gr.update(), _err("audio_downloader", error, "No pude descargar."), unlock, gr.update()
     if reused:
         status = "Audio (WAV 48 kHz) ya estaba. Listo para separar."
     else:
@@ -310,7 +332,7 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
         )
     except Exception:
         pass
-    return path, video_path, unlock_run_button(), _ok(status), unlock
+    return path, video_path, unlock_run_button(), _ok(status), unlock, _chords_button_for_audio(path)
 
 
 def clip_for_clone(source_path, start, end):
@@ -333,8 +355,12 @@ def clip_for_clone(source_path, start, end):
 
 def on_audio_ready(path):
     if path:
-        return unlock_run_button(), _ok(READY_STATUS)
-    return gr.update(interactive=False, value="Separar audio"), _ok(IDLE_STATUS)
+        return unlock_run_button(), _ok(READY_STATUS), _chords_button_for_audio(path)
+    return (
+        gr.update(interactive=False, value="Separar audio"),
+        _ok(IDLE_STATUS),
+        _chords_button_for_audio(None),
+    )
 
 
 def reset_job():
@@ -355,6 +381,9 @@ def reset_job():
         None,
         "Falta la voz y el instrumental.",
         gr.update(interactive=False, value="Unir"),
+        "",
+        None,
+        _chords_button_for_audio(None),
     )
 
 
@@ -678,6 +707,45 @@ def remux_job(video_path, audio_path, progress=gr.Progress()):
         return None, _err("remux_job", error, MSG_REMUX)
     except Exception as error:
         return None, _err("remux_job", error, MSG_REMUX)
+
+
+def chords_job(audio_path, progress=gr.Progress()):
+    unlock = unlock_chords_button()
+    empty = "", None, unlock
+    try:
+        path = _gradio_path(audio_path)
+        if not path or not os.path.isfile(str(path)):
+            raise ValueError("Elegí una canción en Canción.")
+        import occupancy
+
+        occupancy.acquire(occupancy.HOLD_CHORDS)
+        try:
+            try:
+                progress(0.2, desc="Estimando acordes…")
+            except Exception:
+                pass
+            from chords import estimate_song
+
+            text, out_path, _segments = estimate_song(path)
+            try:
+                progress(0.85, desc="Guardando texto…")
+            except Exception:
+                pass
+            stem = os.path.splitext(os.path.basename(path))[0] or "cancion"
+            _export_dir, copied = copy_to_downloads([out_path], [f"{stem}_acordes"])
+            saved = copied[0] if copied else out_path
+            return (
+                text,
+                saved,
+                _ok("Listo. El texto está en Descargas/Audio Separator."),
+                unlock,
+            )
+        finally:
+            occupancy.release(occupancy.HOLD_CHORDS)
+    except ValueError as error:
+        return empty[0], empty[1], _err("chords_job", error, MSG_CHORDS), unlock
+    except Exception as error:
+        return empty[0], empty[1], _err("chords_job", error, MSG_CHORDS), unlock
 
 
 def cover_job(title, artist, audio_path, artistic):

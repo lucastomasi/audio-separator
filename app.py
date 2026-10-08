@@ -72,7 +72,10 @@ from app_jobs import (
     lock_train_button,
     lock_join_button,
     lock_clip_button,
+    lock_chords_button,
+    unlock_chords_button,
     unlock_train_button,
+    chords_job,
     _gradio_path,
     _install_status_line,
 )
@@ -520,6 +523,33 @@ def get_gui():
                             buttons=[],
                         )
 
+            with gr.Tab("Acordes", id="acordes"):
+                with gr.Group(elem_classes=["step"]):
+                    gr.Markdown("Acordes", elem_classes=["panel-title"])
+                    gr.Markdown(
+                        "Usa la canción de Canción. "
+                        "Estimación local (no es la tablatura de la grabación). "
+                        "Formas abiertas típicas de guitarra y patrón root-5 de bajo.",
+                        elem_classes=["hint"],
+                    )
+                    chords_btn = gr.Button(
+                        "Estimar acordes",
+                        variant="primary",
+                        elem_id="chords-btn",
+                        interactive=False,
+                    )
+                    chords_out = gr.Textbox(
+                        label="Acordes y tablatura",
+                        interactive=False,
+                        lines=18,
+                        max_lines=28,
+                        elem_id="chords-out",
+                    )
+                    chords_file = out_file("Texto en Descargas")
+                    open_chords_btn = gr.Button(
+                        "Mostrar en Finder", variant="secondary"
+                    )
+
             with gr.Tab("Entrenar", id="entrenar"):
                 with gr.Group(elem_classes=["step"]):
                     gr.Markdown("Entrenar", elem_classes=["panel-title"])
@@ -647,13 +677,14 @@ def get_gui():
                 button_base,
                 rvc_pick,
                 install_btn,
+                chords_btn,
             ],
             show_progress="full",
             concurrency_limit=1,
         )
         demo_btn.click(
             load_demo_bundle,
-            outputs=[aud, button_base, rvc_pick, status],
+            outputs=[aud, button_base, rvc_pick, status, chords_btn],
         )
         url_button_gui.click(
             lock_download_button,
@@ -661,12 +692,12 @@ def get_gui():
         ).then(
             audio_downloader,
             [url_media_gui, want_video],
-            [aud, last_video, button_base, status, url_button_gui],
+            [aud, last_video, button_base, status, url_button_gui, chords_btn],
             show_progress="full",
             concurrency_limit=1,
         )
         last_video.change(lambda p: p, last_video, remux_video_in)
-        aud.change(on_audio_ready, aud, [button_base, status])
+        aud.change(on_audio_ready, aud, [button_base, status, chords_btn])
         stem_gui.change(
             show_vocal_components,
             [stem_gui],
@@ -699,6 +730,10 @@ def get_gui():
             _open_folder,
             outputs=[status],
         )
+        open_chords_btn.click(
+            _open_folder,
+            outputs=[status],
+        )
         nueva_btn.click(
             reset_job,
             outputs=[
@@ -718,6 +753,9 @@ def get_gui():
                 rvc_model,
                 join_ready,
                 remix_btn,
+                chords_out,
+                chords_file,
+                chords_btn,
             ],
         )
         clip_btn.click(
@@ -827,6 +865,9 @@ def get_gui():
             rvc_upd = refresh_library_ui()
             song = last_audio or demo_song_path()
             run = unlock_run_button() if song else gr.update()
+            chords_on = unlock_chords_button() if song else gr.update(
+                interactive=False, value="Estimar acordes"
+            )
             from occupancy import HOLD_TRAIN, snapshot
             from ui_status import KIND_OK, KIND_RUN, RUN_TRAIN, status_update
 
@@ -853,6 +894,7 @@ def get_gui():
                 run,
                 status_txt,
                 rvc_on,
+                chords_on,
             )
 
         app.load(
@@ -865,7 +907,18 @@ def get_gui():
                 button_base,
                 status,
                 rvc_btn,
+                chords_btn,
             ],
+        )
+        chords_btn.click(
+            lock_chords_button,
+            outputs=[chords_btn, status],
+        ).then(
+            chords_job,
+            inputs=[aud],
+            outputs=[chords_out, chords_file, status, chords_btn],
+            show_progress="full",
+            concurrency_limit=1,
         )
         remix_btn.click(
             lock_join_button,

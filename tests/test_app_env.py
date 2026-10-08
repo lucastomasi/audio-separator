@@ -40,8 +40,17 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn('gr.Tab("2 Separar", id="separar")', text)
         self.assertIn('gr.Tab("3 Convertir", id="convertir")', text)
         self.assertIn('gr.Tab("4 Unir", id="unir")', text)
+        self.assertIn('gr.Tab("Acordes", id="acordes")', text)
         self.assertIn('gr.Tab("Entrenar", id="entrenar")', text)
         self.assertIn('gr.Tab("Ajustes", id="ajustes")', text)
+        self.assertLess(
+            text.index('gr.Tab("4 Unir", id="unir")'),
+            text.index('gr.Tab("Acordes", id="acordes")'),
+        )
+        self.assertLess(
+            text.index('gr.Tab("Acordes", id="acordes")'),
+            text.index('gr.Tab("Entrenar", id="entrenar")'),
+        )
         self.assertLess(
             text.index('gr.Tab("4 Unir", id="unir")'),
             text.index('gr.Tab("Entrenar", id="entrenar")'),
@@ -78,6 +87,9 @@ class AppEnvTests(unittest.TestCase):
         self.assertIn("lock_convert_button", text)
         self.assertIn("lock_train_button", text)
         self.assertIn("lock_join_button", text)
+        self.assertIn("lock_chords_button", text)
+        self.assertIn("Estimar acordes", text)
+        self.assertIn("no es la tablatura de la grabación", text.lower())
         self.assertIn("fill_height=True", text)
         self.assertNotIn("fill_height=False", text)
 

@@ -47,6 +47,22 @@ class OccupancyTests(unittest.TestCase):
                 self.assertIsNone(occupancy.snapshot())
                 self.assertFalse(path.is_file())
 
+    def test_chords_blocks_convert(self):
+        with mock.patch.object(occupancy, "_ps_commands", return_value=""):
+            occupancy.acquire(occupancy.HOLD_CHORDS)
+            with self.assertRaises(ValueError) as ctx:
+                occupancy.acquire(occupancy.HOLD_CONVERT)
+        self.assertIn("acordes", str(ctx.exception))
+        occupancy.release(occupancy.HOLD_CHORDS)
+
+    def test_uvr_blocks_chords(self):
+        with mock.patch.object(occupancy, "_ps_commands", return_value=""):
+            occupancy.acquire(occupancy.HOLD_UVR)
+            with self.assertRaises(ValueError) as ctx:
+                occupancy.acquire(occupancy.HOLD_CHORDS)
+        self.assertIn("separando", str(ctx.exception))
+        occupancy.release(occupancy.HOLD_UVR)
+
     def test_lock_path_under_data_dir(self):
         path = occupancy.lock_path()
         self.assertTrue(str(path).startswith(self.root))

@@ -63,6 +63,13 @@ class BusyLockTests(unittest.TestCase):
         self.assertFalse(btn.get("interactive", True))
         self.assertIn("is-run", status.get("elem_classes") or [])
 
+    def test_lock_chords_sets_run_status(self):
+        btn, status = app_jobs.lock_chords_button()
+        self.assertFalse(btn.get("interactive", True))
+        self.assertIn("Estimando", btn.get("value", ""))
+        self.assertIn("is-run", status.get("elem_classes") or [])
+        self.assertIn("acordes", str(status.get("value", "")).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,15 +11,18 @@ from pathlib import Path
 HOLD_UVR = "uvr"
 HOLD_TRAIN = "train"
 HOLD_CONVERT = "convert"
+HOLD_CHORDS = "chords"
 
 MSG_TRAIN = "Hay un entrenamiento en curso. Convertir está bloqueado."
 MSG_CONVERT = "Hay una conversión en curso. Esperá a que termine."
 MSG_UVR = "Se está separando audio. Esperá a que termine."
+MSG_CHORDS = "Se están estimando acordes. Esperá a que termine."
 
 _MESSAGES = {
     HOLD_TRAIN: MSG_TRAIN,
     HOLD_CONVERT: MSG_CONVERT,
     HOLD_UVR: MSG_UVR,
+    HOLD_CHORDS: MSG_CHORDS,
 }
 
 

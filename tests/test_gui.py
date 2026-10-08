@@ -41,13 +41,13 @@ class GuiWiringTests(unittest.TestCase):
     def test_event_arity_matches_handlers(self):
         expected = {
             "lock_install_button": (0, 2),
-            "install_rvc_job": (0, 6),
-            "load_demo_bundle": (0, 4),
+            "install_rvc_job": (0, 7),
+            "load_demo_bundle": (0, 5),
             "lock_download_button": (0, 2),
-            "audio_downloader": (2, 5),
-            "on_audio_ready": (1, 2),
+            "audio_downloader": (2, 6),
+            "on_audio_ready": (1, 3),
             "show_vocal_components": (1, 4),
-            "reset_job": (0, 16),
+            "reset_job": (0, 19),
             "lock_clip_button": (0, 2),
             "clip_for_clone": (3, 3),
             "refresh_library_ui": (0, 1),
@@ -61,7 +61,9 @@ class GuiWiringTests(unittest.TestCase):
             "_continue_last": (0, 4),
             "lock_train_button": (0, 2),
             "_on_train": (3, 4),
-            "_boot_ui": (0, 7),
+            "_boot_ui": (0, 8),
+            "lock_chords_button": (0, 2),
+            "chords_job": (1, 4),
             "lock_join_button": (0, 2),
             "remix_job": (7, 4),
             "sound_separate": (28, 5),
@@ -80,10 +82,14 @@ class GuiWiringTests(unittest.TestCase):
 
     def test_reset_job_clears_convert_and_join(self):
         out = app_jobs.reset_job()
-        self.assertEqual(len(out), 16)
+        self.assertEqual(len(out), 19)
         self.assertIsNone(out[12])
         self.assertEqual(out[14], "Falta la voz y el instrumental.")
         self.assertFalse(out[15].get("interactive", True))
+        self.assertEqual(out[16], "")
+        self.assertIsNone(out[17])
+        self.assertFalse(out[18].get("interactive", True))
+        self.assertEqual(out[18].get("value"), "Estimar acordes")
 
 
 class GuiCssTests(unittest.TestCase):
@@ -91,7 +97,8 @@ class GuiCssTests(unittest.TestCase):
         css = (ROOT / "ui.css").read_text(encoding="utf-8")
         self.assertNotIn("tts-rvc-btn", css)
         self.assertIn("#run-btn", css)
-        self.assertIn("#join-btn button,\n#run-btn button {", css)
+        self.assertIn("#chords-btn button", css)
+        self.assertIn("#run-btn button", css)
         self.assertNotIn("#install-btn button", css)
 
 
@@ -130,10 +137,13 @@ class GuiHeadlessCopyTests(unittest.TestCase):
             "2 Separar",
             "3 Convertir",
             "4 Unir",
+            "Acordes",
             "Entrenar",
             "Ajustes",
         ):
             self.assertIn(label, text)
+        self.assertIn("Estimar acordes", text)
+        self.assertIn("no es la tablatura de la grabación", text)
         self.assertNotIn(">Texto<", text)
         self.assertNotIn("tts-rvc-btn", text)
         self.assertNotIn("ElevenLabs", text)

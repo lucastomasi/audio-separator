@@ -71,6 +71,7 @@ button[aria-label="Login"],
 #train-btn button,
 #join-btn button,
 #run-btn button,
+#chords-btn button,
 button.primary {
   background: #007AFF !important;
   color: #fff !important;
@@ -335,10 +336,12 @@ div.progress-bar {
 #train-btn,
 #join-btn,
 #run-btn,
+#chords-btn,
 #rvc-btn button,
 #train-btn button,
 #join-btn button,
-#run-btn button {
+#run-btn button,
+#chords-btn button {
   background: #007AFF !important;
   color: #fff !important;
   border: none !important;
@@ -372,11 +375,19 @@ div.progress-bar {
 #run-btn,
 #rvc-btn,
 #train-btn,
-#join-btn {
+#join-btn,
+#chords-btn {
   min-height: 36px !important;
   border-radius: 8px !important;
   font-size: 0.9rem !important;
   font-weight: 600 !important;
+}
+
+#chords-out textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12px !important;
+  white-space: pre !important;
+  line-height: 1.35 !important;
 }
 
 .action-row {
@@ -478,6 +489,7 @@ a[download],
   #train-btn,
   #rvc-btn,
   #join-btn,
+  #chords-btn,
   #install-btn {
     position: sticky;
     bottom: 8px;

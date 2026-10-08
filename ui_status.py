@@ -20,6 +20,7 @@ RUN_INSTALL = "Completando instalación… solo baja lo que falte."
 RUN_REMIX = "Uniendo voz e instrumental…"
 RUN_REMUX = "Pegando audio al video…"
 RUN_CLIP = "Recortando audio…"
+RUN_CHORDS = "Estimando acordes… puede tardar un minuto en Intel. No cierres la ventana."
 READY = "Audio listo. Elegí qué extraer y pulsá Separar."
 
 KIND_IDLE = "idle"
@@ -34,6 +35,7 @@ MSG_REMIX = "No se pudo armar el remix."
 MSG_REMUX = "No se pudo pegar el audio al video."
 MSG_COVER = "No se pudo generar la portada."
 MSG_INSTALL = "Falló la descarga. Pulsá Completar instalación de nuevo."
+MSG_CHORDS = "No se pudieron estimar los acordes."
 
 
 def log_file() -> str:
