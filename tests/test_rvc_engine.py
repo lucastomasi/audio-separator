@@ -46,27 +46,29 @@ class RvcEngineTests(unittest.TestCase):
     def test_convert_calls_vc_runner(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        audio = os.path.join(tmp.name, "v.wav")
-        model = os.path.join(tmp.name, "m.pth")
+        audio = os.path.join(tmp.name, "pibe-voz.wav")
+        model = os.path.join(tmp.name, "Palandri.pth")
         out = os.path.join(tmp.name, "out.wav")
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch.object(rvc_engine, "require_support_models"):
-            with mock.patch.object(rvc_engine, "sync_support_into_applio"):
-                with mock.patch.object(rvc_engine, "_scan_model"):
-                    with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
-                        with mock.patch.object(
-                            rvc_engine,
-                            "copy_to_downloads",
-                            return_value=(tmp.name, [out]),
-                        ):
-                            result = rvc_engine.convert_voice(
-                                audio, model, index_path="/tmp/model.index"
-                            )
+        with mock.patch("occupancy.snapshot", return_value=None):
+            with mock.patch.object(rvc_engine, "require_support_models"):
+                with mock.patch.object(rvc_engine, "sync_support_into_applio"):
+                    with mock.patch.object(rvc_engine, "_scan_model"):
+                        with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
+                            with mock.patch.object(
+                                rvc_engine,
+                                "copy_to_downloads",
+                                return_value=(tmp.name, [out]),
+                            ) as copied:
+                                result = rvc_engine.convert_voice(
+                                    audio, model, index_path="/tmp/model.index"
+                                )
         self.assertEqual(result, out)
         infer.assert_called_once()
         self.assertEqual(infer.call_args[0][0], audio)
+        self.assertEqual(copied.call_args[0][1], ["pibe-voz-Palandri"])
 
     def test_convert_passes_pitch_and_index_rate(self):
         tmp = tempfile.TemporaryDirectory()
@@ -77,18 +79,19 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch.object(rvc_engine, "require_support_models"):
-            with mock.patch.object(rvc_engine, "sync_support_into_applio"):
-                with mock.patch.object(rvc_engine, "_scan_model"):
-                    with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
-                        rvc_engine.convert_voice(
-                            audio,
-                            model,
-                            pitch=2,
-                            index_rate=0.8,
-                            f0_method="rmvpe",
-                            copy_downloads=False,
-                        )
+        with mock.patch("occupancy.snapshot", return_value=None):
+            with mock.patch.object(rvc_engine, "require_support_models"):
+                with mock.patch.object(rvc_engine, "sync_support_into_applio"):
+                    with mock.patch.object(rvc_engine, "_scan_model"):
+                        with mock.patch.object(rvc_engine, "run_vc_infer", return_value=out) as infer:
+                            rvc_engine.convert_voice(
+                                audio,
+                                model,
+                                pitch=2,
+                                index_rate=0.8,
+                                f0_method="rmvpe",
+                                copy_downloads=False,
+                            )
         kwargs = infer.call_args.kwargs
         self.assertEqual(kwargs["pitch"], 2)
         self.assertEqual(kwargs["index_rate"], 0.8)

@@ -1,7 +1,7 @@
 import os
 import gradio as gr
 from utils import logger
-from exports import copy_to_downloads, open_exports_dir
+from exports import copy_to_downloads, export_label, open_exports_dir, song_stem
 from uvr_runtime import (
     IS_ZERO_GPU,
     unlock_run_button,
@@ -660,7 +660,8 @@ def remix_job(
         )
         files = convert_format([wav_path], out_dir, target_format or "WAV")
         final = files[0]
-        export_dir, copied = copy_to_downloads([final], ["remix"])
+        label = export_label(song_stem(instrumental_path or voice_path), "unir")
+        export_dir, copied = copy_to_downloads([final], [label])
         saved = copied[0] if copied else final
         fmt = (target_format or "WAV").upper()
         return (

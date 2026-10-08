@@ -15,6 +15,30 @@ class ExportsTests(unittest.TestCase):
         second = exports.unique_path(tmp.name, "voz.wav")
         self.assertEqual(os.path.basename(second), "voz (2).wav")
 
+    def test_unique_path_uses_basename_only(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = exports.unique_path(tmp.name, "../secret.wav")
+        self.assertEqual(os.path.dirname(dest), tmp.name)
+        self.assertEqual(os.path.basename(dest), "secret.wav")
+
+    def test_export_label_uses_song_and_role(self):
+        self.assertEqual(exports.export_stem("/tmp/gradio/x/pibe-voz.wav"), "pibe-voz")
+        self.assertEqual(exports.song_stem("/tmp/pibe-voz.wav"), "pibe")
+        self.assertEqual(exports.song_stem("/tmp/pibe-instrumental.wav"), "pibe")
+        self.assertEqual(
+            exports.export_label(exports.song_stem("pibe-voz.wav"), "voz", "Palandri"),
+            "pibe-voz-Palandri",
+        )
+        self.assertEqual(
+            exports.export_label(exports.song_stem("pibe-instrumental.wav"), "unir"),
+            "pibe-unir",
+        )
+        self.assertEqual(
+            exports.export_stem({"orig_name": "El Pibe.mov", "path": "/tmp/hash"}),
+            "El-Pibe",
+        )
+
     def test_copy_to_downloads_only_exportable(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

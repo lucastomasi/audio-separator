@@ -24,7 +24,7 @@ from audio_text import (
     STEM_SOLO_VOZ,
     stem_choice_to_list,
 )
-from exports import copy_to_downloads, open_exports_dir
+from exports import copy_to_downloads, export_label, open_exports_dir, song_stem
 from ui_status import (
     KIND_ERROR,
     KIND_OK,
@@ -538,9 +538,11 @@ def _sound_separate(
     target_format,
     progress=None,
 ):
+    source_name = media_file
     media_file = _audio_path(media_file)
     if not media_file or not os.path.isfile(media_file):
         raise ValueError("Falta el archivo de audio.")
+    song = song_stem(source_name if isinstance(source_name, dict) else media_file)
 
     stem = stem_choice_to_list(stem)
     if not stem:
@@ -640,10 +642,10 @@ def _sound_separate(
     labels = []
     export_paths = []
     if vocal_out:
-        labels.append("voz")
+        labels.append(export_label(song, "voz"))
         export_paths.append(vocal_out)
     if background_out:
-        labels.append("instrumental")
+        labels.append(export_label(song, "instrumental"))
         export_paths.append(background_out)
     export_dir, copied = copy_to_downloads(export_paths, labels)
     if copied:
