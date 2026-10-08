@@ -397,10 +397,10 @@ def guitar_tab_lines(segments, per_line=6):
             cells = []
             for shape in shapes:
                 fret = shape[5 - string_i]
-                cells.append(_tab_cell(fret))
+                cells.append(_tab_cell(fret, width=6))
             rows.append(f"{label}|{''.join(cells)}|")
-        names = "".join(f"{item['name']:^{4}}" for item in chunk)
-        times = "".join(f"{_stamp(item['start']):^{4}}" for item in chunk)
+        names = "".join(f"{item['name']:^{6}}" for item in chunk)
+        times = "".join(f"{_stamp(item['start']):^{6}}" for item in chunk)
         rows.append(f"  {names}")
         rows.append(f"  {times}")
         lines.extend(rows)
@@ -452,16 +452,22 @@ def unique_chords(segments):
     return seen
 
 
-def render_text(source_name, segments, duration):
+def render_text(source_name, segments, duration, truncated=False):
     used = unique_chords(segments)
     lines = [
         "Audio Separator — estimación de acordes",
         f"Canción: {source_name}",
         f"Duración: {_stamp(duration)}",
         DISCLAIMER,
+    ]
+    if truncated:
+        lines.append("Solo se usaron los primeros 12 minutos.")
+    lines.extend(
+        [
         "",
         "Acordes (línea de tiempo)",
-    ]
+        ]
+    )
     for item in segments:
         bass_name = PC_NAMES[item["bass_pc"]] if item.get("bass_pc") is not None else "-"
         lines.append(
@@ -497,11 +503,12 @@ def estimate_song(path):
     if not path or not os.path.isfile(str(path)):
         raise ValueError("Elegí una canción en Canción.")
     wave, sr = audio_io.load(path, mono=True, sr=SR)
-    if wave.size > int(SR * MAX_SONG_SEC):
+    truncated = wave.size > int(SR * MAX_SONG_SEC)
+    if truncated:
         wave = wave[: int(SR * MAX_SONG_SEC)]
     duration = wave.size / float(sr)
     segments = detect_chords(wave, sr)
     name = os.path.basename(str(path))
-    text = render_text(name, segments, duration)
+    text = render_text(name, segments, duration, truncated=truncated)
     export_path = write_export(text, path)
     return text, export_path, segments

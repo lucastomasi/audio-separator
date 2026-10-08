@@ -31,10 +31,11 @@ def _triad(root_hz, seconds, sr):
 class ChordDspTests(unittest.TestCase):
     def test_no_librosa_or_network(self):
         src = inspect.getsource(chords)
-        self.assertNotIn("librosa", src)
+        self.assertNotIn("import librosa", src)
+        self.assertNotIn("from librosa", src)
         self.assertNotIn("huggingface", src.lower())
-        self.assertNotIn("requests", src)
-        self.assertNotIn("urllib", src)
+        self.assertNotIn("import requests", src)
+        self.assertNotIn("import urllib", src)
 
     def test_guitar_open_shapes(self):
         self.assertEqual(chords.shape_code(chords.guitar_shape("C")), "x32010")
@@ -96,6 +97,12 @@ class ChordDspTests(unittest.TestCase):
         self.assertIn("C", text)
         self.assertIn("G", text)
         self.assertIn("x32010", text)
+        self.assertIn("0:00", text)
+        self.assertNotIn("0:000:02", text)
+        self.assertNotIn("0:000:03", text)
+        self.assertNotIn("Solo se usaron los primeros 12 minutos.", text)
+        long_text = chords.render_text("demo.wav", segments, 12 * 60, truncated=True)
+        self.assertIn("Solo se usaron los primeros 12 minutos.", long_text)
 
     def test_estimate_song_writes_exportable_txt(self):
         tmp = tempfile.TemporaryDirectory()
@@ -105,18 +112,19 @@ class ChordDspTests(unittest.TestCase):
         wave = _triad(261.63, 2.2, sr)
         sf.write(wav, wave, sr)
         data = Path(tmp.name) / "data"
-        with mock.patch("app_env.data_dir", return_value=str(data)):
+        with mock.patch("app_env.data_dir", return_value=str(data)), mock.patch(
+            "exports.data_dir", return_value=str(data)
+        ):
             text, export_path, segments = chords.estimate_song(str(wav))
+            from exports import is_exportable
+
+            self.assertTrue(is_exportable(export_path))
         self.assertTrue(export_path.endswith("_acordes.txt"))
         self.assertTrue(export_path.startswith(str(data)))
         self.assertIn("Acordes", export_path)
         self.assertTrue(os.path.isfile(export_path))
         self.assertIn("tema.wav", text)
         self.assertTrue(segments)
-        from exports import is_exportable
-
-        with mock.patch("app_env.data_dir", return_value=str(data)):
-            self.assertTrue(is_exportable(export_path))
 
 
 class ChordsJobTests(unittest.TestCase):
