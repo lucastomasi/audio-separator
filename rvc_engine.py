@@ -4,7 +4,7 @@ import shutil
 
 from picklescan.scanner import scan_file_path
 
-from exports import copy_to_downloads
+from exports import copy_to_downloads, export_label, export_stem, song_stem
 from library import rvc_support_dir
 from vc_runner import ensure_vc_engine, run_vc_infer, vc_python, vc_root
 
@@ -162,5 +162,6 @@ def convert_voice(
         occupancy.release(occupancy.HOLD_CONVERT)
     if not copy_downloads:
         return produced
-    _, copied = copy_to_downloads([produced], ["voz_rvc"])
+    label = export_label(song_stem(audio_path), "voz", export_stem(model_path))
+    _, copied = copy_to_downloads([produced], [label])
     return copied[0] if copied else produced

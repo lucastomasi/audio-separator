@@ -1,9 +1,14 @@
 """Copy finished stems to a folder the user can open. No Gradio/torch."""
 import os
+import re
 import shutil
 import subprocess
 
 from app_env import data_dir, package_dir
+
+_ROLE_SUFFIXES = frozenset({"voz", "instrumental", "unir", "rvc"})
+_UNSAFE_NAME = re.compile(r"[^\w\s.-]+", flags=re.UNICODE)
+_SPACE_RUN = re.compile(r"[\s_]+")
 
 
 def is_inside(path, root):
@@ -22,6 +27,9 @@ def exports_dir():
 
 
 def unique_path(directory, filename):
+    filename = os.path.basename(str(filename or "").replace("\\", "/"))
+    if not filename or filename in {".", ".."}:
+        filename = "audio"
     base, ext = os.path.splitext(filename)
     dest = os.path.join(directory, filename)
     index = 1
@@ -29,6 +37,34 @@ def unique_path(directory, filename):
         index += 1
         dest = os.path.join(directory, f"{base} ({index}){ext}")
     return dest
+
+
+def export_stem(path_or_name):
+    """Single path segment from a file path, Gradio dict, or label."""
+    raw = path_or_name
+    if isinstance(raw, dict):
+        raw = raw.get("orig_name") or raw.get("name") or raw.get("path") or ""
+    name = os.path.splitext(os.path.basename(str(raw or "").replace("\\", "/")))[0]
+    name = _SPACE_RUN.sub("-", _UNSAFE_NAME.sub("", name)).strip("-.")
+    return name or "audio"
+
+
+def song_stem(path_or_name):
+    """Song id without trailing -voz / -instrumental / -unir."""
+    parts = [part for part in export_stem(path_or_name).split("-") if part]
+    while len(parts) > 1 and parts[-1].lower() in _ROLE_SUFFIXES:
+        parts.pop()
+    return "-".join(parts) or "audio"
+
+
+def export_label(*parts):
+    """Download name without extension. Always one path segment."""
+    chunks = []
+    for part in parts:
+        text = export_stem(part)
+        if text:
+            chunks.append(text)
+    return os.path.basename("-".join(chunks) or "audio")
 
 
 def _export_roots():

@@ -37,7 +37,7 @@ class RemixJobTests(unittest.TestCase):
         with mock.patch(
             "app_jobs.copy_to_downloads",
             side_effect=lambda files, labels: (tmp.name, list(files)),
-        ):
+        ) as copied:
             audio, archivo, status, unlock = app_jobs.remix_job(
                 voice, inst, 0, False, 0, 0, "WAV"
             )
@@ -47,6 +47,7 @@ class RemixJobTests(unittest.TestCase):
         self.assertNotIn("No se pudo armar el remix", str(status))
         self.assertEqual(unlock.get("value"), "Unir")
         self.assertTrue(unlock.get("interactive", False))
+        self.assertEqual(copied.call_args[0][1], ["i-unir"])
 
 
 class BusyLockTests(unittest.TestCase):
