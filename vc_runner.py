@@ -166,12 +166,12 @@ def _get_worker() -> subprocess.Popen:
     return _worker
 
 
-def _ask(proc: subprocess.Popen, payload: dict, timeout: float = 3600) -> dict:
+def _ask(proc: subprocess.Popen, payload: dict, timeout: float | None = None) -> dict:
     line = json.dumps(payload, ensure_ascii=False) + "\n"
     proc.stdin.write(line)
     proc.stdin.flush()
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    # Sin timeout: espera lo que haga falta; falla solo si el motor se cierra.
+    while True:
         if proc.poll() is not None:
             raise ValueError("El motor de conversión se cerró.")
         raw = proc.stdout.readline()
@@ -184,7 +184,6 @@ def _ask(proc: subprocess.Popen, payload: dict, timeout: float = 3600) -> dict:
             return json.loads(raw)
         except json.JSONDecodeError:
             continue
-    raise ValueError("Timeout esperando al motor de conversión.")
 
 
 def _infer_output_path() -> str:

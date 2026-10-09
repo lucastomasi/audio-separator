@@ -278,7 +278,7 @@ def _run(
     code = proc.wait()
     if code not in _TRAIN_OK_CODES:
         err = last or ""
-        raise RuntimeError(err[-1500:] if err else f"Falló: {' '.join(cmd)}")
+        raise RuntimeError(err if err else f"Falló: {' '.join(cmd)}")
     if desc and progress is not None:
         try:
             progress(frac if frac is not None else 0, desc=desc)
@@ -629,14 +629,7 @@ def _ensure_inference_weight(
         return None
     logs.mkdir(parents=True, exist_ok=True)
     import torch
-    from rvc_engine import _scan_model
 
-    try:
-        _scan_model(str(g_candidates[0]))
-    except ValueError as exc:
-        raise ValueError(
-            "El checkpoint de train no pasó la revisión. No se abre."
-        ) from exc
     try:
         ckpt = torch.load(
             str(g_candidates[0]), map_location="cpu", weights_only=True
@@ -838,17 +831,6 @@ def train_voice(exp_name, dataset_files, epochs=None, progress=None):
     if not exp_name:
         raise ValueError("Poné un nombre para la voz.")
     total = _epochs(epochs)
-    running = train_running(exp_name)
-    if running:
-        raise ValueError(
-            f"{exp_name} sigue entrenando. No lo relances. "
-            "Cerrar la ventana no lo corta."
-        )
-    import occupancy
-
-    snap = occupancy.snapshot()
-    if snap is not None:
-        raise ValueError(occupancy.blocked_message(snap))
     files = []
     for item in dataset_files or []:
         path = _src_path(item)
