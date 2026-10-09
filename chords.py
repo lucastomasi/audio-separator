@@ -19,7 +19,6 @@ HOP = 1024
 BASS_MAX_HZ = 180.0
 BASS_MIN_HZ = 41.0
 MIN_SEG_SEC = 0.55
-MAX_SONG_SEC = 12 * 60
 
 PC_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
 GUITAR_STRINGS = ("e", "B", "G", "D", "A", "E")
@@ -503,9 +502,7 @@ def estimate_song(path):
     if not path or not os.path.isfile(str(path)):
         raise ValueError("Elegí una canción en Canción.")
     wave, sr = audio_io.load(path, mono=True, sr=SR)
-    truncated = wave.size > int(SR * MAX_SONG_SEC)
-    if truncated:
-        wave = wave[: int(SR * MAX_SONG_SEC)]
+    truncated = False
     duration = wave.size / float(sr)
     segments = detect_chords(wave, sr)
     name = os.path.basename(str(path))

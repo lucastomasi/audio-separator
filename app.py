@@ -443,8 +443,8 @@ def get_gui():
                     )
                     with gr.Row():
                         remix_delay = gr.Slider(
-                            -2000,
-                            2000,
+                            -60000,
+                            60000,
                             value=0,
                             step=10,
                             label="Retraso de la voz (ms)",
@@ -479,19 +479,6 @@ def get_gui():
                         with gr.Row():
                             remux_video_in = gr.File(
                                 label="Video o imagen",
-                                file_types=[
-                                    ".mp4",
-                                    ".mov",
-                                    ".mkv",
-                                    ".webm",
-                                    ".avi",
-                                    ".jpg",
-                                    ".jpeg",
-                                    ".png",
-                                    ".webp",
-                                    ".gif",
-                                    ".bmp",
-                                ],
                             )
                             remux_audio_in = gr.Audio(
                                 label="Audio nuevo",
@@ -580,21 +567,10 @@ def get_gui():
                     train_dataset = gr.File(
                         label="Elegir archivo",
                         file_count="multiple",
-                        file_types=[
-                            ".wav",
-                            ".mp3",
-                            ".flac",
-                            ".m4a",
-                            ".mp4",
-                            ".mov",
-                            ".mkv",
-                            ".webm",
-                            ".avi",
-                        ],
                     )
                     train_epochs = gr.Slider(
-                        5,
-                        50,
+                        1,
+                        1000,
                         value=10,
                         step=1,
                         label="Epochs (CPU Intel: 10 de prueba)",
@@ -638,24 +614,23 @@ def get_gui():
                             with gr.Row():
                                 rvc_hubert = gr.File(
                                     label="hubert (.pt o carpeta zip)",
-                                    file_types=[".pt", ".pth"],
                                 )
                                 rvc_rmvpe = gr.File(
-                                    label="rmvpe.pt", file_types=[".pt", ".pth"]
+                                    label="rmvpe.pt"
                                 )
                             with gr.Row():
                                 rvc_g = gr.File(
-                                    label="f0G40k.pth", file_types=[".pth", ".pt"]
+                                    label="f0G40k.pth"
                                 )
                                 rvc_d = gr.File(
-                                    label="f0D40k.pth", file_types=[".pth", ".pt"]
+                                    label="f0D40k.pth"
                                 )
                             with gr.Row():
                                 rvc_model = gr.File(
-                                    label="Modelo .pth", file_types=[".pth", ".pt"]
+                                    label="Modelo .pth"
                                 )
                                 rvc_index = gr.File(
-                                    label="Índice .index", file_types=[".index"]
+                                    label="Índice .index"
                                 )
                             with gr.Row(elem_classes=["action-row"]):
                                 load_rvc_btn = gr.Button(
@@ -680,7 +655,7 @@ def get_gui():
                 chords_btn,
             ],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         demo_btn.click(
             load_demo_bundle,
@@ -694,7 +669,7 @@ def get_gui():
             [url_media_gui, want_video],
             [aud, last_video, button_base, status, url_button_gui, chords_btn],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         last_video.change(lambda p: p, last_video, remux_video_in)
         aud.change(on_audio_ready, aud, [button_base, status, chords_btn])
@@ -792,7 +767,7 @@ def get_gui():
             inputs=[remux_video_in, remux_audio_in],
             outputs=[remux_file, status],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         cover_btn.click(
             lambda t, a, p: cover_job(t, a, p, False),
@@ -835,7 +810,7 @@ def get_gui():
             inputs=[rvc_in, rvc_pick, rvc_model, rvc_index, train_dataset, rvc_same],
             outputs=[rvc_audio, remix_voice, status, rvc_btn],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         use_recent_btn.click(
             _use_recent,
@@ -854,7 +829,7 @@ def get_gui():
             inputs=[train_name, train_dataset, train_epochs],
             outputs=[rvc_pick, status, rvc_btn, train_btn],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         def _boot_ui():
             import library
@@ -918,7 +893,7 @@ def get_gui():
             inputs=[aud],
             outputs=[chords_out, chords_file, status, chords_btn],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         remix_btn.click(
             lock_join_button,
@@ -936,7 +911,7 @@ def get_gui():
             ],
             outputs=[remix_audio, remix_file, status, remix_btn],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
         button_base.click(
             sound_separate,
@@ -957,7 +932,7 @@ def get_gui():
             ],
             outputs=[vocal_out, background_out, output_base, status, button_base],
             show_progress="full",
-            concurrency_limit=1,
+            concurrency_limit=None,
         )
 
     return app
@@ -965,7 +940,7 @@ def get_gui():
 
 def build_server():
     demo = get_gui()
-    demo.queue(default_concurrency_limit=1)
+    demo.queue(default_concurrency_limit=None)
     return demo
 
 

@@ -111,15 +111,8 @@ def _write_speech(src, regions):
 
 
 def trim_if_long(path, duration):
-    if duration <= LONG_SEC:
-        return path, duration
-    starts, ends = _silence_events(path)
-    regions = speech_regions_for_train(duration, starts, ends)
-    spoken = sum(end - start for start, end in regions)
-    if spoken >= duration * 0.98:
-        return path, duration
-    dest = _write_speech(path, regions)
-    return dest, audio_io.get_duration(filename=dest)
+    # Sin recorte: se entrena con el audio completo.
+    return path, duration
 
 
 def _prep_dir():

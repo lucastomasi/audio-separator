@@ -31,6 +31,17 @@ def extract_youtube_id(url):
     return match.group(1) if match else None
 
 
+def media_url(url):
+    """Any URL yt-dlp supports; YouTube links are rebuilt as a watch URL."""
+    url = normalize_media_url(url)
+    if not url:
+        raise ValueError("Pega un enlace.")
+    video_id = extract_youtube_id(url)
+    if video_id:
+        return f"https://www.youtube.com/watch?v={video_id}", video_id
+    return url, None
+
+
 def existing_audio(video_id, directory=None):
     if not video_id:
         return None
@@ -184,9 +195,7 @@ def identity_line(channel, title, video_id):
 
 def probe_youtube(url):
     """Channel, title and id. Does not download."""
-    url = normalize_media_url(url)
-    if not extract_youtube_id(url):
-        raise ValueError("Pega un enlace de YouTube.")
+    url, _ = media_url(url)
     import yt_dlp
 
     opts = _ydl_runtime(
@@ -202,7 +211,7 @@ def probe_youtube(url):
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
-        raise ValueError("No pude leer canal, título e id de YouTube.") from exc
+        raise ValueError(f"No pude leer canal, título e id: {exc}") from exc
     info, note = _playlist_first(info)
     channel = info.get("channel") or info.get("uploader") or info.get("uploader_id")
     title = info.get("title")
@@ -319,10 +328,7 @@ def download_audio(url, directory=None):
 def download_video(url, directory=None):
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)
-    url = normalize_media_url(url)
-    video_id = extract_youtube_id(url)
-    if not video_id:
-        raise ValueError("Pega un enlace de YouTube.")
+    url, video_id = media_url(url)
     cached = existing_video(video_id, directory)
     if cached:
         return cached, True
@@ -347,14 +353,11 @@ def download_video(url, directory=None):
 
 def download_media(url, with_video=True, directory=None):
     """Audio WAV 48 kHz (+ optional MP4). Returns audio, video, reused, note."""
-    url = normalize_media_url(url)
-    if not extract_youtube_id(url):
-        raise ValueError("Pega un enlace de YouTube.")
+    url, cached_id = media_url(url)
 
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)
 
-    cached_id = extract_youtube_id(url)
     cached_audio = existing_audio(cached_id, directory)
     cached_video = existing_video(cached_id, directory) if with_video else None
     reused = bool(cached_audio)
