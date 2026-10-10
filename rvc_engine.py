@@ -2,6 +2,7 @@
 import os
 import shutil
 
+from picklescan.scanner import scan_file_path
 
 from exports import copy_to_downloads, export_label, export_stem, song_stem
 from library import rvc_support_dir
@@ -104,6 +105,16 @@ def sync_support_into_applio():
     return hubert, rmvpe
 
 
+def _scan_model(model_path):
+    try:
+        result = scan_file_path(model_path)
+    except Exception as exc:
+        raise ValueError(f"No se pudo revisar el modelo: {exc}") from exc
+    infected = getattr(result, "infected_files", 0) or 0
+    issues_count = getattr(result, "issues_count", 0) or 0
+    suspicious = getattr(result, "suspicious_count", 0) or 0
+    if infected or issues_count or suspicious:
+        raise ValueError("El archivo del modelo no pasó la revisión de seguridad.")
 
 
 def convert_voice(
@@ -136,6 +147,7 @@ def convert_voice(
     try:
         require_support_models()
         sync_support_into_applio()
+        _scan_model(str(model_path))
         produced = run_vc_infer(
             str(audio_path),
             str(model_path),

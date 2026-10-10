@@ -103,7 +103,11 @@ with open(UI_CSS_PATH, encoding="utf-8") as css_file:
 
 
 def _convert_interactive():
-    return gr.update(interactive=True)
+    from occupancy import HOLD_TRAIN, snapshot
+
+    occ = snapshot()
+    on = not (occ is not None and occ.holder == HOLD_TRAIN)
+    return gr.update(interactive=on)
 
 
 def _join_ready(voice, inst):

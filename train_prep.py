@@ -199,8 +199,26 @@ def assert_channel_matches(exp_name, files):
     name = (exp_name or "").strip()
     if not name:
         raise ValueError("Poné un nombre para la voz.")
-    # Sin chequeo de canal: el nombre de la voz es libre.
-    return
+    meta = library.get_session_meta()
+    channel = meta.get("last_youtube_channel")
+    if not channel:
+        return
+    linked = set()
+    for key in ("last_audio_path", "last_video_path"):
+        value = meta.get(key)
+        if value:
+            linked.add(os.path.abspath(value))
+    if not linked:
+        return
+    used = False
+    for path in _paths(files):
+        if path in linked:
+            used = True
+            break
+    if not used:
+        return
+    if not names_match(name, channel):
+        raise ValueError(f"El canal es «{channel}», no «{name}». Paro.")
 
 
 def _is_last_vocal(path):
