@@ -111,8 +111,15 @@ def _write_speech(src, regions):
 
 
 def trim_if_long(path, duration):
-    # Sin recorte: se entrena con el audio completo.
-    return path, duration
+    if duration <= LONG_SEC:
+        return path, duration
+    starts, ends = _silence_events(path)
+    regions = speech_regions_for_train(duration, starts, ends)
+    spoken = sum(end - start for start, end in regions)
+    if spoken >= duration * 0.98:
+        return path, duration
+    dest = _write_speech(path, regions)
+    return dest, audio_io.get_duration(filename=dest)
 
 
 def _prep_dir():
@@ -199,8 +206,26 @@ def assert_channel_matches(exp_name, files):
     name = (exp_name or "").strip()
     if not name:
         raise ValueError("Poné un nombre para la voz.")
-    # Sin chequeo de canal: el nombre de la voz es libre.
-    return
+    meta = library.get_session_meta()
+    channel = meta.get("last_youtube_channel")
+    if not channel:
+        return
+    linked = set()
+    for key in ("last_audio_path", "last_video_path"):
+        value = meta.get(key)
+        if value:
+            linked.add(os.path.abspath(value))
+    if not linked:
+        return
+    used = False
+    for path in _paths(files):
+        if path in linked:
+            used = True
+            break
+    if not used:
+        return
+    if not names_match(name, channel):
+        raise ValueError(f"El canal es «{channel}», no «{name}». Paro.")
 
 
 def _is_last_vocal(path):

@@ -95,8 +95,10 @@ def _attach_logs():
 
 
 def _offline_env():
-    """Sin forzar modo offline: el Hub puede bajar lo que falte."""
-    return None
+    """Bundled weights only. Do not reach Hugging Face at runtime."""
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
 
 
 def start_server(port):

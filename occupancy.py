@@ -131,7 +131,15 @@ def snapshot() -> Occupancy | None:
 def acquire(holder: str, exp: str | None = None) -> Occupancy:
     if holder not in _MESSAGES:
         raise ValueError("Ocupación inválida.")
-    # Sin bloqueo: solo registra quién corre; nunca rechaza.
+    current = snapshot()
+    if current is not None:
+        same = (
+            current.holder == holder
+            and current.pid is not None
+            and current.pid == os.getpid()
+        )
+        if not same:
+            raise ValueError(blocked_message(current))
     payload = {
         "holder": holder,
         "exp": exp,

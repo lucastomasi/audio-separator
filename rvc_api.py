@@ -79,8 +79,36 @@ def _conflicting_rvc_processes() -> list[str]:
 
 
 def require_exclusive_cli() -> None:
-    """Sin bloqueo: el CLI corre aunque la app u otro proceso estén activos."""
-    return None
+    """Abort before loading RMVPE if desktop/another CLI is already up.
+
+    Two torch/OpenMP processes on this Mac Intel → intermittent SIGSEGV.
+    """
+    import occupancy
+
+    snap = occupancy.snapshot()
+    if snap is not None and snap.holder == occupancy.HOLD_TRAIN:
+        print(
+            "ERROR: "
+            + occupancy.blocked_message(snap)
+            + "\nCerrá Convertir en la app o esperá a que termine el train.",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(1)
+    hits = _conflicting_rvc_processes()
+    if not hits:
+        return
+    print(
+        "ERROR: hay otro proceso de Audio Separator usando RVC/torch:\n  "
+        + "\n  ".join(hits)
+        + "\n\nCerrá la app (desktop.py) o el otro rvc_api y volvé a intentar.\n"
+        "Con la app abierta, usá solo Convertir en la UI — no el CLI.\n\n"
+        "Comando correcto:\n"
+        "  ./convert_rvc.sh <audio.wav> <voz> 0",
+        file=sys.stderr,
+        flush=True,
+    )
+    raise SystemExit(1)
 
 
 def rvc_convert(
