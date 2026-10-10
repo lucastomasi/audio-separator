@@ -30,7 +30,8 @@ _FEATURE_DIRS = (
     "extracted",
 )
 BATCH = 1
-WORKERS = 2
+# macOS + librosa/numba in a ProcessPool is an OpenMP crash on Intel.
+WORKERS = 1 if sys.platform == "darwin" else 2
 # Applio train.py uses os._exit(2333333) on a successful finish.
 _TRAIN_OK_CODES = {0, 2333333}
 

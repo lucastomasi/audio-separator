@@ -13,7 +13,11 @@ TOKEN_ENV = "AUDIO_SEPARATOR_TOKEN"
 TOKEN_COOKIE = "as_token"
 TOKEN_QUERY = "access_token"
 TOKEN_HEADER = "x-audio-separator-token"
-MAX_UPLOAD = None  # sin límite: app local
+MAX_UPLOAD = "200mb"
+MAX_N_FFT = 16384
+MAX_DIM_F = 8192
+MAX_DIM_T = 2048
+MAX_HOP = 4096
 
 _HEAD_TOKEN_JS = """
 <script>
@@ -63,8 +67,20 @@ def _phone_access_enabled():
 
 
 def auth_dependency(request):
-    # Sin token ni filtro loopback/LAN: toda petición entra.
-    return "local"
+    token = os.environ.get(TOKEN_ENV, "")
+    if not token:
+        return None
+    if not _loopback_host(request) and not _phone_access_enabled():
+        return None
+    provided = (
+        request.headers.get(TOKEN_HEADER)
+        or request.query_params.get(TOKEN_QUERY)
+        or request.cookies.get(TOKEN_COOKIE)
+        or _token_from_referer(request, token)
+    )
+    if _token_ok(provided, token):
+        return "local"
+    return None
 
 
 def _output_dirs():
@@ -87,17 +103,39 @@ def allowed_paths():
     paths = _output_dirs()
     for path in paths:
         os.makedirs(path, exist_ok=True)
-    # Cualquier carpeta: modelos y audio desde donde sea.
-    return paths + [os.path.expanduser("~"), os.path.abspath(os.sep)]
+    return paths
 
 
 def blocked_paths():
-    return []
+    blocked = [
+        os.path.expanduser("~/.ssh"),
+        os.path.expanduser("~/.gnupg"),
+        os.path.expanduser("~/.aws"),
+        "/etc",
+    ]
+    code = package_dir()
+    data = data_dir()
+    if os.path.realpath(data) != os.path.realpath(code):
+        blocked.append(code)
+    else:
+        blocked.extend(
+            [
+                os.path.join(code, ".git"),
+                os.path.join(code, ".cursor"),
+                os.path.join(code, ".env"),
+            ]
+        )
+    app_home = home()
+    if os.path.realpath(app_home) != os.path.realpath(data):
+        blocked.append(app_home)
+    return [path for path in blocked if path]
 
 
 def _public_message(exc):
-    text = str(exc).strip()
-    return text or type(exc).__name__
+    text = str(exc).strip() or "Algo salió mal."
+    if _PATH_RE.search(text):
+        return "Algo salió mal."
+    return text
 
 
 def ui_error(exc):
@@ -105,7 +143,9 @@ def ui_error(exc):
 
     if isinstance(exc, gr.Error):
         raise exc
-    raise gr.Error(_public_message(exc)) from exc
+    if isinstance(exc, ValueError):
+        raise gr.Error(_public_message(exc)) from exc
+    raise gr.Error("Algo salió mal.") from exc
 
 
 def _positive_dim(shape, index):
@@ -156,7 +196,11 @@ def mdx_config(model_path, session):
     dim_f = int(config["dim_f"])
     dim_t = int(config["dim_t"])
     if (
-        hop < 1
+        n_fft > MAX_N_FFT
+        or hop > MAX_HOP
+        or dim_f > MAX_DIM_F
+        or dim_t > MAX_DIM_T
+        or hop < 1
         or dim_t < 2
         or dim_f < 1
         or n_fft < 2

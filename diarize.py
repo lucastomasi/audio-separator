@@ -17,7 +17,7 @@ SILENCE_RE = re.compile(
     r"silence_(?:start|end):\s*([0-9.]+)",
 )
 MIN_TURN = 0.4
-MAX_REF_SEC = None  # sin tope
+MAX_REF_SEC = 25.0
 SR = 16000
 
 
@@ -122,19 +122,16 @@ def _cluster(embeddings):
 
 
 def _concat_cap(waves, sr, cap_sec=MAX_REF_SEC):
-    cap = None if cap_sec is None else int(cap_sec * sr)
+    cap = int(cap_sec * sr)
     chunks = []
     total = 0
     for wave in waves:
         if wave.ndim > 1:
             wave = np.mean(wave, axis=0)
-        if cap is None:
-            take = wave
-        else:
-            remain = cap - total
-            if remain <= 0:
-                break
-            take = wave[:remain]
+        remain = cap - total
+        if remain <= 0:
+            break
+        take = wave[:remain]
         chunks.append(take)
         total += take.shape[0]
     if not chunks:
