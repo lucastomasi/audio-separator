@@ -78,10 +78,6 @@ def _train_from_ps(text: str) -> Occupancy | None:
     return None
 
 
-def _convert_from_ps(text: str) -> bool:
-    return "infer_worker.py" in text
-
-
 def _read_lock() -> Occupancy | None:
     path = lock_path()
     if not path.is_file():
@@ -114,7 +110,11 @@ def _clear_lock() -> None:
 
 
 def snapshot() -> Occupancy | None:
-    """Who holds Intel right now. ps wins over a stale lock file."""
+    """Who holds Intel right now. Train ps wins; else the lock file.
+
+    An idle infer_worker.py is not a Convert job — that process may exist only
+    while a conversion runs (and is torn down afterward). Rely on acquire/release.
+    """
     text = _ps_commands()
     train = _train_from_ps(text)
     if train is not None:
@@ -122,8 +122,6 @@ def snapshot() -> Occupancy | None:
     locked = _read_lock()
     if locked is not None:
         return locked
-    if _convert_from_ps(text):
-        return Occupancy(HOLD_CONVERT)
     _clear_lock()
     return None
 

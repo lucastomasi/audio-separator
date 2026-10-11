@@ -235,6 +235,10 @@ def run_vc_infer(
                 _stop_unlocked()
                 continue
         if reply.get("ok") and reply.get("path") and os.path.isfile(reply["path"]):
+            # Drop torch/HuBERT RAM as soon as Convert finishes. Next Convert
+            # cold-starts the worker; idle app must not keep a second process.
+            with _lock:
+                _stop_unlocked()
             return os.path.abspath(reply["path"])
         last_error = ValueError(reply.get("error") or "sin audio")
         with _lock:

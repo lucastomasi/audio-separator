@@ -513,6 +513,12 @@ def sound_separate(
             )
         finally:
             occupancy.release(occupancy.HOLD_UVR)
+            try:
+                from mdx_model import clear_ort_sessions
+
+                clear_ort_sessions()
+            except Exception:
+                pass
         yield vocal, background, files, status_update(KIND_OK, status), button
     except Exception as error:
         message = _separate_error_message(error)

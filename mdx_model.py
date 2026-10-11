@@ -45,7 +45,9 @@ def _ort_session(model_path, providers):
     if session is not None:
         return session
     options = ort.SessionOptions()
-    options.intra_op_num_threads = 2
+    # One thread: Intel Mac + Gradio already share the core; dual ORT workers
+    # thrash during Separar without a real speed win on this hardware.
+    options.intra_op_num_threads = 1
     options.inter_op_num_threads = 1
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -54,6 +56,15 @@ def _ort_session(model_path, providers):
     )
     _ORT_SESSIONS[key] = session
     return session
+
+
+def clear_ort_sessions():
+    """Drop cached ONNX sessions so Separar does not pin RAM until quit."""
+    for key in list(_ORT_SESSIONS):
+        session = _ORT_SESSIONS.pop(key, None)
+        del session
+    _MODEL_HASHES.clear()
+    gc.collect()
 
 
 stem_naming = {
