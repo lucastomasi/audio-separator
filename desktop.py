@@ -116,12 +116,15 @@ def start_server(port):
 
 
 def warmup_vc_worker():
-    """Create the conversion venv if needed and start the worker process."""
+    """Ensure the conversion venv exists. Do not spawn the torch worker.
+
+    Loading VoiceConverter at launch keeps a second heavy Python+torch process
+    idle for the whole session on Intel Mac. Convert starts the worker on demand.
+    """
     try:
-        from vc_runner import _get_worker, ensure_vc_engine
+        from vc_runner import ensure_vc_engine
 
         ensure_vc_engine()
-        _get_worker()
     except Exception:
         traceback.print_exc()
 

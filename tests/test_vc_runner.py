@@ -60,7 +60,8 @@ class VcRunnerWorkerTests(unittest.TestCase):
         fake = FakeProc()
         with mock.patch("app_env.data_dir", return_value=tmp.name):
             with mock.patch.object(vc_runner, "_get_worker", return_value=fake):
-                path = vc_runner.run_vc_infer(audio, model, pitch=1, index_rate=0.7)
+                with mock.patch.object(vc_runner, "_stop_unlocked") as stop:
+                    path = vc_runner.run_vc_infer(audio, model, pitch=1, index_rate=0.7)
         self.assertTrue(path.startswith(os.path.join(tmp.name, "rvc_output")))
         self.assertTrue(os.path.isfile(path))
         job = json.loads(fake.stdin_lines[0])
@@ -69,6 +70,7 @@ class VcRunnerWorkerTests(unittest.TestCase):
         self.assertEqual(job["pitch"], 1)
         self.assertEqual(job["index_rate"], 0.7)
         self.assertTrue(job["split_audio"])
+        stop.assert_called()
 
     def test_infer_output_is_exportable(self):
         import exports

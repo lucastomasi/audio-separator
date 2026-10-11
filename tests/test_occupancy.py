@@ -67,3 +67,11 @@ class OccupancyTests(unittest.TestCase):
         path = occupancy.lock_path()
         self.assertTrue(str(path).startswith(self.root))
         self.assertEqual(path.name, "occupancy.json")
+
+    def test_idle_infer_worker_is_not_busy_convert(self):
+        """Warm or leftover infer_worker.py must not block Separar/Entrenar."""
+        ps = "/path/.venv-vc/bin/python -u /app/third_party/vc/infer_worker.py\n"
+        with mock.patch.object(occupancy, "_ps_commands", return_value=ps):
+            self.assertIsNone(occupancy.snapshot())
+            occupancy.acquire(occupancy.HOLD_UVR)
+        occupancy.release(occupancy.HOLD_UVR)

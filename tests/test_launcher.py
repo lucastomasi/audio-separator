@@ -94,19 +94,22 @@ fi
 
 
 class DesktopWarmupTests(unittest.TestCase):
-    def test_warmup_starts_vc_worker(self):
+    def test_warmup_only_ensures_venv_not_torch_worker(self):
         import desktop
 
         src = Path(desktop.__file__).read_text(encoding="utf-8")
         self.assertIn("warmup_vc_worker", src)
         self.assertIn("ensure_vc_engine", src)
         self.assertIn("threading.Thread(target=warmup_vc_worker", src)
+        # Warmup body must not spawn the torch worker (idle RAM hog).
+        warmup_src = src.split("def warmup_vc_worker", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("_get_worker(", warmup_src)
 
         with mock.patch("vc_runner.ensure_vc_engine") as ensure:
             with mock.patch("vc_runner._get_worker") as get:
                 desktop.warmup_vc_worker()
         ensure.assert_called_once()
-        get.assert_called_once()
+        get.assert_not_called()
 
 
 if __name__ == "__main__":
