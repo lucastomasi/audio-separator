@@ -8,6 +8,8 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PRUEBAS_APP = ROOT / "Audio Separator Pruebas.app"
+PRUEBAS_EXE = PRUEBAS_APP / "Contents" / "MacOS" / "Audio Separator Pruebas"
 
 
 class LauncherScriptTests(unittest.TestCase):
@@ -28,6 +30,8 @@ class LauncherScriptTests(unittest.TestCase):
         self.assertIn("bootstrap_macos.sh", text)
         self.assertIn("desktop.py", text)
         self.assertIn("AUDIO_SEPARATOR_VC_PYTHON", text)
+        self.assertIn("AUDIO_SEPARATOR_WINDOW_TITLE", text)
+        self.assertIn("Audio Separator · pruebas", text)
         self.assertIn("env -i", text)
         self.assertIn("Resources/app/desktop.py", text)
         self.assertIn(".venv-vc", text)
@@ -38,34 +42,47 @@ class LauncherScriptTests(unittest.TestCase):
         self.assertNotIn("No instalo pip en el Mac de destino", text)
         self.assertNotIn("este zip está incompleto", text)
 
-    def test_build_launcher_app_writes_info_plist(self):
+    def test_build_launcher_app_writes_pruebas_plist(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        dest = Path(tmp.name) / "Audio Separator.app"
+        dest = Path(tmp.name) / "Audio Separator Pruebas.app"
         subprocess.check_call(
             ["bash", str(ROOT / "scripts" / "build_launcher_app.sh"), str(dest)]
         )
-        exe = dest / "Contents" / "MacOS" / "Audio Separator"
+        exe = dest / "Contents" / "MacOS" / "Audio Separator Pruebas"
         self.assertTrue(exe.is_file())
         self.assertTrue(os.access(exe, os.X_OK))
         plist = (dest / "Contents" / "Info.plist").read_text(encoding="utf-8")
-        self.assertIn("com.lucastomasi.audioseparator", plist)
+        self.assertIn("com.lucastomasi.audioseparator.pruebas", plist)
+        self.assertIn("Audio Separator Pruebas", plist)
         self.assertIn("13.0", plist)
         body = exe.read_text(encoding="utf-8")
         self.assertIn("bootstrap_macos.sh", body)
         self.assertIn("desktop.py", body)
 
-    def test_committed_app_matches_launcher_script(self):
-        committed = ROOT / "Audio Separator.app" / "Contents" / "MacOS" / "Audio Separator"
-        self.assertTrue(committed.is_file(), "commit Audio Separator.app next to desktop.py")
+    def test_committed_pruebas_app_matches_launcher_script(self):
+        self.assertTrue(
+            PRUEBAS_EXE.is_file(),
+            "commit Audio Separator Pruebas.app next to desktop.py",
+        )
         self.assertEqual(
-            committed.read_text(encoding="utf-8"),
+            PRUEBAS_EXE.read_text(encoding="utf-8"),
             (ROOT / "scripts" / "macos_launcher.sh").read_text(encoding="utf-8"),
         )
-        plist = (ROOT / "Audio Separator.app" / "Contents" / "Info.plist").read_text(
-            encoding="utf-8"
+        plist = (PRUEBAS_APP / "Contents" / "Info.plist").read_text(encoding="utf-8")
+        self.assertIn("com.lucastomasi.audioseparator.pruebas", plist)
+        self.assertFalse(
+            (ROOT / "Audio Separator.app").exists(),
+            "old thin Audio Separator.app should be removed; use Pruebas.app",
         )
-        self.assertIn("com.lucastomasi.audioseparator", plist)
+
+    def test_open_pruebas_script_ensures_app(self):
+        text = (ROOT / "scripts" / "open_pruebas.sh").read_text(encoding="utf-8")
+        self.assertIn("build_launcher_app.sh", text)
+        self.assertIn("Audio Separator Pruebas.app", text)
+        self.assertIn("macos_launcher.sh", text)
+        mode = (ROOT / "scripts" / "open_pruebas.sh").stat().st_mode
+        self.assertTrue(mode & stat.S_IXUSR)
 
     def test_thin_app_next_to_repo_resolves_desktop(self):
         tmp = tempfile.TemporaryDirectory()
@@ -73,11 +90,11 @@ class LauncherScriptTests(unittest.TestCase):
         repo = Path(tmp.name) / "audio-separator"
         repo.mkdir()
         (repo / "desktop.py").write_text("# stub\n", encoding="utf-8")
-        dest = repo / "Audio Separator.app"
+        dest = repo / "Audio Separator Pruebas.app"
         subprocess.check_call(
             ["bash", str(ROOT / "scripts" / "build_launcher_app.sh"), str(dest)]
         )
-        script = dest / "Contents" / "MacOS" / "Audio Separator"
+        script = dest / "Contents" / "MacOS" / "Audio Separator Pruebas"
         # Dry-run the path detection without exec'ing python.
         snippet = r"""
 set -euo pipefail
@@ -101,6 +118,7 @@ class DesktopWarmupTests(unittest.TestCase):
         self.assertIn("warmup_vc_worker", src)
         self.assertIn("ensure_vc_engine", src)
         self.assertIn("threading.Thread(target=warmup_vc_worker", src)
+        self.assertIn("AUDIO_SEPARATOR_WINDOW_TITLE", src)
 
         with mock.patch("vc_runner.ensure_vc_engine") as ensure:
             with mock.patch("vc_runner._get_worker") as get:

@@ -12,17 +12,39 @@ Con el zip full enlatado, Separar / Entrenar / Convertir / Unir van **sin intern
 - ffmpeg: el zip full ya lo copia. En un clone, `requirements-macos.txt` instala `imageio-ffmpeg` (no hace falta `brew`) si no hay un ffmpeg en el PATH
 - ~3 GB libres para el `.app` standalone
 
-## Arranque con un clic (sin Terminal)
+## Versión de pruebas (sin zip / DMG)
 
-El repo trae `Audio Separator.app` al lado de `desktop.py`. En el Finder: clic derecho → **Abrir**.
+Para probar fixes **no** hace falta `build_standalone.sh` ni armar el entregable. El clone trae un launcher thin que lee el código vivo del repo:
 
-Ese `.app` hace todo solo: crea `.venv` y `.venv-vc` si faltan, instala `requirements-macos.txt` + `requirements-vc.txt`, arranca el worker de conversión y abre la ventana nativa. El primer clic baja PyTorch 2.2.2 y puede tardar varios minutos. El log queda en `~/Library/Logs/Audio Separator/launch.log`.
+| | Pruebas | Entrega |
+|---|---|---|
+| App | `Audio Separator Pruebas.app` (junto a `desktop.py`) | `dist/Audio Separator.app` del zip |
+| Código | el del `git pull` | copia congelada adentro del `.app` |
+| Venvs | `.venv` / `.venv-vc` en el clone | embebidos en `Resources/` |
+| Título ventana | `Audio Separator · pruebas` | `Audio Separator` |
 
-Para regenerar el `.app` (no hace falta en un clone normal):
+```bash
+git pull
+# Finder: clic derecho → Abrir en «Audio Separator Pruebas.app»
+# o:
+./scripts/open_pruebas.sh
+```
+
+La primera vez crea los venvs (puede tardar; log en `~/Library/Logs/Audio Separator/launch.log`). Después: `git pull` → volver a abrir. Listo.
+
+Si cambiaste `requirements-*.txt` y el probe falla, el launcher reinstala solo; o:
+
+```bash
+bash scripts/bootstrap_macos.sh
+```
+
+Regenerar el thin `.app` (casi nunca hace falta):
 
 ```bash
 ./scripts/build_launcher_app.sh
 ```
+
+Equiv. Terminal (misma ventana nativa): `bash scripts/macos_launcher.sh` o `.venv/bin/python desktop.py`.
 
 ## App empaquetada (zip full / lite)
 

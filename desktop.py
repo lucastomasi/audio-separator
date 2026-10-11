@@ -230,8 +230,11 @@ def main():
     port, url, already = resolve_server(token)
     threading.Thread(target=warmup_vc_worker, daemon=True).start()
 
+    window_title = (
+        os.environ.get("AUDIO_SEPARATOR_WINDOW_TITLE") or "Audio Separator"
+    ).strip() or "Audio Separator"
     window = webview.create_window(
-        "Audio Separator",
+        window_title,
         url if already else None,
         html=None if already else SPLASH,
         width=980,

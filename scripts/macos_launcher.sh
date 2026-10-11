@@ -1,5 +1,6 @@
 #!/bin/bash
-# Double-click entry for Audio Separator.app.
+# Double-click entry for Audio Separator.app (release zip) or
+# Audio Separator Pruebas.app (thin checkout preview — no DMG rebuild).
 # Canned zip: uses bundled venvs. Git checkout / incomplete zip: creates them.
 set -euo pipefail
 
@@ -51,7 +52,7 @@ elif [[ -f "$HERE/../desktop.py" ]]; then
 fi
 
 [[ -n "$APPDIR" && -f "$APPDIR/desktop.py" ]] || \
-  die "No encuentro desktop.py. Dejá Audio Separator.app junto al repo, o usá el zip standalone."
+  die "No encuentro desktop.py. Dejá «Audio Separator Pruebas.app» junto al repo, o usá el zip standalone."
 
 log "mode=$MODE appdir=$APPDIR"
 
@@ -97,6 +98,14 @@ if [[ -n "$BIN" ]]; then
 fi
 LAUNCH_PATH="$LAUNCH_PATH:/usr/local/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# Checkout / scripts mode = preview build (live code). Bundle zip = release title.
+WINDOW_TITLE="Audio Separator"
+PREVIEW=0
+if [[ "$MODE" != "bundle" ]]; then
+  WINDOW_TITLE="Audio Separator · pruebas"
+  PREVIEW=1
+fi
+
 exec /usr/bin/env -i \
   HOME="$HOME" \
   USER="${USER:-}" \
@@ -113,4 +122,6 @@ exec /usr/bin/env -i \
   AUDIO_SEPARATOR_HOST=127.0.0.1 \
   AUDIO_SEPARATOR_PORT=7860 \
   AUDIO_SEPARATOR_VC_PYTHON="$VENV_VC/bin/python" \
+  AUDIO_SEPARATOR_WINDOW_TITLE="$WINDOW_TITLE" \
+  AUDIO_SEPARATOR_PREVIEW="$PREVIEW" \
   "$VENV/bin/python" -u "$APPDIR/desktop.py"
