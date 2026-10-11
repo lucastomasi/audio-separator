@@ -20,8 +20,8 @@ Audio Separator is a **native desktop window** (`desktop.py` / pywebview), not a
 - **Never** validate layout, scroll, freezes, or “how it feels” in Chrome/Firefox/Safari against `http://127.0.0.1:…`.
 - Browser chrome, page scrollbars, and click targets are not the product. Screenshots from a browser are invalid evidence for UI polish.
 - Manual UI checks must use the native window:
-  - Dev: `python desktop.py` (or the venv equivalent)
-  - Release: the bundled `.app` / standalone zip on a Mac
+  - **Pruebas (sin rebuild):** `Audio Separator Pruebas.app` next to `desktop.py`, or `./scripts/open_pruebas.sh` / `python desktop.py`
+  - **Release:** the canned `dist/` `.app` / standalone zip on a Mac — only for packaging checks, not the daily fix loop
 - On Cloud Agent Linux VMs, pywebview often cannot start (no GTK/Qt). In that case:
   - Do **not** fall back to the browser for UI judgment
   - Run unit/API checks for status locks and copy

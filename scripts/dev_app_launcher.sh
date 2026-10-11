@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Thin .app / developer double-click entry. Resolves the git checkout and
-# bootstraps venvs, then starts desktop.py (same window as the canned zip).
+# Terminal entry for the preview checkout (same as Audio Separator Pruebas.app).
+# Prefer ./scripts/open_pruebas.sh on the Mac. Resolves the git checkout and
+# bootstraps venvs, then starts desktop.py.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

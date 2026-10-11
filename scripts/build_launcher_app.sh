@@ -1,14 +1,15 @@
 #!/bin/bash
-# Thin double-clickable Audio Separator.app next to the git checkout.
-# First launch creates .venv + .venv-vc and opens the native window.
-# For the canned zip with weights baked in, use build_standalone.sh instead.
+# Thin double-clickable preview app next to the git checkout.
+# Runs the live repo code via .venv / .venv-vc — no zip/DMG rebuild.
+# For the canned release with weights baked in, use build_standalone.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="${1:-$ROOT/Audio Separator.app}"
+DEST="${1:-$ROOT/Audio Separator Pruebas.app}"
 CONTENTS="$DEST/Contents"
+EXE_NAME="Audio Separator Pruebas"
 
-echo "==> Thin launcher app → $DEST"
+echo "==> App de pruebas (thin) → $DEST"
 rm -rf "$DEST"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
@@ -16,21 +17,21 @@ cat > "$CONTENTS/PkgInfo" <<'EOF'
 APPL????
 EOF
 
-cat > "$CONTENTS/Info.plist" <<'EOF'
+cat > "$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Audio Separator</string>
+	<string>Audio Separator Pruebas</string>
 	<key>CFBundleExecutable</key>
-	<string>Audio Separator</string>
+	<string>${EXE_NAME}</string>
 	<key>CFBundleIconFile</key>
 	<string>Audio Separator.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.lucastomasi.audioseparator</string>
+	<string>com.lucastomasi.audioseparator.pruebas</string>
 	<key>CFBundleName</key>
-	<string>Audio Separator</string>
+	<string>Audio Separator Pruebas</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,15 +46,25 @@ cat > "$CONTENTS/Info.plist" <<'EOF'
 </plist>
 EOF
 
-cp -f "$ROOT/scripts/macos_launcher.sh" "$CONTENTS/MacOS/Audio Separator"
-chmod +x "$CONTENTS/MacOS/Audio Separator"
+cp -f "$ROOT/scripts/macos_launcher.sh" "$CONTENTS/MacOS/$EXE_NAME"
+chmod +x "$CONTENTS/MacOS/$EXE_NAME"
 
 ICON_SRC="$ROOT/assets/app_icon.icns"
 if [[ -f "$ICON_SRC" ]]; then
   cp -f "$ICON_SRC" "$CONTENTS/Resources/Audio Separator.icns"
 fi
 
+# Drop the old thin name if it is still next to the repo (avoid two launchers).
+OLD="$ROOT/Audio Separator.app"
+if [[ -d "$OLD" && "$DEST" != "$OLD" ]]; then
+  # Only remove the thin checkout launcher, never a fat Resources/app bundle.
+  if [[ ! -f "$OLD/Contents/Resources/app/desktop.py" ]]; then
+    rm -rf "$OLD"
+    echo "Quité el launcher viejo: $OLD"
+  fi
+fi
+
 echo "Listo: $DEST"
-echo "En el Mac Intel: doble clic (primera vez clic derecho → Abrir)."
-echo "Hace falta Python 3.12. ffmpeg: imageio-ffmpeg del venv, o brew, o el zip full."
-echo "Zip full enlatado: ./scripts/build_standalone.sh"
+echo "En el Mac Intel: git pull → doble clic (primera vez clic derecho → Abrir)."
+echo "Usa el código del clone + .venv; no hace falta build_standalone ni DMG."
+echo "Zip full enlatado (entrega): ./scripts/build_standalone.sh"
