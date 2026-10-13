@@ -274,7 +274,14 @@ def parse_seconds(value):
     return float(text)
 
 
-def clip_audio(source_path, start=None, end=None, directory=None):
+def clip_audio(
+    source_path,
+    start=None,
+    end=None,
+    directory=None,
+    channels=None,
+    sample_rate=None,
+):
     if not source_path or not os.path.isfile(source_path):
         raise ValueError("Falta el audio para recortar.")
     start_s = parse_seconds(start)
@@ -304,7 +311,11 @@ def clip_audio(source_path, start=None, end=None, directory=None):
             cmd.extend(["-t", str(end_s - start_s)])
         else:
             cmd.extend(["-to", str(end_s)])
-    cmd.extend(["-ac", "1", "-ar", "24000", dest])
+    if channels:
+        cmd.extend(["-ac", str(channels)])
+    if sample_rate:
+        cmd.extend(["-ar", str(sample_rate)])
+    cmd.extend(["-c:a", "pcm_s16le", dest])
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0 or not os.path.isfile(dest) or os.path.getsize(dest) == 0:
         raise ValueError("No se pudo recortar el audio.")

@@ -863,8 +863,18 @@ def get_gui():
             last_audio = servable_media(library.get_session_meta().get("last_audio_path"))
             ensure_demo_voice()
             rvc_upd = refresh_library_ui()
-            song = last_audio or demo_song_path()
-            run = unlock_run_button() if song else gr.update()
+            from install_rvc_assets import first_install_ready
+
+            ready_assets = False
+            try:
+                ready_assets = first_install_ready()
+            except Exception:
+                pass
+
+            song = (last_audio or demo_song_path()) if ready_assets else None
+            run = unlock_run_button() if (song and ready_assets) else gr.update(
+                interactive=False, value="Separar audio"
+            )
             chords_on = unlock_chords_button() if song else gr.update(
                 interactive=False, value="Estimar acordes"
             )
@@ -880,10 +890,12 @@ def get_gui():
                 status_txt = status_update(KIND_RUN, persisted or RUN_TRAIN)
             elif persisted and persisted.startswith("Modelo listo:"):
                 status_txt = status_update(KIND_OK, persisted)
+            elif not ready_assets:
+                status_txt = status_update(KIND_OK, _install_status_line())
             elif song and song == demo_song_path() and not last_audio:
                 status_txt = status_update(KIND_OK, DEMO_STATUS)
             elif not song:
-                status_txt = status_update(KIND_OK, _install_status_line())
+                status_txt = status_update(KIND_OK, IDLE_STATUS)
             else:
                 status_txt = status_update(KIND_OK, READY_STATUS)
             return (
