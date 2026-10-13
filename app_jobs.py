@@ -643,8 +643,9 @@ def remix_job(
         except Exception:
             pass
         voice_path = _gradio_path(voice_path)
-        instrumental_path = _gradio_path(instrumental_path)
-        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
+        from app_env import data_dir
+
+        out_dir = os.path.join(data_dir(), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         wav_path = os.path.join(out_dir, "remix.wav")
         from remix import remix_to_wav

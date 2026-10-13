@@ -74,26 +74,37 @@ def _as_path(path):
 
 def load(path, mono=False, sr=44100):
     path = _as_path(path)
+    stereo_path = None
     try:
-        wave, file_sr = sf.read(path, always_2d=True)
-    except Exception:
-        stereo_path = f"{path}.decoded.wav"
-        subprocess.check_call(
-            [
-                _ffmpeg_cmd(),
-                "-y",
-                "-loglevel",
-                "error",
-                "-i",
-                path,
-                "-ac",
-                "2",
-                "-ar",
-                str(sr or 44100),
-                stereo_path,
-            ]
-        )
-        wave, file_sr = sf.read(stereo_path, always_2d=True)
+        try:
+            wave, file_sr = sf.read(path, always_2d=True)
+        except Exception:
+            import tempfile
+
+            fd, stereo_path = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            subprocess.check_call(
+                [
+                    _ffmpeg_cmd(),
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    path,
+                    "-ac",
+                    "2",
+                    "-ar",
+                    str(sr or 44100),
+                    stereo_path,
+                ]
+            )
+            wave, file_sr = sf.read(stereo_path, always_2d=True)
+    finally:
+        if stereo_path and os.path.isfile(stereo_path):
+            try:
+                os.remove(stereo_path)
+            except OSError:
+                pass
     wave = wave.T.astype(np.float32)
     if sr and int(file_sr) != int(sr):
         wave = resample(wave, orig_sr=file_sr, target_sr=sr)
@@ -101,5 +112,5 @@ def load(path, mono=False, sr=44100):
     if mono:
         return np.mean(wave, axis=0), file_sr
     if wave.shape[0] == 1:
-        return wave[0], file_sr
+        return np.repeat(wave, 2, axis=0), file_sr
     return wave, file_sr
