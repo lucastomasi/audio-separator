@@ -395,14 +395,39 @@ def get_gui():
                         sources=["upload"],
                         buttons=[],
                     )
-                    rvc_pick = gr.Dropdown(
-                        label="Modelo",
-                        choices=_rvc_choices,
-                        value=_rvc_value,
-                        info="Si está vacío, entrená o cargá un .pth en Biblioteca.",
-                        elem_classes=["model-search"],
-                        filterable=True,
-                    )
+                    with gr.Row():
+                        rvc_pick = gr.Dropdown(
+                            label="Modelo",
+                            choices=_rvc_choices,
+                            value=_rvc_value,
+                            info="Elegí una voz existente o cargá un .pth abajo.",
+                            elem_classes=["model-search"],
+                            filterable=True,
+                            scale=4,
+                        )
+                        refresh_lib_btn = gr.Button(
+                            "↻ Actualizar",
+                            variant="secondary",
+                            scale=1,
+                        )
+                    with gr.Accordion(
+                        "Cargar modelo (.pth / .index)",
+                        open=(not bool(_rvc_choices)),
+                    ):
+                        with gr.Row():
+                            rvc_model = gr.File(
+                                label="Modelo .pth",
+                                file_types=[".pth", ".pt"],
+                            )
+                            rvc_index = gr.File(
+                                label="Índice .index (opcional)",
+                                file_types=[".index"],
+                            )
+                        with gr.Row(elem_classes=["action-row"]):
+                            load_rvc_btn = gr.Button(
+                                "Cargar en biblioteca",
+                                variant="secondary",
+                            )
                     rvc_btn = gr.Button(
                         "Convertir voz",
                         variant="primary",
@@ -629,10 +654,10 @@ def get_gui():
                             )
                     with gr.Tab("Biblioteca"):
                         with gr.Group(elem_classes=["step"]):
-                            gr.Markdown("Biblioteca", elem_classes=["panel-title"])
+                            gr.Markdown("Biblioteca de soporte", elem_classes=["panel-title"])
                             gr.Markdown(
-                                "Si Convertir está vacío, entrená una voz o cargá un .pth. "
-                                "hubert y rmvpe se instalan una vez en Instalación.",
+                                "Pesos base de RVC (hubert y rmvpe se instalan en Instalación). "
+                                "Los modelos de voz (.pth) se cargan directamente en Convertir.",
                                 elem_classes=["hint"],
                             )
                             with gr.Row():
@@ -650,19 +675,9 @@ def get_gui():
                                 rvc_d = gr.File(
                                     label="f0D40k.pth", file_types=[".pth", ".pt"]
                                 )
-                            with gr.Row():
-                                rvc_model = gr.File(
-                                    label="Modelo .pth", file_types=[".pth", ".pt"]
-                                )
-                                rvc_index = gr.File(
-                                    label="Índice .index", file_types=[".index"]
-                                )
                             with gr.Row(elem_classes=["action-row"]):
-                                load_rvc_btn = gr.Button(
-                                    "Cargar en biblioteca", variant="secondary"
-                                )
-                                refresh_lib_btn = gr.Button(
-                                    "Actualizar listas", variant="secondary"
+                                load_support_btn = gr.Button(
+                                    "Cargar pesos de soporte", variant="secondary"
                                 )
 
         install_btn.click(
@@ -696,7 +711,12 @@ def get_gui():
             show_progress="full",
             concurrency_limit=1,
         )
-        last_video.change(lambda p: p, last_video, remux_video_in)
+        last_video.change(
+            lambda p: p,
+            last_video,
+            remux_video_in,
+            show_progress="hidden",
+        )
         aud.change(on_audio_ready, aud, [button_base, status, chords_btn])
         stem_gui.change(
             show_vocal_components,
@@ -768,25 +788,40 @@ def get_gui():
             show_progress="full",
         )
         refresh_lib_btn.click(
-            refresh_library_ui, outputs=[rvc_pick]
+            refresh_library_ui,
+            outputs=[rvc_pick],
+            show_progress="hidden",
         )
         vocal_out.change(
             lambda path: (path, path),
             vocal_out,
             [remix_voice, rvc_in],
+            show_progress="hidden",
         )
-        background_out.change(lambda path: path, background_out, remix_inst)
+        background_out.change(
+            lambda path: path,
+            background_out,
+            remix_inst,
+            show_progress="hidden",
+        )
         remix_voice.change(
             _join_ready,
             [remix_voice, remix_inst],
             [join_ready, remix_btn],
+            show_progress="hidden",
         )
         remix_inst.change(
             _join_ready,
             [remix_voice, remix_inst],
             [join_ready, remix_btn],
+            show_progress="hidden",
         )
-        remix_audio.change(lambda path: path, remix_audio, remux_audio_in)
+        remix_audio.change(
+            lambda path: path,
+            remix_audio,
+            remux_audio_in,
+            show_progress="hidden",
+        )
         remux_btn.click(
             remux_job,
             inputs=[remux_video_in, remux_audio_in],
@@ -805,6 +840,11 @@ def get_gui():
             outputs=[cover_preview, status],
         )
         load_rvc_btn.click(
+            load_rvc_into_library,
+            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
+            outputs=[rvc_pick, status],
+        )
+        load_support_btn.click(
             load_rvc_into_library,
             inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
             outputs=[rvc_pick, status],

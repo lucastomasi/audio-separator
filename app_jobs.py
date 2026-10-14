@@ -448,6 +448,7 @@ def load_rvc_into_library(
     if d_path:
         library.register("rvc", d_path, "f0D40k.pth")
         loaded.append("f0D40k")
+    model_path = None
     model = _gradio_path(model_file)
     if model:
         stem = os.path.splitext(os.path.basename(model))[0]
@@ -463,6 +464,11 @@ def load_rvc_into_library(
         loaded.append(".index")
     rvc_engine._converter = None
     rvc_upd = refresh_library_ui()
+    if model_path:
+        import library as lib_mod
+
+        choices = lib_mod.dropdown_choices(lib_mod.list_rvc_voices())
+        rvc_upd = gr.update(choices=choices, value=model_path)
     if not loaded:
         return rvc_upd, _ok("Elegí archivos y pulsá Cargar.")
     hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
