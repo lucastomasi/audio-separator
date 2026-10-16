@@ -76,7 +76,10 @@ class ExportsTests(unittest.TestCase):
             directory, copied = exports.copy_to_downloads(
                 [src], ["pibe-voz"], song="pibe"
             )
-        self.assertEqual(directory, os.path.join(dest_root, "pibe"))
+        self.assertEqual(
+            os.path.realpath(directory),
+            os.path.realpath(os.path.join(dest_root, "pibe")),
+        )
         self.assertEqual(len(copied), 1)
         self.assertEqual(os.path.basename(copied[0]), "pibe-voz.wav")
         self.assertTrue(os.path.isfile(copied[0]))
