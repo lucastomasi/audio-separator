@@ -3,7 +3,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
 APP="$ROOT/dist/Audio Separator.app"
 RES="$APP/Contents/Resources"
 APPDIR="$RES/app"
@@ -101,7 +100,7 @@ mkdir -p "$APPDIR"
 while IFS= read -r f; do
   [[ -n "$f" ]] || continue
   cp -f "$ROOT/$f" "$APPDIR/$f"
-done < <(PYTHONPATH="$ROOT" "$SRC_VENV/bin/python" -c "from bundle_py import BUNDLE_PY; print('\\n'.join(BUNDLE_PY))")
+done < <("$SRC_VENV/bin/python" -c "from bundle_py import BUNDLE_PY; print('\\n'.join(BUNDLE_PY))")
 cp -f "$ROOT/ui.css" "$APPDIR/ui.css"
 mkdir -p "$APPDIR/pwa"
 cp -f "$ROOT"/pwa/* "$APPDIR/pwa/"

@@ -421,21 +421,17 @@ def run_mdx(
     mdx_sess = MDX(model_path, model, processor=processor_num)
     wave, sr = librosa.load(filename, mono=False, sr=44100)
     # normalizing input wave gives better output
-    peak = float(max(np.max(wave), abs(np.min(wave)))) if wave.size > 0 else 0.0
-    if peak > 1e-6:
-        norm_wave = wave / peak
-    else:
-        norm_wave = wave.copy()
+    peak = max(np.max(wave), abs(np.min(wave)))
+    wave /= peak
     if denoise:
-        wave_processed = -(mdx_sess.process_wave(-norm_wave, m_threads)) + (
-            mdx_sess.process_wave(norm_wave, m_threads)
+        wave_processed = -(mdx_sess.process_wave(-wave, m_threads)) + (
+            mdx_sess.process_wave(wave, m_threads)
         )
         wave_processed *= 0.5
     else:
-        wave_processed = mdx_sess.process_wave(norm_wave, m_threads)
+        wave_processed = mdx_sess.process_wave(wave, m_threads)
     # return to previous peak
-    if peak > 1e-6:
-        wave_processed *= peak
+    wave_processed *= peak
     stem_name = model.stem_name if suffix is None else suffix
 
     main_filepath = None
@@ -511,21 +507,17 @@ def run_mdx_beta(
     mdx_sess = MDX(model_path, model, processor=processor_num)
     wave, sr = librosa.load(filename, mono=False, sr=44100)
     # normalizing input wave gives better output
-    peak = float(max(np.max(wave), abs(np.min(wave)))) if wave.size > 0 else 0.0
-    if peak > 1e-6:
-        norm_wave = wave / peak
-    else:
-        norm_wave = wave.copy()
+    peak = max(np.max(wave), abs(np.min(wave)))
+    wave /= peak
     if denoise:
-        wave_processed = -(mdx_sess.process_wave(-norm_wave, m_threads)) + (
-            mdx_sess.process_wave(norm_wave, m_threads)
+        wave_processed = -(mdx_sess.process_wave(-wave, m_threads)) + (
+            mdx_sess.process_wave(wave, m_threads)
         )
         wave_processed *= 0.5
     else:
-        wave_processed = mdx_sess.process_wave(norm_wave, m_threads)
+        wave_processed = mdx_sess.process_wave(wave, m_threads)
     # return to previous peak
-    if peak > 1e-6:
-        wave_processed *= peak
+    wave_processed *= peak
     stem_name = model.stem_name if suffix is None else suffix
 
     main_filepath = None

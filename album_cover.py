@@ -103,25 +103,17 @@ def _font(size: int):
 
 
 def save_cover_with_audio(cover_path: str, audio_path: str | None = None) -> str:
-    """Copy cover next to audio in Downloads without creating duplicates."""
+    """Copy cover next to audio in Downloads. Does not re-encode audio."""
     if not cover_path or not os.path.isfile(cover_path):
         raise ValueError("No hay portada para guardar.")
-    cover_path = os.path.abspath(cover_path)
-    exp_dir = exports_dir()
-    if audio_path and os.path.isfile(audio_path):
-        stem = Path(audio_path).stem
-        dest = unique_path(exp_dir, f"{stem}_portada.jpg")
-        if cover_path != dest:
-            import shutil
-
-            shutil.copy2(cover_path, dest)
-            if os.path.dirname(cover_path) == exp_dir and os.path.basename(cover_path).startswith("portada"):
-                try:
-                    os.remove(cover_path)
-                except OSError:
-                    pass
-        return dest
-    if os.path.dirname(cover_path) == exp_dir:
-        return cover_path
     _, copied = copy_to_downloads([cover_path], ["portada"])
-    return copied[0] if copied else cover_path
+    saved = copied[0] if copied else cover_path
+    if audio_path and os.path.isfile(audio_path):
+        # Sidecar next to the audio filename in Downloads if possible
+        stem = Path(audio_path).stem
+        dest = unique_path(exports_dir(), f"{stem}_portada.jpg")
+        import shutil
+
+        shutil.copy2(cover_path, dest)
+        return dest
+    return saved

@@ -448,7 +448,6 @@ def load_rvc_into_library(
     if d_path:
         library.register("rvc", d_path, "f0D40k.pth")
         loaded.append("f0D40k")
-    model_path = None
     model = _gradio_path(model_file)
     if model:
         stem = os.path.splitext(os.path.basename(model))[0]
@@ -465,9 +464,7 @@ def load_rvc_into_library(
     rvc_engine._converter = None
     rvc_upd = refresh_library_ui()
     if model_path:
-        import library as lib_mod
-
-        choices = lib_mod.dropdown_choices(lib_mod.list_rvc_voices())
+        choices = library.dropdown_choices(library.list_rvc_voices())
         rvc_upd = gr.update(choices=choices, value=model_path)
     if not loaded:
         return rvc_upd, _ok("Elegí archivos y pulsá Cargar.")
@@ -649,9 +646,8 @@ def remix_job(
         except Exception:
             pass
         voice_path = _gradio_path(voice_path)
-        from app_env import data_dir
-
-        out_dir = os.path.join(data_dir(), "remix_output")
+        instrumental_path = _gradio_path(instrumental_path)
+        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remix_output")
         os.makedirs(out_dir, exist_ok=True)
         wav_path = os.path.join(out_dir, "remix.wav")
         from remix import remix_to_wav

@@ -59,8 +59,7 @@ class InjectPWAHead:
             kind = message["type"]
             if kind == "http.response.start":
                 content_type = _header(message.get("headers") or [], b"content-type")
-                content_encoding = _header(message.get("headers") or [], b"content-encoding")
-                if b"text/html" not in content_type or content_encoding:
+                if b"text/html" not in content_type:
                     passthrough = True
                     await send(message)
                     return
