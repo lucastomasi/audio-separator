@@ -36,7 +36,7 @@ class RemixJobTests(unittest.TestCase):
         }
         with mock.patch(
             "app_jobs.copy_to_downloads",
-            side_effect=lambda files, labels: (tmp.name, list(files)),
+            side_effect=lambda files, labels, song=None: (tmp.name, list(files)),
         ) as copied:
             audio, archivo, status, unlock = app_jobs.remix_job(
                 voice, inst, 0, False, 0, 0, "WAV"

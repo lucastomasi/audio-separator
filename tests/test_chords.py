@@ -160,7 +160,7 @@ class ChordsJobTests(unittest.TestCase):
             "occupancy.acquire", side_effect=fake_acquire
         ), mock.patch("occupancy.release") as release, mock.patch(
             "app_jobs.copy_to_downloads",
-            side_effect=lambda files, labels: (downloads, list(files)),
+            side_effect=lambda files, labels, song=None: (downloads, list(files)),
         ), mock.patch.object(occupancy, "_ps_commands", return_value=""):
             text, saved, status, unlock = app_jobs.chords_job(wav)
         self.assertIn(occupancy.HOLD_CHORDS, acquired)

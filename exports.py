@@ -6,7 +6,9 @@ import subprocess
 
 from app_env import data_dir, package_dir
 
-_ROLE_SUFFIXES = frozenset({"voz", "instrumental", "unir", "rvc"})
+_ROLE_SUFFIXES = frozenset(
+    {"voz", "instrumental", "unir", "rvc", "video", "acordes"}
+)
 _UNSAFE_NAME = re.compile(r"[^\w\s.-]+", flags=re.UNICODE)
 _SPACE_RUN = re.compile(r"[\s_]+")
 
@@ -22,6 +24,17 @@ def is_inside(path, root):
 
 def exports_dir():
     path = os.path.join(os.path.expanduser("~"), "Downloads", "Audio Separator")
+    os.makedirs(path, exist_ok=True)
+    return os.path.realpath(path)
+
+
+def song_exports_dir(song=None):
+    """One folder per song under Downloads/Audio Separator/<song>/."""
+    root = exports_dir()
+    folder = export_stem(song) if song else ""
+    if not folder or folder == "audio":
+        return root
+    path = os.path.join(root, folder)
     os.makedirs(path, exist_ok=True)
     return os.path.realpath(path)
 
@@ -88,8 +101,8 @@ def is_exportable(path):
     return any(is_inside(path, root) for root in _export_roots())
 
 
-def copy_to_downloads(file_paths, labels):
-    directory = exports_dir()
+def copy_to_downloads(file_paths, labels, song=None):
+    directory = song_exports_dir(song)
     os.makedirs(directory, exist_ok=True)
     copied = []
     for path, label in zip(file_paths, labels):

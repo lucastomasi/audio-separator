@@ -102,7 +102,7 @@ class ConvertWavTests(unittest.TestCase):
             handle.write(b"source!!")
         downloads = os.path.join(root, "dl")
 
-        def fake_copy(paths, labels):
+        def fake_copy(paths, labels, song=None):
             os.makedirs(downloads, exist_ok=True)
             copied = []
             for path, label in zip(paths, labels):
@@ -176,7 +176,7 @@ class ConvertWavTests(unittest.TestCase):
             shutil.copy2(paths[0], out)
             return [out]
 
-        def fake_copy(paths, labels):
+        def fake_copy(paths, labels, song=None):
             dest = os.path.join(downloads, "voz.flac")
             shutil.copy2(paths[0], dest)
             return downloads, [dest]

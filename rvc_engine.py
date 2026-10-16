@@ -162,6 +162,7 @@ def convert_voice(
         occupancy.release(occupancy.HOLD_CONVERT)
     if not copy_downloads:
         return produced
-    label = export_label(song_stem(audio_path), "voz", export_stem(model_path))
-    _, copied = copy_to_downloads([produced], [label])
+    song = song_stem(audio_path)
+    label = export_label(song, "voz", export_stem(model_path))
+    _, copied = copy_to_downloads([produced], [label], song=song)
     return copied[0] if copied else produced

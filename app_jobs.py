@@ -337,14 +337,16 @@ def audio_downloader(url_media, with_video=True, progress=gr.Progress()):
 
 def clip_for_clone(source_path, start, end):
     from youtube_lib import clip_audio
-    from exports import copy_to_downloads
+    from exports import copy_to_downloads, export_stem, song_stem
     import library
 
     unlock = unlock_clip_button()
     try:
         path = clip_audio(source_path, start, end)
         library.register("voices", path)
-        _, copied = copy_to_downloads([path], ["ref_clon"])
+        song = song_stem(source_path)
+        label = export_stem(path)
+        _, copied = copy_to_downloads([path], [label], song=song)
         saved = copied[0] if copied else path
         return saved, _ok(f"Recorte listo ({start}–{end})."), unlock
     except ValueError as error:
@@ -663,8 +665,9 @@ def remix_job(
         )
         files = convert_format([wav_path], out_dir, target_format or "WAV")
         final = files[0]
-        label = export_label(song_stem(instrumental_path or voice_path), "unir")
-        export_dir, copied = copy_to_downloads([final], [label])
+        song = song_stem(instrumental_path or voice_path)
+        label = export_label(song, "unir")
+        export_dir, copied = copy_to_downloads([final], [label], song=song)
         saved = copied[0] if copied else final
         fmt = (target_format or "WAV").upper()
         return (
@@ -695,7 +698,9 @@ def remux_job(video_path, audio_path, progress=gr.Progress()):
         except Exception:
             pass
         remux_audio(video_path, audio_path, raw, shortest=True)
-        _, copied = copy_to_downloads([raw], ["video_nuevo_audio"])
+        song = song_stem(audio_path or video_path)
+        label = export_label(song, "video")
+        _, copied = copy_to_downloads([raw], [label], song=song)
         if copied and os.path.isfile(raw):
             try:
                 os.remove(raw)
@@ -735,13 +740,14 @@ def chords_job(audio_path, progress=gr.Progress()):
                 progress(0.85, desc="Guardando texto…")
             except Exception:
                 pass
-            stem = os.path.splitext(os.path.basename(path))[0] or "cancion"
-            _export_dir, copied = copy_to_downloads([out_path], [f"{stem}_acordes"])
+            song = song_stem(path)
+            label = export_label(song, "acordes")
+            export_dir, copied = copy_to_downloads([out_path], [label], song=song)
             saved = copied[0] if copied else out_path
             return (
                 text,
                 saved,
-                _ok("Listo. El texto está en Descargas/Audio Separator."),
+                _ok(f"Listo. El texto está en {export_dir}."),
                 unlock,
             )
         finally:

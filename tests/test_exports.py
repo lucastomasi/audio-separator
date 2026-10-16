@@ -61,6 +61,30 @@ class ExportsTests(unittest.TestCase):
         with open(copied[0], "rb") as handle:
             self.assertEqual(handle.read(), b"abc")
 
+    def test_copy_to_downloads_uses_song_subfolder(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        allowed_root = os.path.join(tmp.name, "Trabajos")
+        os.makedirs(allowed_root)
+        src = os.path.join(allowed_root, "src.wav")
+        with open(src, "wb") as handle:
+            handle.write(b"abc")
+        dest_root = os.path.join(tmp.name, "out")
+        with mock.patch.object(exports, "exports_dir", return_value=dest_root), mock.patch.object(
+            exports, "_export_roots", return_value=[allowed_root, dest_root]
+        ):
+            directory, copied = exports.copy_to_downloads(
+                [src], ["pibe-voz"], song="pibe"
+            )
+        self.assertEqual(directory, os.path.join(dest_root, "pibe"))
+        self.assertEqual(len(copied), 1)
+        self.assertEqual(os.path.basename(copied[0]), "pibe-voz.wav")
+        self.assertTrue(os.path.isfile(copied[0]))
+
+    def test_song_stem_strips_video_and_acordes(self):
+        self.assertEqual(exports.song_stem("tema-video.mp4"), "tema")
+        self.assertEqual(exports.song_stem("tema-acordes.txt"), "tema")
+
 
 if __name__ == "__main__":
     unittest.main()

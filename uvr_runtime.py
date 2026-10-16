@@ -653,7 +653,7 @@ def _sound_separate(
     if background_out:
         labels.append(export_label(song, "instrumental"))
         export_paths.append(background_out)
-    export_dir, copied = copy_to_downloads(export_paths, labels)
+    export_dir, copied = copy_to_downloads(export_paths, labels, song=song)
     if copied:
         if want_vocal:
             vocal_out = copied[0]
