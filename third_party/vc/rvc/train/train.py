@@ -530,7 +530,11 @@ def run(
     )
 
     use_scaler = device.type == "cuda" and train_dtype == torch.float16
-    scaler = torch.amp.GradScaler(enabled=use_scaler)
+    # torch 2.2 (Intel Mac pin) has cuda.amp.GradScaler. torch.amp.GradScaler is newer.
+    if hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler(enabled=use_scaler)
+    else:
+        scaler = torch.cuda.amp.GradScaler(enabled=use_scaler)
     if len(scaler_dict) > 0:
         scaler.load_state_dict(scaler_dict)
 

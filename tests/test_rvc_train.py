@@ -353,6 +353,8 @@ class RvcTrainTests(unittest.TestCase):
         self.assertTrue(train_py.is_file())
         text = train_py.read_text(encoding="utf-8")
         self.assertIn("os._exit(2333333)", text)
+        self.assertIn('hasattr(torch.amp, "GradScaler")', text)
+        self.assertIn("torch.cuda.amp.GradScaler", text)
 
     def test_find_small_weight_skips_G_checkpoints(self):
         tmp = tempfile.TemporaryDirectory()
