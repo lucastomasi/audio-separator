@@ -193,6 +193,7 @@ def process_uvr_task(
     only_voiceless: bool = False,
     remove_files_output_dir: bool = False,
     progress=None,
+    progress_desc=None,
 ):
 
     torch, ort, _tqdm = _ensure_ml()
@@ -214,7 +215,8 @@ def process_uvr_task(
 
     if only_voiceless:
         logger.info("Voiceless Track Separation...")
-        _tick(progress, 0.35, "Separando instrumental…")
+        inst_desc = progress_desc or "Separando instrumental…"
+        _tick(progress, 0.2, inst_desc)
 
         process = run_mdx(
             mdx_model_params,
@@ -226,13 +228,18 @@ def process_uvr_task(
             keep_orig=True,
             exclude_inversion=True,
             device_base=device_base,
+            progress=progress,
+            progress_span=(0.2, 0.9),
+            progress_desc=inst_desc,
         )
 
-        _tick(progress, 1.0, "Listo")
+        _tick(progress, 0.94, "Listo")
         return process
 
     logger.info("Vocal Track Isolation...")
-    _tick(progress, 0.25, "Separando voz…")
+    vocal_desc = progress_desc or "Separando voz e instrumental…"
+    _tick(progress, 0.12, vocal_desc)
+    later_passes = bool(main_vocals or dereverb)
     vocals_path, instrumentals_path = run_mdx(
         mdx_model_params,
         song_output_dir,
@@ -241,14 +248,18 @@ def process_uvr_task(
         denoise=False,
         keep_orig=True,
         device_base=device_base,
+        progress=progress,
+        progress_span=(0.12, 0.46) if later_passes else (0.12, 0.9),
+        progress_desc=vocal_desc,
     )
 
     if main_vocals:
         random_sleep()
         msg_main = "Separando la voz principal de los coros…"
         logger.info(msg_main)
-        _tick(progress, 0.55, msg_main)
+        _tick(progress, 0.48, msg_main)
         gr.Info(msg_main)
+        kara_span = (0.48, 0.7) if dereverb else (0.48, 0.9)
         try:
             backup_vocals_path, main_vocals_path = run_mdx(
                 mdx_model_params,
@@ -259,6 +270,9 @@ def process_uvr_task(
                 invert_suffix="Main",
                 denoise=True,
                 device_base=device_base,
+                progress=progress,
+                progress_span=kara_span,
+                progress_desc="Separando la voz principal…",
             )
         except Exception as e:
             backup_vocals_path, main_vocals_path = run_mdx_beta(
@@ -270,6 +284,9 @@ def process_uvr_task(
                 invert_suffix="Main",
                 denoise=True,
                 device_base=device_base,
+                progress=progress,
+                progress_span=kara_span,
+                progress_desc="Separando la voz principal…",
             )
     else:
         backup_vocals_path, main_vocals_path = None, vocals_path
@@ -278,7 +295,7 @@ def process_uvr_task(
         random_sleep()
         msg_dereverb = "Quitando reverb de la voz…"
         logger.info(msg_dereverb)
-        _tick(progress, 0.75, msg_dereverb)
+        _tick(progress, 0.72, msg_dereverb)
         gr.Info(msg_dereverb)
         try:
             _, vocals_dereverb_path = run_mdx(
@@ -290,6 +307,9 @@ def process_uvr_task(
                 exclude_main=True,
                 denoise=True,
                 device_base=device_base,
+                progress=progress,
+                progress_span=(0.72, 0.9),
+                progress_desc="Quitando reverb de la voz…",
             )
         except Exception as e:
             _, vocals_dereverb_path = run_mdx_beta(
@@ -301,11 +321,14 @@ def process_uvr_task(
                 exclude_main=True,
                 denoise=True,
                 device_base=device_base,
+                progress=progress,
+                progress_span=(0.72, 0.9),
+                progress_desc="Quitando reverb de la voz…",
             )
     else:
         vocals_dereverb_path = main_vocals_path
 
-    _tick(progress, 0.95, "Guardando pistas…")
+    _tick(progress, 0.94, "Guardando pistas…")
     return (
         vocals_path,
         instrumentals_path,
@@ -484,7 +507,7 @@ def sound_separate(
     background_compressor_threshold_db=-20, background_compressor_ratio=2.5, background_compressor_attack_ms=15, background_compressor_release_ms=80,
     background_gain_db=3,
     target_format="WAV",
-    progress=gr.Progress(track_tqdm=True),
+    progress=gr.Progress(),
 ):
     yield (
         None,
@@ -572,6 +595,13 @@ def _sound_separate(
 
     start_time = time.time()
 
+    if "vocal" in stem and "background" in stem:
+        separate_desc = "Separando voz e instrumental…"
+    elif "vocal" in stem:
+        separate_desc = "Separando voz…"
+    else:
+        separate_desc = "Separando instrumental…"
+
     if "vocal" in stem:
         try:
             _, instrumentals_from_vocal, _, _, vocal_audio = process_uvr_task(
@@ -581,6 +611,7 @@ def _sound_separate(
                 dereverb=dereverb,
                 remove_files_output_dir=False,
                 progress=progress,
+                progress_desc=separate_desc,
             )
 
             if vocal_effects:
@@ -611,6 +642,7 @@ def _sound_separate(
                 only_voiceless=True,
                 remove_files_output_dir=False,
                 progress=progress,
+                progress_desc=separate_desc,
             )
 
         if background_effects:
