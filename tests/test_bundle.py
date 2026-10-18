@@ -45,14 +45,103 @@ class FullZipIsCannedTests(unittest.TestCase):
         self.assertIn("Pulsá Completar instalación", text)
 
     def test_cloud_install_does_not_download_models(self):
-        text = (ROOT / ".cursor" / "install.sh").read_text(encoding="utf-8")
+        install = (ROOT / ".cursor" / "install.sh").read_text(encoding="utf-8")
+        link = (ROOT / "scripts" / "link_can_weights.sh").read_text(encoding="utf-8")
+        text = install + "\n" + link
         self.assertNotIn("TRvlvr", text)
         self.assertNotIn("huggingface", text.lower())
         self.assertNotIn("curl ", text)
         self.assertIn("/opt/audio-separator-models", text)
-        self.assertIn("No bajes nada", text)
-        self.assertIn("from app import build_server, launch_app", text)
-        self.assertIn("from remix import remix_to_wav", text)
+        self.assertIn("No bajes nada", install)
+        self.assertIn("Esta instalación no baja pesos", install)
+        self.assertIn("link_can_weights.sh", install)
+        self.assertIn("pack_can.sh", link)
+        self.assertIn("exit 1", link)
+        self.assertIn("from app import build_server, launch_app", install)
+        self.assertIn("from remix import remix_to_wav", install)
+
+    def test_standalone_weight_rsync_dereferences_can_links(self):
+        text = (ROOT / "scripts" / "build_standalone.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'rsync -aL --delete --exclude \'__pycache__\' "$ROOT/mdx_models/"',
+            text,
+        )
+        self.assertIn(
+            'rsync -aL --delete \\\n  --exclude \'*.bak\'',
+            text,
+        )
+
+    def _run_link(self, root: Path, can: Path):
+        env = os.environ.copy()
+        env["AUDIO_SEPARATOR_CAN"] = str(can)
+        return subprocess.run(
+            ["bash", str(ROOT / "scripts" / "link_can_weights.sh"), str(root)],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_link_can_fails_closed_without_weights(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "repo"
+        can = Path(tmp.name) / "can"
+        root.mkdir()
+        can.mkdir()
+        result = self._run_link(root, can)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("Esta instalación no baja pesos", result.stderr)
+        self.assertIn("pack_can.sh", result.stderr)
+        self.assertIn("UVR-MDX-NET-Voc_FT.onnx", result.stderr)
+        self.assertIn("f0G40k.pth", result.stderr)
+
+    def test_link_can_copies_real_bytes_and_keeps_checkout(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        can = base / "can"
+        root = base / "repo"
+        onnx_names = (
+            "UVR-MDX-NET-Voc_FT.onnx",
+            "UVR_MDXNET_KARA_2.onnx",
+            "Reverb_HQ_By_FoxJoy.onnx",
+            "UVR-MDX-NET-Inst_HQ_4.onnx",
+        )
+        (can / "mdx_models").mkdir(parents=True)
+        for name in onnx_names:
+            (can / "mdx_models" / name).write_bytes(b"onnx-" + name.encode())
+        real = base / "real-rmvpe.pt"
+        real.write_bytes(b"rmvpe-bytes")
+        rvc = can / "rvc"
+        (rvc / "hubert_base").mkdir(parents=True)
+        (rvc / "rmvpe.pt").symlink_to(real)
+        (rvc / "f0G40k.pth").write_bytes(b"g40")
+        (rvc / "f0D40k.pth").write_bytes(b"d40")
+        (rvc / "hubert_base" / "model.safetensors").write_bytes(b"sft")
+        (rvc / "hubert_base" / "config.json").write_bytes(b"cfg")
+        root.mkdir()
+        result = self._run_link(root, can)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        linked = root / "mdx_models" / onnx_names[0]
+        self.assertTrue(linked.is_symlink())
+        self.assertEqual(linked.read_bytes(), b"onnx-" + onnx_names[0].encode())
+        copied = root / "library" / "models" / "rvc" / "rmvpe.pt"
+        self.assertFalse(copied.is_symlink())
+        self.assertEqual(copied.read_bytes(), b"rmvpe-bytes")
+        self.assertEqual(
+            (root / "library" / "models" / "rvc" / "f0D40k.pth").read_bytes(),
+            b"d40",
+        )
+        (root / "library" / "models" / "rvc" / "rmvpe.pt").write_bytes(b"keep")
+        (can / "rvc" / "f0G40k.pth").write_bytes(b"replaced")
+        again = self._run_link(root, can)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(copied.read_bytes(), b"keep")
+        self.assertEqual(
+            (root / "library" / "models" / "rvc" / "f0G40k.pth").read_bytes(),
+            b"g40",
+        )
 
 
 class BundlePyTests(unittest.TestCase):

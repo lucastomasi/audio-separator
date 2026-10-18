@@ -32,7 +32,13 @@ do
 done
 
 echo "==> RVC support → $CAN/rvc"
-if [ -s "$CAN/rvc/rmvpe.pt" ] && [ -s "$CAN/rvc/hubert_base/model.safetensors" ]; then
+rvc_ready=1
+for f in rmvpe.pt f0G40k.pth f0D40k.pth hubert_base/model.safetensors hubert_base/config.json; do
+  if [ ! -s "$CAN/rvc/$f" ]; then
+    rvc_ready=0
+  fi
+done
+if [ "$rvc_ready" -eq 1 ]; then
   echo "OK rvc"
 else
   STAGING="$(mktemp -d)"

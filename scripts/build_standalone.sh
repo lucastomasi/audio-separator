@@ -110,7 +110,7 @@ cp -f "$ROOT/requirements-macos.txt" "$APPDIR/requirements-macos.txt"
 chmod +x "$APPDIR/convert_rvc.sh"
 # UVR onnx models used for separate
 if [[ -d "$ROOT/mdx_models" ]]; then
-  rsync -a --delete --exclude '__pycache__' "$ROOT/mdx_models/" "$APPDIR/mdx_models/"
+  rsync -aL --delete --exclude '__pycache__' "$ROOT/mdx_models/" "$APPDIR/mdx_models/"
 fi
 
 echo "==> library skeleton + RVC support weights"
@@ -119,7 +119,7 @@ mkdir -p "$APPDIR/library/models/rvc_voices"
 mkdir -p "$APPDIR/library/models/uvr"
 mkdir -p "$APPDIR/library/voices"
 # Support weights (full standalone)
-rsync -a --delete \
+rsync -aL --delete \
   --exclude '*.bak' \
   --exclude '*WRONG*' \
   --exclude 'pytorch_model.bin' \

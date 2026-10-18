@@ -34,23 +34,10 @@ fi
 
 # Enlatado: si el snapshot ya trae pesos, enlazalos. No bajes nada.
 # Si el checkout ya los tiene (Mac de build), no toques.
+# Si la lata no está, esto corta. Esta instalación no baja pesos.
 CAN="${AUDIO_SEPARATOR_CAN:-/opt/audio-separator-models}"
-if [ -d "$CAN/mdx_models" ]; then
-  mkdir -p mdx_models
-  for f in "$CAN/mdx_models"/*.onnx; do
-    [ -s "$f" ] || continue
-    dest="mdx_models/$(basename "$f")"
-    if [ ! -e "$dest" ]; then
-      ln -sfn "$f" "$dest"
-    fi
-  done
-fi
-if [ -d "$CAN/rvc" ]; then
-  mkdir -p library/models/rvc
-  if [ ! -s library/models/rvc/rmvpe.pt ]; then
-    rsync -a "$CAN/rvc/" library/models/rvc/
-  fi
-fi
+export AUDIO_SEPARATOR_CAN="$CAN"
+bash "$REPO_ROOT/scripts/link_can_weights.sh" "$REPO_ROOT"
 
 # Core entry modules (Gradio UI + Unir remix). Fail fast if checkout is incomplete.
 .venv/bin/python -c "from app import build_server, launch_app; from remix import remix_to_wav"
