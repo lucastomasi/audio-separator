@@ -10,6 +10,8 @@ numpy<2
 numpy<2
 soundfile
 scipy
+# diarize.py (Entrenar speaker clustering) imports sklearn at module load.
+scikit-learn
 picklescan
 yt-dlp==2026.8.19
 onnxruntime
