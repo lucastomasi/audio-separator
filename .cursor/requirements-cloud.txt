@@ -10,6 +10,7 @@ numpy<2
 numpy<2
 soundfile
 scipy
+scikit-learn
 picklescan
 yt-dlp==2026.8.19
 onnxruntime
