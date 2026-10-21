@@ -25,6 +25,7 @@ from pedalboard import (
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
+from rvc.infer.audio_guard import require_samples, use_split
 from rvc.infer.pipeline import Pipeline as VC
 from rvc.lib.utils import load_audio_infer, load_embedding
 from rvc.lib.tools.split_audio import process_audio, merge_audio
@@ -263,10 +264,12 @@ class VoiceConverter:
         start_time = time.time()
         print(f"Converting audio '{audio_input_path}'...")
 
-        audio = load_audio_infer(
-            audio_input_path,
-            16000,
-            **kwargs,
+        audio = require_samples(
+            load_audio_infer(
+                audio_input_path,
+                16000,
+                **kwargs,
+            )
         )
         audio_max = np.abs(audio).max() / 0.95
 
@@ -291,6 +294,7 @@ class VoiceConverter:
 
         if split_audio:
             chunks, intervals = process_audio(audio, 16000)
+            chunks, split_audio = use_split(chunks, audio)
             print(f"Audio split into {len(chunks)} chunks for processing.")
         else:
             chunks = []

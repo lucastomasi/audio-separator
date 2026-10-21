@@ -1,10 +1,12 @@
 """Single Intel-CPU occupancy lock. File + ps. Do not import torch."""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import subprocess
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -109,12 +111,27 @@ def _clear_lock() -> None:
         pass
 
 
-def snapshot() -> Occupancy | None:
-    """Who holds Intel right now. Train ps wins; else the lock file.
+def _lock_file() -> Path:
+    """Sibling of occupancy.json. Never unlinked: waiters block on this inode."""
+    return lock_path().with_name("occupancy.json.lock")
 
-    An idle infer_worker.py is not a Convert job — that process may exist only
-    while a conversion runs (and is torn down afterward). Rely on acquire/release.
-    """
+
+@contextmanager
+def _with_lock():
+    path = _lock_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _snapshot_unlocked() -> Occupancy | None:
     text = _ps_commands()
     train = _train_from_ps(text)
     if train is not None:
@@ -126,35 +143,47 @@ def snapshot() -> Occupancy | None:
     return None
 
 
+def snapshot() -> Occupancy | None:
+    """Who holds Intel right now. Train ps wins; else the lock file.
+
+    An idle infer_worker.py is not a Convert job — that process may exist only
+    while a conversion runs (and is torn down afterward). Rely on acquire/release.
+    """
+    with _with_lock():
+        return _snapshot_unlocked()
+
+
 def acquire(holder: str, exp: str | None = None) -> Occupancy:
     if holder not in _MESSAGES:
         raise ValueError("Ocupación inválida.")
-    current = snapshot()
-    if current is not None:
-        same = (
-            current.holder == holder
-            and current.pid is not None
-            and current.pid == os.getpid()
-        )
-        if not same:
-            raise ValueError(blocked_message(current))
-    payload = {
-        "holder": holder,
-        "exp": exp,
-        "pid": os.getpid(),
-        "started": time.time(),
-    }
-    lock_path().write_text(json.dumps(payload), encoding="utf-8")
-    return Occupancy(holder, pid=os.getpid(), exp=exp)
+    with _with_lock():
+        current = _snapshot_unlocked()
+        if current is not None:
+            same = (
+                current.holder == holder
+                and current.pid is not None
+                and current.pid == os.getpid()
+            )
+            if not same:
+                raise ValueError(blocked_message(current))
+        payload = {
+            "holder": holder,
+            "exp": exp,
+            "pid": os.getpid(),
+            "started": time.time(),
+        }
+        lock_path().write_text(json.dumps(payload), encoding="utf-8")
+        return Occupancy(holder, pid=os.getpid(), exp=exp)
 
 
 def release(holder: str) -> None:
-    locked = _read_lock()
-    if locked is None:
+    with _with_lock():
+        locked = _read_lock()
+        if locked is None:
+            _clear_lock()
+            return
+        if locked.holder != holder:
+            return
+        if locked.pid is not None and locked.pid != os.getpid() and _pid_alive(locked.pid):
+            return
         _clear_lock()
-        return
-    if locked.holder != holder:
-        return
-    if locked.pid is not None and locked.pid != os.getpid() and _pid_alive(locked.pid):
-        return
-    _clear_lock()
