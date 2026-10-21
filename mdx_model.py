@@ -233,6 +233,9 @@ class MDX:
             processed_wave = []
             sample_count = wave.shape[-1]
 
+            if sample_count <= 0:
+                return []
+
             if chunk_size <= 0 or chunk_size > sample_count:
                 chunk_size = sample_count
 
@@ -340,6 +343,8 @@ class MDX:
         """
         if getattr(wave, "ndim", 0) != 2 or wave.shape[0] != 2:
             raise ValueError("MDX necesita audio estéreo.")
+        if wave.shape[-1] == 0:
+            return np.zeros_like(wave)
         mt_threads = max(1, int(mt_threads or 1))
         chunk = wave.shape[-1] // mt_threads
         waves = self.segment(wave, False, chunk)
@@ -458,6 +463,13 @@ def _execute_mdx(
     progress_span,
     progress_desc,
 ):
+    loaded, sr = librosa.load(filename, mono=False, sr=44100)
+    # Keep the original mix. Dividing it in place makes the instrumental
+    # residual (mix - voz) use the wrong gain, so the voice never leaves.
+    wave = _as_stereo(loaded)
+    if wave.shape[-1] == 0:
+        raise ValueError("El audio está vacío.")
+
     torch, _ort, _tqdm = _ensure_ml()
     model_hash = MDX.get_hash(model_path)
     mp = model_params.get(model_hash)
@@ -475,10 +487,6 @@ def _execute_mdx(
     )
 
     mdx_sess = MDX(model_path, model, processor=processor_num)
-    loaded, sr = librosa.load(filename, mono=False, sr=44100)
-    # Keep the original mix. Dividing it in place makes the instrumental
-    # residual (mix - voz) use the wrong gain, so the voice never leaves.
-    wave = _as_stereo(loaded)
     norm_wave, peak = _peak_norm(wave)
 
     def _run(audio, span):

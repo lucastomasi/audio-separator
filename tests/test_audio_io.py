@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -106,16 +107,23 @@ class AudioIoTests(unittest.TestCase):
     def test_load_ffmpeg_fallback_uses_resolved_binary(self):
         path = str(self.dir / "clip.m4a")
         Path(path).write_bytes(b"not-wav")
-        wav = str(self.dir / "clip.m4a.decoded.wav")
         real_read = sf.read
+        written = []
 
         def fake_call(cmd):
             self.assertEqual(cmd[0], "/tmp/imageio-ffmpeg")
+            dest = cmd[-1]
+            self.assertTrue(str(dest).endswith(".wav"))
+            self.assertNotEqual(
+                os.path.dirname(os.path.abspath(dest)),
+                os.path.abspath(self.dir),
+            )
             n = int(44100 * 0.05)
-            sf.write(wav, np.zeros((n, 2), dtype=np.float32), 44100)
+            sf.write(dest, np.zeros((n, 2), dtype=np.float32), 44100)
+            written.append(dest)
 
         def read_side_effect(p, always_2d=True):
-            if str(p).endswith(".decoded.wav"):
+            if written and os.path.abspath(p) == os.path.abspath(written[0]):
                 return real_read(p, always_2d=always_2d)
             raise OSError("no")
 
@@ -127,6 +135,9 @@ class AudioIoTests(unittest.TestCase):
                     wave, sr = audio_io.load(path, mono=False, sr=44100)
         self.assertEqual(sr, 44100)
         self.assertEqual(wave.shape[0], 2)
+        self.assertTrue(written)
+        self.assertFalse(os.path.exists(written[0]))
+        self.assertFalse(Path(f"{path}.decoded.wav").exists())
 
 
 if __name__ == "__main__":

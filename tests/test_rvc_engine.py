@@ -38,7 +38,7 @@ class RvcEngineTests(unittest.TestCase):
             with open(path, "wb") as handle:
                 handle.write(b"data")
         occ = occupancy.Occupancy("train", exp="voz")
-        with mock.patch("occupancy.snapshot", return_value=occ):
+        with mock.patch("occupancy._snapshot_unlocked", return_value=occ):
             with self.assertRaises(ValueError) as ctx:
                 rvc_engine.convert_voice(audio, model, copy_downloads=False)
         self.assertIn("Convertir", str(ctx.exception))
@@ -52,7 +52,7 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch("occupancy.snapshot", return_value=None):
+        with mock.patch("occupancy._snapshot_unlocked", return_value=None):
             with mock.patch.object(rvc_engine, "require_support_models"):
                 with mock.patch.object(rvc_engine, "sync_support_into_applio"):
                     with mock.patch.object(rvc_engine, "_scan_model"):
@@ -79,7 +79,7 @@ class RvcEngineTests(unittest.TestCase):
         for path in (audio, model, out):
             with open(path, "wb") as handle:
                 handle.write(b"data")
-        with mock.patch("occupancy.snapshot", return_value=None):
+        with mock.patch("occupancy._snapshot_unlocked", return_value=None):
             with mock.patch.object(rvc_engine, "require_support_models"):
                 with mock.patch.object(rvc_engine, "sync_support_into_applio"):
                     with mock.patch.object(rvc_engine, "_scan_model"):

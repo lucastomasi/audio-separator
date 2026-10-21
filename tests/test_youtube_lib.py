@@ -106,6 +106,21 @@ class DownloadAudioTests(unittest.TestCase):
         self.assertIn("YouTube", str(ctx.exception))
         ydl.assert_not_called()
 
+    def test_foreign_host_with_video_id_never_reaches_ytdlp(self):
+        hostile = [
+            "https://evil.example/steal?v=abcdefghijk",
+            "https://youtube.com.evil.example/watch?v=abcdefghijk",
+            "https://user:pass@www.youtube.com/watch?v=abcdefghijk",
+            "https://evil.example/youtu.be/abcdefghijk",
+        ]
+        with mock.patch("yt_dlp.YoutubeDL") as ydl:
+            for url in hostile:
+                with self.assertRaises(ValueError):
+                    download_audio(url, directory=self.dir)
+                with self.assertRaises(ValueError):
+                    probe_youtube(url)
+        ydl.assert_not_called()
+
     def test_skips_redownload_if_wav_exists(self):
         path = os.path.join(self.dir, "jNQXAC9IVRw.wav")
         with open(path, "wb") as handle:
@@ -173,6 +188,7 @@ class DownloadAudioTests(unittest.TestCase):
 
         with mock.patch("yt_dlp.YoutubeDL", FakeYDL):
             ident = probe_youtube("https://youtu.be/abcdefghijk")
+        self.assertEqual(seen["url"], "https://www.youtube.com/watch?v=abcdefghijk")
         self.assertFalse(seen["download"])
         self.assertEqual(ident["channel"], "DotDager")
         self.assertEqual(ident["title"], "CFK ERA DE DERECHA")
