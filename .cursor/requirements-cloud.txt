@@ -12,7 +12,7 @@ soundfile
 scipy
 scikit-learn
 picklescan
-yt-dlp==2026.8.19
+yt-dlp==2026.10.26
 onnxruntime
 pedalboard
 tqdm
