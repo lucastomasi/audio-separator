@@ -418,14 +418,11 @@ def _gradio_path(file_obj):
     return getattr(file_obj, "name", None) or getattr(file_obj, "path", None)
 
 
-def load_rvc_into_library(
-    hubert_file, rmvpe_file, model_file, index_file, g_file=None, d_file=None
-):
+def _support_files(hubert_file, rmvpe_file, g_file, d_file):
     import library
     import rvc_engine
 
     loaded = []
-    model_path = None
     hubert = _gradio_path(hubert_file)
     if hubert:
         if os.path.isdir(hubert) and rvc_engine._is_transformers_hubert_dir(hubert):
@@ -450,34 +447,56 @@ def load_rvc_into_library(
     if d_path:
         library.register("rvc", d_path, "f0D40k.pth")
         loaded.append("f0D40k")
+    return loaded
+
+
+def load_support_weights(hubert_file, rmvpe_file, g_file=None, d_file=None):
+    """Biblioteca: solo pesos de soporte. No toca voces ni el dropdown."""
+    import rvc_engine
+
+    loaded = _support_files(hubert_file, rmvpe_file, g_file, d_file)
+    if not loaded:
+        return _ok("Elegí archivos y pulsá Cargar.")
+    rvc_engine._converter = None
+    return _ok(f"Cargado: {', '.join(loaded)}.")
+
+
+def load_voice_into_library(model_file, index_file, current=None):
+    """Convertir: copia .pth/.index a Voces y deja esa voz elegida."""
+    import library
+    import rvc_engine
+
+    unchanged = gr.update()
+    model_path = None
+    index_note = None
     model = _gradio_path(model_file)
     if model:
         stem = os.path.splitext(os.path.basename(model))[0]
         model_path = library.place_voice_file(model, stem)
-        loaded.append(".pth")
     index = _gradio_path(index_file)
     if index and model_path:
         library.place_beside(model_path, index, ".index")
-        loaded.append(".index")
+        index_note = "índice"
     elif index and not model_path:
         stem = os.path.splitext(os.path.basename(index))[0]
         library.place_named(index, stem, ".index")
-        loaded.append(".index")
+        index_note = os.path.basename(index)
+    if not model_path and not index_note:
+        return unchanged, _ok("Elegí un .pth o un .index."), unchanged, unchanged
     rvc_engine._converter = None
-    rvc_upd = refresh_library_ui()
+    choices = library.dropdown_choices(library.list_rvc_voices())
+    selected = model_path or current
+    if selected:
+        rvc_upd = gr.update(choices=choices, value=selected)
+    else:
+        rvc_upd = refresh_library_ui()
+    bits = []
     if model_path:
-        choices = library.dropdown_choices(library.list_rvc_voices())
-        rvc_upd = gr.update(choices=choices, value=model_path)
-    if not loaded:
-        return rvc_upd, _ok("Elegí archivos y pulsá Cargar.")
-    hubert_ok = "sí" if rvc_engine.local_hubert_path() else "no"
-    rmvpe_ok = "sí" if rvc_engine.local_rmvpe_path() else "no"
-    return (
-        rvc_upd,
-        _ok(
-            f"Cargado: {', '.join(loaded)}. Soporte → hubert: {hubert_ok}, rmvpe: {rmvpe_ok}."
-        ),
-    )
+        bits.append(os.path.basename(model_path))
+    if index_note:
+        bits.append(index_note)
+    cleared = gr.update(value=None)
+    return rvc_upd, _ok(f"Cargado: {', '.join(bits)}."), cleared, cleared
 
 
 def train_rvc_job(
@@ -543,8 +562,6 @@ def train_rvc_job(
 def rvc_job(
     audio_path,
     library_model,
-    model_file,
-    index_file,
     train_files=None,
     allow_same=False,
     progress=gr.Progress(),
@@ -580,22 +597,13 @@ def rvc_job(
         )
 
     model_path = library_model
-    if model_file:
-        uploaded = _gradio_path(model_file)
-        if uploaded:
-            stem = os.path.splitext(os.path.basename(uploaded))[0]
-            model_path = library.place_voice_file(uploaded, stem)
-    elif model_path and os.path.isfile(model_path) and not library.is_installed_voice(model_path):
+    if model_path and os.path.isfile(model_path) and not library.is_installed_voice(model_path):
         stem = os.path.splitext(os.path.basename(model_path))[0]
         model_path = library.place_voice_file(model_path, stem)
     if not model_path:
         msg = "Elegí un modelo en Convertir."
         return None, None, status_update(KIND_ERROR, msg), unlock
     index_path = library.find_index_for_model(model_path) if model_path else None
-    if index_file:
-        uploaded_index = _gradio_path(index_file)
-        if uploaded_index and model_path:
-            index_path = library.place_beside(model_path, uploaded_index, ".index")
     try:
         try:
             progress(0.35, desc="Convirtiendo voz…")

@@ -60,7 +60,8 @@ from app_jobs import (
     on_audio_ready,
     reset_job,
     refresh_library_ui,
-    load_rvc_into_library,
+    load_support_weights,
+    load_voice_into_library,
     train_rvc_job,
     rvc_job,
     remix_job,
@@ -840,14 +841,14 @@ def get_gui():
             outputs=[cover_preview, status],
         )
         load_rvc_btn.click(
-            load_rvc_into_library,
-            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
-            outputs=[rvc_pick, status],
+            load_voice_into_library,
+            inputs=[rvc_model, rvc_index, rvc_pick],
+            outputs=[rvc_pick, status, rvc_model, rvc_index],
         )
         load_support_btn.click(
-            load_rvc_into_library,
-            inputs=[rvc_hubert, rvc_rmvpe, rvc_model, rvc_index, rvc_g, rvc_d],
-            outputs=[rvc_pick, status],
+            load_support_weights,
+            inputs=[rvc_hubert, rvc_rmvpe, rvc_g, rvc_d],
+            outputs=[status],
         )
         def _pull_separated(vocal):
             from ui_status import KIND_ERROR, KIND_OK, status_update
@@ -872,7 +873,7 @@ def get_gui():
             outputs=[rvc_btn, status],
         ).then(
             rvc_job,
-            inputs=[rvc_in, rvc_pick, rvc_model, rvc_index, train_dataset, rvc_same],
+            inputs=[rvc_in, rvc_pick, train_dataset, rvc_same],
             outputs=[rvc_audio, remix_voice, status, rvc_btn],
             show_progress="full",
             concurrency_limit=1,

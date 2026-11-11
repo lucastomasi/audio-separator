@@ -35,3 +35,21 @@ library/train_runs/
 *.zip
 *.dmg
 /tmp/
+
+# System & OS
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# App bundles & build artifacts
+*.app/
+*.pkg
+build/
+
+# Bytecode & test caches
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/

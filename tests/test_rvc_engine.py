@@ -98,21 +98,65 @@ class RvcEngineTests(unittest.TestCase):
         self.assertEqual(kwargs["filter_radius"], 0)
 
     def test_hubert_pth_upload_is_ignored(self):
-        from app_jobs import load_rvc_into_library
+        from app_jobs import load_support_weights
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         fake = os.path.join(tmp.name, "voice.pth")
         with open(fake, "wb") as handle:
             handle.write(b"x")
-        with mock.patch("app_jobs.refresh_library_ui", return_value=[]):
-            with mock.patch("library.register") as register:
-                _a, status = load_rvc_into_library(
-                    fake, None, None, None
-                )
+        with mock.patch("library.register") as register:
+            with mock.patch("library.place_voice_file") as place:
+                status = load_support_weights(fake, None, None, None)
         register.assert_not_called()
+        place.assert_not_called()
+        self.assertNotIsInstance(status, tuple)
         text = status.get("value", status) if isinstance(status, dict) else status
         self.assertIn("hubert ignorado", str(text))
+
+    def test_voice_load_does_not_register_support_files(self):
+        from app_jobs import load_voice_into_library
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        voice = os.path.join(tmp.name, "Maria.pth")
+        with open(voice, "wb") as handle:
+            handle.write(b"x")
+        installed = os.path.join(tmp.name, "Maria", "Maria.pth")
+        choices = [("Maria", installed)]
+        with mock.patch("library.place_voice_file", return_value=installed) as place:
+            with mock.patch("library.place_beside") as beside:
+                with mock.patch("library.register") as register:
+                    with mock.patch("library.list_rvc_voices", return_value=[]):
+                        with mock.patch("library.dropdown_choices", return_value=choices):
+                            pick, status, model_upd, index_upd = load_voice_into_library(
+                                voice, None, "otra.pth"
+                            )
+        place.assert_called_once()
+        beside.assert_not_called()
+        register.assert_not_called()
+        self.assertEqual(pick["value"], installed)
+        self.assertIsNone(model_upd["value"])
+        self.assertIsNone(index_upd["value"])
+        text = status.get("value", status) if isinstance(status, dict) else status
+        self.assertIn("Maria.pth", str(text))
+        self.assertNotIn("hubert", str(text))
+
+    def test_convert_uses_the_dropdown_model(self):
+        from app_jobs import rvc_job
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp.write(b"x")
+        tmp.close()
+        self.addCleanup(lambda: os.remove(tmp.name))
+        model = os.path.join(os.path.dirname(tmp.name), "Elegida.pth")
+        with mock.patch("library.is_installed_voice", return_value=True):
+            with mock.patch("library.find_index_for_model", return_value=None):
+                with mock.patch("library.place_voice_file") as place:
+                    with mock.patch("rvc_engine.convert_voice", return_value=tmp.name) as convert:
+                        rvc_job(tmp.name, model)
+        place.assert_not_called()
+        self.assertEqual(convert.call_args.args[1], model)
 
     def test_sync_support_into_applio_links_local_files(self):
         tmp = tempfile.TemporaryDirectory()
