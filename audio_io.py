@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 
 import numpy as np
 import soundfile as sf
@@ -74,26 +75,38 @@ def _as_path(path):
 
 def load(path, mono=False, sr=44100):
     path = _as_path(path)
+    decoded = None
     try:
-        wave, file_sr = sf.read(path, always_2d=True)
-    except Exception:
-        stereo_path = f"{path}.decoded.wav"
-        subprocess.check_call(
-            [
-                _ffmpeg_cmd(),
-                "-y",
-                "-loglevel",
-                "error",
-                "-i",
-                path,
-                "-ac",
-                "2",
-                "-ar",
-                str(sr or 44100),
-                stereo_path,
-            ]
-        )
-        wave, file_sr = sf.read(stereo_path, always_2d=True)
+        try:
+            wave, file_sr = sf.read(path, always_2d=True)
+        except Exception:
+            # Decode beside the temp dir, not next to the source. A read-only
+            # folder (or a path with spaces) must not make load fail, and the
+            # sibling .decoded.wav must not be left behind.
+            fd, decoded = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            subprocess.check_call(
+                [
+                    _ffmpeg_cmd(),
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    path,
+                    "-ac",
+                    "2",
+                    "-ar",
+                    str(sr or 44100),
+                    decoded,
+                ]
+            )
+            wave, file_sr = sf.read(decoded, always_2d=True)
+    finally:
+        if decoded:
+            try:
+                os.remove(decoded)
+            except OSError:
+                pass
     wave = wave.T.astype(np.float32)
     if sr and int(file_sr) != int(sr):
         wave = resample(wave, orig_sr=file_sr, target_sr=sr)

@@ -296,5 +296,43 @@ class ConvertWavTests(unittest.TestCase):
         self.assertIn("Completar instalación", str(ctx.exception))
 
 
+class SaveAudioTests(unittest.TestCase):
+    def test_odd_rate_stereo_keeps_two_channels(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        frames = 40000
+        audio = np.column_stack(
+            [
+                np.full(frames, 0.5, dtype=np.float32),
+                np.full(frames, 0.1, dtype=np.float32),
+            ]
+        )
+        path = os.path.join(tmp.name, "odd_converted.flac")
+        saved = uvr_runtime.save_audio(audio, 40000, path, "flac")
+        data, sr = sf.read(saved)
+        self.assertEqual(sr, 44100)
+        self.assertEqual(data.ndim, 2)
+        self.assertEqual(data.shape[1], 2)
+        self.assertGreater(data.shape[0], frames)
+        self.assertAlmostEqual(float(np.median(data[:, 0])), 0.5, places=2)
+        self.assertAlmostEqual(float(np.median(data[:, 1])), 0.1, places=2)
+
+    def test_unsupported_format_writes_wav(self):
+        import uvr_runtime
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        audio = np.zeros((100, 2), dtype=np.float32)
+        path = os.path.join(tmp.name, "x_converted.xyz")
+        saved = uvr_runtime.save_audio(audio, 44100, path, "xyz")
+        self.assertTrue(saved.endswith(".wav"))
+        self.assertTrue(os.path.isfile(saved))
+        data, sr = sf.read(saved)
+        self.assertEqual(sr, 44100)
+        self.assertEqual(data.shape, (100, 2))
+
+
 if __name__ == "__main__":
     unittest.main()

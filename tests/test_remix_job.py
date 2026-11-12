@@ -34,15 +34,23 @@ class RemixJobTests(unittest.TestCase):
             "orig_name": "i.wav",
             "meta": {"_type": "gradio.FileData"},
         }
-        with mock.patch(
-            "app_jobs.copy_to_downloads",
-            side_effect=lambda files, labels, song=None: (tmp.name, list(files)),
-        ) as copied:
-            audio, archivo, status, unlock = app_jobs.remix_job(
-                voice, inst, 0, False, 0, 0, "WAV"
+        data = os.path.join(tmp.name, "appdata")
+        with mock.patch.dict(os.environ, {"AUDIO_SEPARATOR_DATA": data}):
+            with mock.patch(
+                "app_jobs.copy_to_downloads",
+                side_effect=lambda files, labels, song=None: (tmp.name, list(files)),
+            ) as copied:
+                audio, archivo, status, unlock = app_jobs.remix_job(
+                    voice, inst, 0, False, 0, 0, "WAV"
+                )
+        remix = os.path.join(data, "remix_output", "remix.wav")
+        self.assertTrue(os.path.isfile(remix))
+        self.assertEqual(os.path.abspath(audio), os.path.abspath(remix))
+        self.assertFalse(
+            os.path.isfile(
+                os.path.join(os.path.dirname(app_jobs.__file__), "remix_output", "remix.wav")
             )
-        self.assertTrue(audio)
-        self.assertTrue(os.path.isfile(audio))
+        )
         self.assertIn("Pistas unidas", str(status))
         self.assertNotIn("No se pudo armar el remix", str(status))
         self.assertEqual(unlock.get("value"), "Unir")

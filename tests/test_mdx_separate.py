@@ -1,5 +1,6 @@
 """Separar: vocal/instrumental residual scale, and inference stays on one thread."""
 import inspect
+import os
 import tempfile
 import threading
 import time
@@ -139,6 +140,45 @@ class ProcessWaveTests(unittest.TestCase):
         self.assertTrue(ticks)
         self.assertEqual(ticks[-1][0], ticks[-1][1])
         self.assertTrue(all(ident == caller for ident in threads))
+
+    def test_empty_audio_does_not_divide_by_zero(self):
+        import mdx_model
+
+        sess = mdx_model.MDX.__new__(mdx_model.MDX)
+        wave = np.zeros((2, 0), dtype=np.float32)
+        out = sess.process_wave(wave, mt_threads=1)
+        self.assertEqual(out.shape, (2, 0))
+        self.assertEqual(mdx_model.MDX.segment(wave, combine=False), [])
+
+    def test_execute_mdx_rejects_empty_file(self):
+        import soundfile as sf
+
+        import mdx_model
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "empty.wav")
+        sf.write(path, np.zeros((0, 2), dtype=np.float32), 44100)
+        with self.assertRaises(ValueError) as ctx:
+            mdx_model._execute_mdx(
+                {},
+                tmp.name,
+                "missing.onnx",
+                path,
+                False,
+                True,
+                None,
+                None,
+                False,
+                False,
+                1,
+                "cpu",
+                0,
+                None,
+                (0.0, 1.0),
+                "Separando",
+            )
+        self.assertIn("vacío", str(ctx.exception))
 
 
 class SeparateProgressTests(unittest.TestCase):

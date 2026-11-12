@@ -12,6 +12,7 @@ from torch import Tensor
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
+from rvc.infer.audio_guard import highpass_audio
 from rvc.lib.predictors.f0 import CREPE, FCPE, RMVPE
 
 import logging
@@ -445,7 +446,9 @@ class Pipeline:
                 index = big_npy = None
         else:
             index = big_npy = None
-        audio = signal.filtfilt(bh, ah, audio)
+        audio = highpass_audio(audio, bh, ah)
+        if audio.size == 0:
+            return np.zeros(0, dtype=np.float32)
         audio_pad = np.pad(audio, (self.window // 2, self.window // 2), mode="reflect")
         opt_ts = []
         if audio_pad.shape[0] > self.t_max:

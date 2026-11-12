@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import tempfile
 import unittest
@@ -5,6 +6,19 @@ from pathlib import Path
 from unittest import mock
 
 import occupancy
+
+
+def _race_acquire(root, barrier, results):
+    os.environ["AUDIO_SEPARATOR_DATA"] = root
+    import occupancy as occ
+
+    occ._ps_commands = lambda: ""
+    barrier.wait(20)
+    try:
+        occ.acquire(occ.HOLD_UVR)
+        results.append("ok")
+    except ValueError:
+        results.append("blocked")
 
 
 class OccupancyTests(unittest.TestCase):
@@ -67,6 +81,24 @@ class OccupancyTests(unittest.TestCase):
         path = occupancy.lock_path()
         self.assertTrue(str(path).startswith(self.root))
         self.assertEqual(path.name, "occupancy.json")
+
+    def test_one_process_acquires_the_lock(self):
+        ctx = multiprocessing.get_context("spawn")
+        manager = ctx.Manager()
+        results = manager.list()
+        barrier = ctx.Barrier(4)
+        procs = [
+            ctx.Process(target=_race_acquire, args=(self.root, barrier, results))
+            for _ in range(4)
+        ]
+        for proc in procs:
+            proc.start()
+        for proc in procs:
+            proc.join(30)
+            self.assertFalse(proc.is_alive())
+            self.assertEqual(proc.exitcode, 0)
+        self.assertEqual(list(results).count("ok"), 1)
+        self.assertEqual(list(results).count("blocked"), 3)
 
     def test_idle_infer_worker_is_not_busy_convert(self):
         """Warm or leftover infer_worker.py must not block Separar/Entrenar."""

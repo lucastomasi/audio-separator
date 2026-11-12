@@ -406,25 +406,52 @@ def add_instrumental_effects(input_file, output_file, highpass_freq=100, lowpass
 COMMON_SAMPLE_RATES = [8000, 16000, 22050, 32000, 44100, 48000, 96000]
 
 
+def _resample_soundfile(audio, orig_sr, target_sr):
+    """Resample soundfile arrays: (frames,) or (frames, channels).
+
+    audio_io.resample treats axis 0 as channels. Passing a stereo soundfile
+    array through it resamples the channel axis and invents extra channels.
+    """
+    if int(orig_sr) == int(target_sr):
+        return audio
+    data = np.asarray(audio)
+    if data.ndim == 1:
+        return librosa.resample(data, orig_sr=orig_sr, target_sr=target_sr)
+    return librosa.resample(data.T, orig_sr=orig_sr, target_sr=target_sr).T
+
+
+def _wav_fallback_path(output_audio_path, target_format):
+    marker = f"_converted.{target_format}"
+    if marker in output_audio_path:
+        return output_audio_path.replace(marker, ".wav")
+    root, _ext = os.path.splitext(output_audio_path)
+    return root + ".wav"
+
+
 def save_audio(audio_opt: np.ndarray, final_sr: int, output_audio_path: str, target_format: str) -> str:
     """
     Save audio with automatic handling of unsupported sample rates for non-WAV formats.
     """
     ext = os.path.splitext(output_audio_path)[1].lower()
+    source = np.asarray(audio_opt)
 
     try:
         if ext == ".wav":
-            sf.write(output_audio_path, audio_opt, final_sr, format=target_format)
+            sf.write(output_audio_path, source, final_sr, format=target_format)
         else:
             target_sr = min(COMMON_SAMPLE_RATES, key=lambda altsr: abs(altsr - final_sr))
+            to_write = source
+            rate = final_sr
             if target_sr != final_sr:
                 logger.warning(f"Resampling from {final_sr} -> {target_sr} for {ext}")
-                audio_opt = librosa.resample(audio_opt, orig_sr=final_sr, target_sr=target_sr)
-            sf.write(output_audio_path, audio_opt, target_sr, format=target_format)
+                to_write = _resample_soundfile(source, final_sr, target_sr)
+                rate = target_sr
+            sf.write(output_audio_path, to_write, rate, format=target_format)
     except Exception as e:
         logger.error(e)
         logger.error(f"Error saving {output_audio_path}, performing fallback to WAV")
-        output_audio_path = output_audio_path.replace(f"_converted.{target_format}", ".wav")
+        output_audio_path = _wav_fallback_path(output_audio_path, target_format)
+        sf.write(output_audio_path, source, int(final_sr))
 
     return output_audio_path
 

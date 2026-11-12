@@ -4,7 +4,7 @@ import re
 import shutil
 import subprocess
 
-from audio_text import normalize_media_url
+from audio_text import normalize_media_url, youtube_watch_url
 
 # Prefer lossless/work files first; never prefer 192 kbps mp3.
 AUDIO_EXTS = ("wav", "flac", "m4a", "opus", "ogg", "webm", "mp3")
@@ -182,11 +182,15 @@ def identity_line(channel, title, video_id):
     return f"{channel} — {title} ({video_id})"
 
 
+def canonical_youtube_url(url):
+    """Allowlisted watch URL. Rejects other hosts, userinfo, and missing ids."""
+    watch, _video_id = youtube_watch_url(url)
+    return watch
+
+
 def probe_youtube(url):
     """Channel, title and id. Does not download."""
-    url = normalize_media_url(url)
-    if not extract_youtube_id(url):
-        raise ValueError("Pega un enlace de YouTube.")
+    url = canonical_youtube_url(url)
     import yt_dlp
 
     opts = _ydl_runtime(
@@ -319,10 +323,8 @@ def download_audio(url, directory=None):
 def download_video(url, directory=None):
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)
-    url = normalize_media_url(url)
+    url = canonical_youtube_url(url)
     video_id = extract_youtube_id(url)
-    if not video_id:
-        raise ValueError("Pega un enlace de YouTube.")
     cached = existing_video(video_id, directory)
     if cached:
         return cached, True
@@ -347,9 +349,7 @@ def download_video(url, directory=None):
 
 def download_media(url, with_video=True, directory=None):
     """Audio WAV 48 kHz (+ optional MP4). Returns audio, video, reused, note."""
-    url = normalize_media_url(url)
-    if not extract_youtube_id(url):
-        raise ValueError("Pega un enlace de YouTube.")
+    url = canonical_youtube_url(url)
 
     directory = directory or downloads_dir()
     os.makedirs(directory, exist_ok=True)

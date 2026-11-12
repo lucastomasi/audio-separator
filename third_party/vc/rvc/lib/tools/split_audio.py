@@ -1,5 +1,4 @@
 import numpy as np
-import librosa
 
 
 def process_audio(audio, sr=16000, silence_thresh=-60, min_silence_len=250):
@@ -16,6 +15,8 @@ def process_audio(audio, sr=16000, silence_thresh=-60, min_silence_len=250):
     - list of np.ndarray: A list of audio segments.
     - np.ndarray: The intervals where the audio was split.
     """
+    import librosa
+
     frame_length = int(min_silence_len / 1000 * sr)
     hop_length = frame_length // 2
     intervals = librosa.effects.split(
@@ -40,6 +41,8 @@ def merge_audio(audio_segments_org, audio_segments_new, intervals, sr_orig, sr_n
     Returns:
     - np.ndarray: The merged audio signal with silent gaps restored.
     """
+    if len(audio_segments_new) == 0:
+        return np.zeros(0, dtype=np.float32)
     merged_audio = np.array([], dtype=audio_segments_new[0].dtype)
     sr_ratio = sr_new / sr_orig
 
