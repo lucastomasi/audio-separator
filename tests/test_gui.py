@@ -5,6 +5,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 import app
 import app_jobs
@@ -45,6 +46,7 @@ class GuiWiringTests(unittest.TestCase):
             "load_demo_bundle": (0, 5),
             "lock_download_button": (0, 2),
             "audio_downloader": (2, 6),
+            "open_youtube_folder_status": (0, 1),
             "on_audio_ready": (1, 3),
             "show_vocal_components": (1, 4),
             "reset_job": (0, 19),
@@ -92,12 +94,50 @@ class GuiWiringTests(unittest.TestCase):
         self.assertFalse(out[18].get("interactive", True))
         self.assertEqual(out[18].get("value"), "Estimar acordes")
 
+    def test_youtube_folder_button_sits_with_download(self):
+        text = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertLess(
+            text.index("url_button_gui = url_button_conf()"),
+            text.index("Abrir carpeta de descarga"),
+        )
+        self.assertLess(
+            text.index("Abrir carpeta de descarga"),
+            text.index('label="También bajar el video"'),
+        )
+        self.assertIn("open_youtube_folder_status", text)
+
+    def test_open_youtube_folder_status_reports_reveal_or_error(self):
+        with mock.patch(
+            "youtube_lib.open_downloads_folder",
+            return_value=("/tmp/audio-separator/song.wav", True),
+        ):
+            revealed = app_jobs.open_youtube_folder_status()
+        self.assertIn("Mostrando en Finder", revealed["value"])
+        self.assertIn("song.wav", revealed["value"])
+        self.assertIn("is-ok", revealed.get("elem_classes") or [])
+
+        with mock.patch(
+            "youtube_lib.open_downloads_folder",
+            return_value=("/tmp/audio-separator/downloads", False),
+        ):
+            opened = app_jobs.open_youtube_folder_status()
+        self.assertIn("Carpeta abierta", opened["value"])
+
+        with mock.patch(
+            "youtube_lib.open_downloads_folder",
+            side_effect=FileNotFoundError("open"),
+        ):
+            failed = app_jobs.open_youtube_folder_status()
+        self.assertEqual(failed["value"], "No pude abrir la carpeta de descarga.")
+        self.assertIn("is-error", failed.get("elem_classes") or [])
+
 
 class GuiCssTests(unittest.TestCase):
     def test_css_drops_tts_and_does_not_force_install_primary(self):
         css = (ROOT / "ui.css").read_text(encoding="utf-8")
         self.assertNotIn("tts-rvc-btn", css)
         self.assertIn("#run-btn", css)
+        self.assertIn(".yt-download-row", css)
         self.assertIn("#chords-btn button", css)
         self.assertIn("#run-btn button", css)
         self.assertNotIn("#install-btn button", css)
@@ -144,6 +184,7 @@ class GuiHeadlessCopyTests(unittest.TestCase):
         ):
             self.assertIn(label, text)
         self.assertIn("Estimar acordes", text)
+        self.assertIn("Abrir carpeta de descarga", text)
         self.assertIn("no es la tablatura de la grabación", text)
         self.assertNotIn(">Texto<", text)
         self.assertNotIn("tts-rvc-btn", text)
