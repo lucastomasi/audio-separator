@@ -10,6 +10,7 @@ from youtube_lib import (
     extract_youtube_id,
     ffmpeg_binary,
     identity_line,
+    open_downloads_folder,
     parse_seconds,
     probe_youtube,
     ydl_options,
@@ -199,6 +200,113 @@ class DownloadAudioTests(unittest.TestCase):
         self.assertTrue(opts["noplaylist"])
         self.assertEqual(opts["postprocessors"][0]["preferredcodec"], "wav")
         self.assertEqual(opts.get("concurrent_fragment_downloads"), 4)
+
+
+class OpenDownloadsFolderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ok = mock.Mock(returncode=0, stderr="", stdout="")
+
+    def _data_env(self):
+        data = os.path.join(self.tmp.name, "data")
+        return mock.patch.dict(os.environ, {"AUDIO_SEPARATOR_DATA": data}), data
+
+    def test_creates_and_opens_empty_folder(self):
+        env, data = self._data_env()
+        with env:
+            with mock.patch("youtube_lib.subprocess.run", return_value=self.ok) as run:
+                shown, revealed = open_downloads_folder()
+        folder = os.path.realpath(os.path.join(data, "downloads"))
+        self.assertFalse(revealed)
+        self.assertEqual(shown, folder)
+        self.assertTrue(os.path.isdir(folder))
+        self.assertEqual(run.call_args.args[0], ["open", folder])
+        self.assertEqual(run.call_args.kwargs.get("timeout"), 15)
+        self.assertNotIn(
+            os.path.join(os.path.expanduser("~"), "Downloads", "Audio Separator"),
+            shown,
+        )
+
+    def test_reveals_newest_finished_file(self):
+        env, data = self._data_env()
+        with env:
+            folder = os.path.join(os.path.abspath(data), "downloads")
+            os.makedirs(folder)
+            older = os.path.join(folder, "old.wav")
+            newer = os.path.join(folder, "new.mp4")
+            partial = os.path.join(folder, "busy.mp4.part")
+            hidden = os.path.join(folder, ".secret.wav")
+            empty = os.path.join(folder, "empty.wav")
+            for path, mtime, blob in (
+                (older, 1_000, b"old"),
+                (newer, 2_000, b"new"),
+                (partial, 3_000, b"part"),
+                (hidden, 4_000, b"hid"),
+                (empty, 5_000, b""),
+            ):
+                with open(path, "wb") as handle:
+                    handle.write(blob)
+                os.utime(path, (mtime, mtime))
+            with mock.patch("youtube_lib.subprocess.run", return_value=self.ok) as run:
+                shown, revealed = open_downloads_folder()
+        self.assertTrue(revealed)
+        self.assertEqual(shown, os.path.realpath(newer))
+        self.assertEqual(
+            run.call_args.args[0], ["open", "-R", os.path.realpath(newer)]
+        )
+
+    def test_skips_symlink_that_leaves_the_folder(self):
+        env, data = self._data_env()
+        outside = os.path.join(self.tmp.name, "secret.wav")
+        with open(outside, "wb") as handle:
+            handle.write(b"secret")
+        os.utime(outside, (9_000, 9_000))
+        with env:
+            folder = os.path.join(os.path.abspath(data), "downloads")
+            os.makedirs(folder)
+            local = os.path.join(folder, "song.wav")
+            with open(local, "wb") as handle:
+                handle.write(b"song")
+            os.utime(local, (1_000, 1_000))
+            os.symlink(outside, os.path.join(folder, "leak.wav"))
+            with mock.patch("youtube_lib.subprocess.run", return_value=self.ok) as run:
+                shown, revealed = open_downloads_folder()
+        self.assertTrue(revealed)
+        self.assertEqual(shown, os.path.realpath(local))
+        self.assertEqual(run.call_args.args[0][0:2], ["open", "-R"])
+        self.assertNotIn("secret.wav", run.call_args.args[0][2])
+
+    def test_falls_back_to_folder_when_reveal_fails(self):
+        env, data = self._data_env()
+        with env:
+            folder = os.path.join(os.path.abspath(data), "downloads")
+            os.makedirs(folder)
+            media = os.path.join(folder, "song.wav")
+            with open(media, "wb") as handle:
+                handle.write(b"song")
+
+            def fake_run(args, capture_output=True, text=True, timeout=15):
+                if "-R" in args:
+                    return mock.Mock(returncode=1, stderr="no", stdout="")
+                return self.ok
+
+            with mock.patch("youtube_lib.subprocess.run", side_effect=fake_run) as run:
+                shown, revealed = open_downloads_folder()
+        folder = os.path.realpath(folder)
+        self.assertFalse(revealed)
+        self.assertEqual(shown, folder)
+        self.assertEqual(run.call_args_list[0].args[0][1], "-R")
+        self.assertEqual(run.call_args_list[1].args[0], ["open", folder])
+
+    def test_missing_finder_command_raises(self):
+        env, _data = self._data_env()
+        with env:
+            with mock.patch(
+                "youtube_lib.subprocess.run", side_effect=FileNotFoundError("open")
+            ):
+                with self.assertRaises(FileNotFoundError):
+                    open_downloads_folder()
 
 
 if __name__ == "__main__":

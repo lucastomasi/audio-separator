@@ -68,6 +68,7 @@ from app_jobs import (
     remux_job,
     cover_job,
     lock_download_button,
+    open_youtube_folder_status,
     lock_install_button,
     lock_convert_button,
     lock_train_button,
@@ -268,9 +269,15 @@ def get_gui():
                                     "Cargar demo", variant="secondary"
                                 )
                         with gr.Tab("YouTube"):
-                            with gr.Row():
+                            with gr.Row(elem_classes=["yt-download-row"]):
                                 url_media_gui = url_media_conf()
                                 url_button_gui = url_button_conf()
+                                open_yt_folder_btn = gr.Button(
+                                    "Abrir carpeta de descarga",
+                                    variant="secondary",
+                                    scale=0,
+                                    min_width=230,
+                                )
                             want_video = gr.Checkbox(
                                 True,
                                 label="También bajar el video",
@@ -739,6 +746,10 @@ def get_gui():
 
             return status_update(KIND_OK, f"Carpeta abierta: {open_exports_dir()}")
 
+        open_yt_folder_btn.click(
+            open_youtube_folder_status,
+            outputs=[status],
+        )
         open_folder_btn.click(
             _open_folder,
             outputs=[status],

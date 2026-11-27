@@ -395,6 +395,14 @@ div.progress-bar {
   margin-top: 4px !important;
 }
 
+.yt-download-row {
+  gap: 8px !important;
+}
+
+.yt-download-row button {
+  white-space: nowrap !important;
+}
+
 .top-row {
   align-items: stretch !important;
 }

@@ -199,6 +199,23 @@ def unlock_download_button():
     return gr.update(interactive=True, value="Descargar")
 
 
+def open_youtube_folder_status():
+    """Open the folder YouTube downloads actually use. Never raises into Gradio."""
+    from youtube_lib import open_downloads_folder
+
+    try:
+        shown, revealed = open_downloads_folder()
+    except Exception as error:
+        return _err(
+            "open_youtube_folder",
+            error,
+            "No pude abrir la carpeta de descarga.",
+        )
+    if revealed:
+        return _ok(f"Mostrando en Finder: {shown}")
+    return _ok(f"Carpeta abierta: {shown}")
+
+
 def lock_install_button():
     return (
         gr.update(interactive=False, value="Instalando…"),

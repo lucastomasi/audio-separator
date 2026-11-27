@@ -23,6 +23,83 @@ def downloads_dir():
     return path
 
 
+_PARTIAL_SUFFIXES = (".part", ".ytdl", ".temp", ".tmp")
+_DOWNLOAD_SUFFIXES = tuple("." + ext for ext in AUDIO_EXTS + VIDEO_EXTS)
+
+
+def _inside(path, root):
+    try:
+        path = os.path.realpath(path)
+        root = os.path.realpath(root)
+        return os.path.commonpath([path, root]) == root
+    except (ValueError, OSError):
+        return False
+
+
+def latest_download(directory=None):
+    """Newest finished media file in the YouTube download folder, if any."""
+    directory = os.path.realpath(directory or downloads_dir())
+    if not os.path.isdir(directory):
+        return None
+    newest = None
+    newest_mtime = None
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return None
+    for name in names:
+        if not name or name.startswith("."):
+            continue
+        lower = name.lower()
+        if lower.endswith(_PARTIAL_SUFFIXES):
+            continue
+        if not lower.endswith(_DOWNLOAD_SUFFIXES):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            if not os.path.isfile(path) or os.path.islink(path):
+                continue
+            real = os.path.realpath(path)
+            if not _inside(real, directory) or not os.path.isfile(real):
+                continue
+            if os.path.getsize(real) <= 0:
+                continue
+            mtime = os.path.getmtime(real)
+        except (OSError, ValueError):
+            continue
+        if newest_mtime is None or mtime >= newest_mtime:
+            newest_mtime = mtime
+            newest = real
+    return newest
+
+
+def _finder_show(args):
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise OSError(detail or "No se pudo abrir Finder.")
+
+
+def open_downloads_folder():
+    """Open the YouTube download folder in Finder.
+
+    Uses the same directory as download_media (data dir / downloads).
+    Creates it when missing. Reveals the newest finished file when one
+    exists; otherwise opens the folder. Returns (path, revealed).
+    """
+    directory = os.path.realpath(downloads_dir())
+    os.makedirs(directory, exist_ok=True)
+    target = latest_download(directory)
+    if target:
+        try:
+            _finder_show(["open", "-R", target])
+            return target, True
+        except OSError:
+            pass
+    _finder_show(["open", directory])
+    return directory, False
+
+
 def extract_youtube_id(url):
     url = normalize_media_url(url)
     if not url:
